@@ -51,32 +51,46 @@ class RiskOfficerAgent:
         if btc_regime and btc_regime.get("block_longs", False) and direction == "LONG":
             return False, {
                 "decision": "REJECT",
-                "reason": f"BTC Çöküş Kalkanı Devrede: {btc_regime.get('summary', 'BTC riskli')}. Altcoin LONG engellendi."
+                "reason": (
+                    f"📌 <strong>Mevcut Durum:</strong> BTC Rejimi: {btc_regime.get('status', 'RISK')} ({btc_regime.get('summary', '')}).<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Bitcoin düşüş veya ölü testere eğilimindeyken altcoinlerde LONG açmak sermayeyi yüksek riske atar.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> Bitcoin'in yeniden Boğa (BULLISH) trendine dönmesi."
+                )
             }
 
         # 1.5 LİKİDİTE & SLIPPAGE (ORDER BOOK SPREAD) KALKANI
-        # Alış-Satış makası geniş olan paritelerde piyasa emri anında büyük zararla başlar
         if book_ticker:
             spread_pct = book_ticker.get("spread_pct", 0.0)
             if spread_pct > MAX_ORDERBOOK_SPREAD_PCT:
                 return False, {
                     "decision": "REJECT",
-                    "reason": f"Slippage Tuzağı: Alış/Satış makası çok geniş (%{spread_pct:.3f} > %{MAX_ORDERBOOK_SPREAD_PCT}). Likidite yetersiz."
+                    "reason": (
+                        f"📌 <strong>Mevcut Durum:</strong> Tahtada Alış-Satış Makası: %{spread_pct:.3f} (Maksimum İzin: %{MAX_ORDERBOOK_SPREAD_PCT}).<br>"
+                        f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Slippage (Fiyat Kayması) Tuzağı! Makas açık olduğu için emir girildiği an pozisyon doğrudan zararla başlar.<br>"
+                        f"🎯 <strong>Beklenen Şart:</strong> Tahtaya likidite girip makasın %{MAX_ORDERBOOK_SPREAD_PCT} altına daralması."
+                    )
                 }
 
         # 1.6 ZEHİRLİ FONLAMA ORANI (TOXIC FUNDING RATE) KALKANI
-        # Eğer fonlama aşırı yüksekse, pozisyonda kalmak her 8 saatte bir yüksek komisyon kesintisine yol açar
         if funding_data:
             fr = funding_data.get("lastFundingRate", 0.0)
             if direction == "LONG" and fr > MAX_ALLOWED_FUNDING_RATE:
                 return False, {
                     "decision": "REJECT",
-                    "reason": f"Fonlama Tuzağı: LONG fonlama oranı aşırı yüksek (%{fr*100:.3f} > %{MAX_ALLOWED_FUNDING_RATE*100:.2f}). Borsa kesintisi kârı yiyecektir."
+                    "reason": (
+                        f"📌 <strong>Mevcut Durum:</strong> LONG Fonlama Oranı: %{fr*100:.3f} (Tavan: %{MAX_ALLOWED_FUNDING_RATE*100:.2f}).<br>"
+                        f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Aşırı fonlama maliyeti! Borsa her 8 saatte bir yüksek komisyon keserek kârınızı eritir.<br>"
+                        f"🎯 <strong>Beklenen Şart:</strong> Fonlama oranının %{MAX_ALLOWED_FUNDING_RATE*100:.2f} altına çekilmesi."
+                    )
                 }
             elif direction == "SHORT" and fr < -MAX_ALLOWED_FUNDING_RATE:
                 return False, {
                     "decision": "REJECT",
-                    "reason": f"Fonlama Tuzağı: SHORT fonlama oranı aşırı negatif (%{fr*100:.3f} < -%{MAX_ALLOWED_FUNDING_RATE*100:.2f}). Borsa kesintisi kârı yiyecektir."
+                    "reason": (
+                        f"📌 <strong>Mevcut Durum:</strong> SHORT Fonlama Oranı: %{fr*100:.3f} (Taban: -%{MAX_ALLOWED_FUNDING_RATE*100:.2f}).<br>"
+                        f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Aşırı negatif fonlama maliyeti! Borsa SHORT pozisyondan yüksek prim keser.<br>"
+                        f"🎯 <strong>Beklenen Şart:</strong> Fonlama oranının normale dönmesi."
+                    )
                 }
 
         # 1.7 SEKTÖR VE AYNI COİN TEKRAR KORUMASI (DIVERSIFICATION GUARD)
@@ -85,7 +99,7 @@ class RiskOfficerAgent:
                 if act.get("symbol") == symbol:
                     return False, {
                         "decision": "REJECT",
-                        "reason": f"Çift Pozisyon Engeli: {symbol} için zaten aktif bir pozisyon mevcut."
+                        "reason": f"📌 <strong>Mevcut Durum:</strong> {symbol} paritesinde zaten açık bir işlem var.<br>⛔ <strong>Giriş Yapılmama Nedeni:</strong> Çift risk almayı engelleme kuralı.<br>🎯 <strong>Beklenen Şart:</strong> Mevcut pozisyonun kâr veya stopla kapanması."
                     }
 
         # 2. KALDIRAÇ VE SL UYGUNLUK DENETİMİ
@@ -99,14 +113,22 @@ class RiskOfficerAgent:
             if sl_pct > MAX_SL_PCT_10X:
                 return False, {
                     "decision": "REJECT",
-                    "reason": f"SL mesafesi (%{sl_pct}) 10x kaldıraç için çok geniş (Marjin riski > %15). İptal edildi."
+                    "reason": (
+                        f"📌 <strong>Mevcut Durum:</strong> Stop Mesafesi: %{sl_pct:.2f} (10x Sınırı: %{MAX_SL_PCT_10X:.2f}).<br>"
+                        f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Stop mesafesi 10x kaldıraç için çok geniş (Marjin riski > %15).<br>"
+                        f"🎯 <strong>Beklenen Şart:</strong> Daha dar stoplu (%{MAX_SL_PCT_10X:.2f} altı) güvenli bir formasyon oluşması."
+                    )
                 }
 
         # 3. RİSK / ÖDÜL DENETİMİ (En az MIN_RR_RATIO = 1.4)
         if rr < MIN_RR_RATIO:
             return False, {
                 "decision": "REJECT",
-                "reason": f"Risk/Ödül oranı (1:{rr}) yetersiz. Minimum 1:{MIN_RR_RATIO} aranıyor."
+                "reason": (
+                    f"📌 <strong>Mevcut Durum:</strong> Risk/Ödül Oranı 1:{rr:.2f} (Minimum Baraj: 1:{MIN_RR_RATIO}).<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Olası kâr, göze alınan riski karşılamıyor.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> En az 1:{MIN_RR_RATIO} getiri vadeden bir kurulum bulunması."
+                )
             }
 
         # 4. GERÇEKÇİ BORSA KOMİSYONU & MARJİN NET HESAPLAMALARI
