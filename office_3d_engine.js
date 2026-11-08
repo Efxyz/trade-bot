@@ -2295,4 +2295,5 @@ function initOrResizeOffice3D() {
         console.error("Office init/resize error:", e);
     }
 }
-const initOffice3D = initOrResizeOffice3D;
+window.initOrResizeOffice3D = initOrResizeOffice3D;
+window.initOffice3D = initOrResizeOffice3D;
