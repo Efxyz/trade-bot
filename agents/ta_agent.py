@@ -473,9 +473,17 @@ class TechnicalAnalysisAgent:
         if long_score >= target_min_score and long_score > short_score:
             # RSI Sınır Kontrolü (Tepeden Alımı Kesinlikle Engelle)
             if curr_rsi > MAX_RSI_LONG:
-                return None, f"LONG Reddi: RSI aşırı şişkin ({curr_rsi:.1f} > {MAX_RSI_LONG}). Tepeden mal alma riski!"
+                return None, (
+                    f"📌 <strong>Mevcut Durum:</strong> RSI={curr_rsi:.1f} (Aşırı Alım Şişkinliği).<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> RSI {MAX_RSI_LONG} tavanını aştığı için tepeden alım riski oluştu. Ani geri çekilme stop patlatabilir.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> RSI seviyesinin 48 - 65 aralığına soğuması."
+                )
             if curr_rsi < MIN_RSI_LONG:
-                return None, f"LONG Reddi: RSI çok zayıf ({curr_rsi:.1f} < {MIN_RSI_LONG}). Yetersiz boğa momentumu!"
+                return None, (
+                    f"📌 <strong>Mevcut Durum:</strong> RSI={curr_rsi:.1f} (Zayıf Boğa Momentumu).<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Alım baskısı yetersiz kaldığı için 10x/20x kaldıraçta sahte kırılım riski mevcut.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> RSI'ın {MIN_RSI_LONG}+ üzerine çıkıp alıcıların güçlenmesi."
+                )
 
             leverage = 20 if (long_score >= 82 and sl_pct <= 0.85) else 10
             grade = "Grade A+" if leverage == 20 else "Grade A"
@@ -526,9 +534,17 @@ class TechnicalAnalysisAgent:
         elif short_score >= target_min_score and short_score > long_score:
             # RSI Sınır Kontrolü (Dipten Satışı Kesinlikle Engelle)
             if curr_rsi < MIN_RSI_SHORT:
-                return None, f"SHORT Reddi: RSI dip seviyede ({curr_rsi:.1f} < {MIN_RSI_SHORT}). Tepki yükselişi riski!"
+                return None, (
+                    f"📌 <strong>Mevcut Durum:</strong> RSI={curr_rsi:.1f} (Aşırı Satış Dibi).<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> RSI {MIN_RSI_SHORT} tabanına indiği için dipten satış riski var. Ani tepki sıçraması stop patlatabilir.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> Fiyatın yukarı tepki verip dirençten dönüş göstermesi."
+                )
             if curr_rsi > MAX_RSI_SHORT:
-                return None, f"SHORT Reddi: RSI çok güçlü ({curr_rsi:.1f} > {MAX_RSI_SHORT}). Boğa trendine karşı short açılmaz!"
+                return None, (
+                    f"📌 <strong>Mevcut Durum:</strong> RSI={curr_rsi:.1f} (Güçlü Boğa Baskısı).<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Piyasa yukarı yönlü güçlü olduğu için trende karşı SHORT açmak yüksek risklidir.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> Boğa momentumunun zayıflayıp 55 altına inmesi."
+                )
 
             leverage = 20 if (short_score >= 82 and sl_pct <= 0.85) else 10
             grade = "Grade A+" if leverage == 20 else "Grade A"
@@ -581,4 +597,8 @@ class TechnicalAnalysisAgent:
         dominant_factors = long_factors if long_score >= short_score else short_factors
         factor_desc = ", ".join(dominant_factors[:2]) if dominant_factors else "Formasyon / FVG onayı yok"
         
-        return None, f"SMC Skoru Yetersiz ({max_score}/100 - Hedef: {target_min_score}) [{direction_hint} Eğilimli: {factor_desc}]"
+        return None, (
+            f"📌 <strong>Mevcut Durum:</strong> {direction_hint} eğilimli SMC skoru {max_score}/100 seviyesinde kaldı (Güvenli Baraj: {target_min_score}).<br>"
+            f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> {factor_desc}; 10x/20x kaldıraçta sahte fitil ve stop olma riski yüksek.<br>"
+            f"🎯 <strong>Beklenen Şart:</strong> Net Likidite Temizliği (Sweep) veya FVG Kırılımı ile skorun {target_min_score}+ üzerine çıkması."
+        )
