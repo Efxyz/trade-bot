@@ -45,6 +45,7 @@ HTML_OFFICE_TEMPLATE = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>⚡ AI Fon Ofisi - Canlı İşlem Masası</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <style>
         :root {
             --bg-body: #090d16;
@@ -531,6 +532,115 @@ HTML_OFFICE_TEMPLATE = """
         tr:hover td { background: rgba(255,255,255,0.02); }
         .mono { font-family: 'JetBrains Mono', monospace; font-weight: 600; }
 
+        /* 📈 Canlı TradingView BTC Futures Grafiği ve Görünüm Seçici Stilleri */
+        .view-tab-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--panel-border);
+            color: var(--text-muted);
+            padding: 4px 10px;
+            border-radius: 5px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .view-tab-btn:hover {
+            background: rgba(255, 255, 255, 0.09);
+            color: #fff;
+        }
+        .view-tab-btn.active {
+            background: rgba(56, 189, 248, 0.18);
+            border-color: #38bdf8;
+            color: #38bdf8;
+        }
+
+        /* Zaman Dilimi Butonları (15D, 1S, 4S, 1G) */
+        .tf-btn {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-muted);
+            padding: 2px 7px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .tf-btn:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.08);
+        }
+        .tf-btn.active {
+            background: #2563eb;
+            border-color: #3b82f6;
+            color: #fff;
+        }
+
+        /* Tam Ekran Butonları */
+        .btn-fullscreen {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--panel-border);
+            color: var(--text-muted);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-fullscreen:hover {
+            background: rgba(56, 189, 248, 0.15);
+            border-color: #38bdf8;
+            color: #38bdf8;
+        }
+        .btn-exit-fullscreen {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            z-index: 1000000;
+            background: rgba(239, 68, 68, 0.9);
+            color: #fff;
+            border: none;
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            transition: 0.2s;
+        }
+        .btn-exit-fullscreen:hover {
+            background: #dc2626;
+            transform: scale(1.05);
+        }
+
+        /* Canlı BTC Futures Grafik Kapsayıcısı */
+        .btc-chart-wrapper {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            min-height: 380px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+            background: #090d16;
+        }
+        .btc-chart-wrapper.is-fullscreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 999999;
+            padding: 10px;
+            background: #090d16;
+        }
+
         /* 📱 Mobil ve Tablet Cihazlar İçin Tam Duyarlı (Responsive) Tasarım */
         @media (max-width: 1024px) {
             body {
@@ -587,7 +697,7 @@ HTML_OFFICE_TEMPLATE = """
         </div>
 
         <div class="topbar-stats">
-            <div class="top-stat">
+            <div class="top-stat" style="cursor: pointer;" onclick="switchLeftView('btc')" title="Tıkla: Canlı BTC Mum Grafiğini Aç">
                 <span class="lbl">BTC Rejimi:</span>
                 <span class="val" id="topBtc" style="color: var(--yellow);">TARANIYOR</span>
             </div>
@@ -619,52 +729,87 @@ HTML_OFFICE_TEMPLATE = """
                 <span class="lbl">Kâr Faktörü:</span>
                 <span class="val" id="topProfitFactor" style="color: #38bdf8;">0.0</span>
             </div>
-            <button class="btn-scan" onclick="triggerScan()">⚡ Tara</button>
+            <div style="display: flex; gap: 6px; align-items: center;">
+                <button class="btn-scan" style="background: rgba(245,158,11,0.18); color: #f59e0b; border: 1px solid rgba(245,158,11,0.4);" onclick="switchLeftView('btc')" title="Canlı BTC Vadeli Mum Grafiğini Aç">📈 BTC Grafik</button>
+                <button class="btn-scan" onclick="triggerScan()">⚡ Tara</button>
+            </div>
         </div>
     </div>
 
     <!-- Main Workspace -->
     <div class="workspace">
 
-                <!-- 1. SOL SÜTUN: Aktif Pozisyonlar & Canlı Çizgi Grafiği -->
-        <div class="panel">
-            <div class="panel-header">
-                <span>AKTİF SCALP POZİSYONLARI & CANLI ÇİZGİ GRAFİĞİ</span>
-                <span class="counter" id="activeCount">0 Aktif</span>
-            </div>
-            <!-- En Üst: Ne kadar aktif işlem olduğu özeti -->
-            <div class="active-summary-bar">
-                <span class="sum-badge all">🎯 Toplam: <strong id="totalActiveCount">0</strong> Aktif</span>
-                <div style="display: flex; gap: 6px; align-items: center;">
-                    <span class="sum-badge green">🟢 Kârda: <strong id="greenActiveCount">0</strong></span>
-                    <span class="sum-badge red">🔴 Zararda: <strong id="redActiveCount">0</strong></span>
-                    <button class="btn-panic" onclick="closeAllPositions()" title="Tüm açık işlemleri anlık fiyattan kapat">🚫 Tümünü Kapat</button>
+        <!-- 1. SOL SÜTUN: Canlı BTC Futures Grafiği & Aktif Pozisyonlar Masası -->
+        <div class="panel" id="leftPanel">
+            <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <button class="view-tab-btn active" id="tabViewBtc" onclick="switchLeftView('btc')">
+                        📈 CANLI BTC (FUTURES)
+                    </button>
+                    <button class="view-tab-btn" id="tabViewPositions" onclick="switchLeftView('positions')">
+                        ⚡ POZİSYONLAR (<span id="activeCountBtn">0</span>)
+                    </button>
+                    <button class="view-tab-btn" id="tabViewSplit" onclick="switchLeftView('split')">
+                        🔲 İKİLİ GÖRÜNÜM
+                    </button>
+                    <span class="counter" id="activeCount" style="display: none;">0 Aktif</span>
+                </div>
+                
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <!-- 15D, 1S, 4S, 1G Zaman Dilimi Seçici -->
+                    <div id="btcTfGroup" style="display: flex; gap: 3px; align-items: center; background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--panel-border);">
+                        <span style="font-size: 9.5px; color: var(--text-muted); font-weight: 700;">PERİYOT:</span>
+                        <button class="tf-btn active" id="tf-15" onclick="changeBtcTimeframe('15')">15D</button>
+                        <button class="tf-btn" id="tf-60" onclick="changeBtcTimeframe('60')">1S</button>
+                        <button class="tf-btn" id="tf-240" onclick="changeBtcTimeframe('240')">4S</button>
+                        <button class="tf-btn" id="tf-D" onclick="changeBtcTimeframe('D')">1G</button>
+                    </div>
+                    <button class="btn-fullscreen" onclick="toggleBtcFullscreen()" title="Grafiği Tam Ekran Yap">⛶ Tam Ekran</button>
                 </div>
             </div>
-            <!-- Yan Yana İki Sütunlu Grid: Sol = KÂR, Sağ = ZARAR (Kullanıcı Çizimi Modeli) -->
-            <div class="active-two-cols">
-                <!-- SOL SÜTUN: 🟢 KÂRDAKİ POZİSYONLAR (Kar) -->
-                <div class="active-sub-col">
-                    <div class="pos-section-header green-sec">
-                        <span>🟢 KÂRDAKİLER (<span id="profitColCount">0</span>)</span>
-                        <span class="pos-section-sub">En çok kârdan aza doğru ↓</span>
+
+            <!-- CANLI TRADINGVIEW BITCOIN FUTURES GRAFİĞİ -->
+            <div id="btcChartContainer" class="btc-chart-wrapper">
+                <button class="btn-exit-fullscreen" id="btnExitFs" onclick="toggleBtcFullscreen()" style="display: none;">✕ Tam Ekrandan Çık (ESC)</button>
+                <div id="tv_chart_target" style="width: 100%; height: 100%;"></div>
+            </div>
+
+            <!-- AKTİF POZİSYONLAR ALANI -->
+            <div id="positionsContainer" style="display: none; flex-direction: column; flex: 1; overflow: hidden;">
+                <!-- En Üst: Ne kadar aktif işlem olduğu özeti -->
+                <div class="active-summary-bar">
+                    <span class="sum-badge all">🎯 Toplam: <strong id="totalActiveCount">0</strong> Aktif</span>
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                        <span class="sum-badge green">🟢 Kârda: <strong id="greenActiveCount">0</strong></span>
+                        <span class="sum-badge red">🔴 Zararda: <strong id="redActiveCount">0</strong></span>
+                        <button class="btn-panic" onclick="closeAllPositions()" title="Tüm açık işlemleri anlık fiyattan kapat">🚫 Tümünü Kapat</button>
                     </div>
-                    <div class="cards-sub-list" id="profitList">
-                        <div style="text-align: center; color: var(--text-muted); padding: 30px 10px; font-size: 11px;">
-                            Kârda pozisyon aranıyor...
+                </div>
+                <!-- Yan Yana İki Sütunlu Grid: Sol = KÂR, Sağ = ZARAR -->
+                <div class="active-two-cols">
+                    <!-- SOL SÜTUN: 🟢 KÂRDAKİ POZİSYONLAR -->
+                    <div class="active-sub-col">
+                        <div class="pos-section-header green-sec">
+                            <span>🟢 KÂRDAKİLER (<span id="profitColCount">0</span>)</span>
+                            <span class="pos-section-sub">En çok kârdan aza doğru ↓</span>
+                        </div>
+                        <div class="cards-sub-list" id="profitList">
+                            <div style="text-align: center; color: var(--text-muted); padding: 30px 10px; font-size: 11px;">
+                                Kârda pozisyon aranıyor...
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- SAĞ SÜTUN: 🔴 ZARARDAKİ POZİSYONLAR (Zarar) -->
-                <div class="active-sub-col">
-                    <div class="pos-section-header red-sec">
-                        <span>🔴 ZARARDAKİLER (<span id="lossColCount">0</span>)</span>
-                        <span class="pos-section-sub">En çok zarardan aza doğru ↓</span>
-                    </div>
-                    <div class="cards-sub-list" id="lossList">
-                        <div style="text-align: center; color: var(--text-muted); padding: 30px 10px; font-size: 11px;">
-                            Zararda pozisyon yok.
+                    <!-- SAĞ SÜTUN: 🔴 ZARARDAKİ POZİSYONLAR -->
+                    <div class="active-sub-col">
+                        <div class="pos-section-header red-sec">
+                            <span>🔴 ZARARDAKİLER (<span id="lossColCount">0</span>)</span>
+                            <span class="pos-section-sub">En çok zarardan aza doğru ↓</span>
+                        </div>
+                        <div class="cards-sub-list" id="lossList">
+                            <div style="text-align: center; color: var(--text-muted); padding: 30px 10px; font-size: 11px;">
+                                Zararda pozisyon yok.
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -771,6 +916,143 @@ HTML_OFFICE_TEMPLATE = """
         let prevTuningHtml = '';
         let prevNewsHtml = '';
         let prevHistHtml = '';
+
+        // Sol Panel Görünüm Modları: 'btc' (Sadece BTC), 'positions' (Sadece Pozisyonlar), 'split' (İkili)
+        let currentLeftView = localStorage.getItem('leftViewMode') || 'btc';
+        let currentBtcInterval = localStorage.getItem('btcInterval') || '15';
+        let tvWidget = null;
+        let lastRenderedInterval = null;
+
+        function switchLeftView(mode) {
+            currentLeftView = mode;
+            localStorage.setItem('leftViewMode', mode);
+
+            const btcContainer = document.getElementById('btcChartContainer');
+            const posContainer = document.getElementById('positionsContainer');
+            const tfGroup = document.getElementById('btcTfGroup');
+            const tabBtc = document.getElementById('tabViewBtc');
+            const tabPos = document.getElementById('tabViewPositions');
+            const tabSplit = document.getElementById('tabViewSplit');
+
+            if (tabBtc) tabBtc.classList.toggle('active', mode === 'btc');
+            if (tabPos) tabPos.classList.toggle('active', mode === 'positions');
+            if (tabSplit) tabSplit.classList.toggle('active', mode === 'split');
+
+            if (mode === 'btc') {
+                if (btcContainer) {
+                    btcContainer.style.display = 'flex';
+                    btcContainer.style.flex = '1';
+                    btcContainer.style.height = '100%';
+                    btcContainer.style.borderBottom = 'none';
+                }
+                if (posContainer) posContainer.style.display = 'none';
+                if (tfGroup) tfGroup.style.display = 'flex';
+                renderTradingView();
+            } else if (mode === 'positions') {
+                if (btcContainer) btcContainer.style.display = 'none';
+                if (posContainer) {
+                    posContainer.style.display = 'flex';
+                    posContainer.style.flex = '1';
+                    posContainer.style.height = '100%';
+                }
+                if (tfGroup) tfGroup.style.display = 'none';
+            } else if (mode === 'split') {
+                if (btcContainer) {
+                    btcContainer.style.display = 'flex';
+                    btcContainer.style.flex = '1.1';
+                    btcContainer.style.height = '52%';
+                    btcContainer.style.borderBottom = '1px solid var(--panel-border)';
+                }
+                if (posContainer) {
+                    posContainer.style.display = 'flex';
+                    posContainer.style.flex = '1';
+                    posContainer.style.height = '48%';
+                }
+                if (tfGroup) tfGroup.style.display = 'flex';
+                renderTradingView();
+            }
+        }
+
+        function changeBtcTimeframe(tf) {
+            currentBtcInterval = tf;
+            localStorage.setItem('btcInterval', tf);
+            ['15', '60', '240', 'D'].forEach(t => {
+                const btn = document.getElementById('tf-' + t);
+                if (btn) btn.classList.toggle('active', t === tf);
+            });
+            renderTradingView(true);
+        }
+
+        function renderTradingView(force = false) {
+            const target = document.getElementById('tv_chart_target');
+            if (!target) return;
+            
+            if (!force && lastRenderedInterval === currentBtcInterval && target.innerHTML.trim() !== '') {
+                return;
+            }
+
+            ['15', '60', '240', 'D'].forEach(t => {
+                const btn = document.getElementById('tf-' + t);
+                if (btn) btn.classList.toggle('active', t === currentBtcInterval);
+            });
+
+            if (typeof TradingView !== 'undefined') {
+                target.innerHTML = '';
+                lastRenderedInterval = currentBtcInterval;
+                try {
+                    tvWidget = new TradingView.widget({
+                        "autosize": true,
+                        "symbol": "BINANCE:BTCUSDT.P",
+                        "interval": currentBtcInterval,
+                        "timezone": "Europe/Istanbul",
+                        "theme": "dark",
+                        "style": "1",
+                        "locale": "tr",
+                        "toolbar_bg": "#111622",
+                        "enable_publishing": false,
+                        "hide_top_toolbar": false,
+                        "hide_legend": false,
+                        "save_image": false,
+                        "container_id": "tv_chart_target",
+                        "studies": [
+                            "MASimple@tv-basicstudies",
+                            "RSI@tv-basicstudies"
+                        ],
+                        "allow_symbol_change": true,
+                        "calendar": false,
+                        "support_host": "https://www.tradingview.com"
+                    });
+                } catch(e) {
+                    console.error("TradingView widget init error:", e);
+                }
+            } else {
+                target.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#8492a6;font-size:12px;">📈 TradingView Canlı Mum Akışı Yükleniyor...</div>';
+                setTimeout(() => renderTradingView(force), 500);
+            }
+        }
+
+        function toggleBtcFullscreen() {
+            const chartWrapper = document.getElementById('btcChartContainer');
+            const exitBtn = document.getElementById('btnExitFs');
+            if (!chartWrapper) return;
+            const isFs = chartWrapper.classList.toggle('is-fullscreen');
+            if (exitBtn) exitBtn.style.display = isFs ? 'block' : 'none';
+            if (isFs) {
+                chartWrapper.style.display = 'flex';
+            } else {
+                switchLeftView(currentLeftView);
+            }
+            setTimeout(() => renderTradingView(true), 150);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const chartWrapper = document.getElementById('btcChartContainer');
+                if (chartWrapper && chartWrapper.classList.contains('is-fullscreen')) {
+                    toggleBtcFullscreen();
+                }
+            }
+        });
 
         let activeRightTab = 'debate';
         function switchRightTab(tab) {
@@ -1035,7 +1317,10 @@ HTML_OFFICE_TEMPLATE = """
             const activeList = data.active_positions;
             if (Array.isArray(activeList)) {
                 const totalCount = activeList.length;
-                document.getElementById('activeCount').innerText = totalCount + ' İşlem';
+                const activeCountEl = document.getElementById('activeCount');
+                if (activeCountEl) activeCountEl.innerText = totalCount + ' İşlem';
+                const activeBtnEl = document.getElementById('activeCountBtn');
+                if (activeBtnEl) activeBtnEl.innerText = totalCount;
                 const totalEl = document.getElementById('totalActiveCount');
                 if (totalEl) totalEl.innerText = totalCount;
 
@@ -1511,7 +1796,8 @@ HTML_OFFICE_TEMPLATE = """
             if (btn) btn.innerText = '🧬 Şimdi Analiz Et ve Optimize Et';
         }
 
-        // Live Poll every 2 seconds
+        // Başlangıç Sol Görünümü ve Canlı Polling
+        switchLeftView(currentLeftView);
         fetchTerminal();
         setInterval(fetchTerminal, 2000);
     </script>
