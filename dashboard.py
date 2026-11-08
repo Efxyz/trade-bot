@@ -1361,7 +1361,6 @@ HTML_OFFICE_TEMPLATE = """
                 console.error("Office init safeguard error:", e);
             }
         }
-        const initOffice3D = initOrResizeOffice3D;
 
         function switchLeftView(mode) {
             currentLeftView = mode;
@@ -4568,7 +4567,8 @@ function initOrResizeOffice3D() {
         console.error("Office init/resize error:", e);
     }
 }
-const initOffice3D = initOrResizeOffice3D;
+window.initOrResizeOffice3D = initOrResizeOffice3D;
+window.initOffice3D = initOrResizeOffice3D;
 
         // Başlangıç Sol Görünümü ve Canlı Polling
         try {
