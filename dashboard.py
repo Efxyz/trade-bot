@@ -1,6 +1,7 @@
 """
-All-in-One Trading Office Dashboard for Binance Futures Trade Bot
+All-in-One Trading Office Dashboard for Binance Futures Trade Bot (v2.2.0)
 Visualizes the active trading desk like a real office:
+- Live Interactive Binance Futures Bitcoin Candlestick Chart (15m, 1h, 4h, 1D)
 - Active Scalps with Real SVG Candlestick Charts & Exact Green TP / Red SL levels
 - Scanner & Analysis Desk: Live feed of coins examined and why approved/rejected
 - News & Sentiment Desk (Sağ Alt): Live market news with Bullish/Bearish tags
