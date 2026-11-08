@@ -158,14 +158,27 @@ class BinanceFuturesClient:
             range_4h_pct = ((high_4h - low_4h) / current_btc) * 100.0 if current_btc > 0 else 1.0
 
             if range_4h_pct < active_chop_limit:
+                high_target = round(low_4h * (1.0 + (active_chop_limit / 100.0)), 1)
+                low_target = round(high_4h * (1.0 - (active_chop_limit / 100.0)), 1)
+                detailed = (
+                    f"📌 <strong>Mevcut Durum:</strong> BTC son 4 saatte sadece %{range_4h_pct:.2f} dalgalandı (${low_4h:,.0f} - ${high_4h:,.0f}). Güvenli işlem için en az %{active_chop_limit:.2f} hareket aranıyor.<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Hacimsiz ölü testere piyasalarında 10x/20x kaldıraçlı işlemler sahte fitillerle stop patlatır. Kasa sermayesini ($1.000) korumak için altcoin işlemleri donduruldu.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> Fiyatın <strong>${high_target:,.0f}</strong> üzerine çıkması veya <strong>${low_target:,.0f}</strong> altına inerek yön kazanması bekleniyor."
+                )
                 return {
                     "status": "DEAD_CHOP",
                     "btc_price": current_btc,
                     "change_3h_pct": round(change_3h_pct, 2),
                     "range_4h_pct": round(range_4h_pct, 2),
+                    "high_4h": round(high_4h, 1),
+                    "low_4h": round(low_4h, 1),
+                    "active_chop_limit": active_chop_limit,
+                    "high_target": high_target,
+                    "low_target": low_target,
                     "block_longs": True,
                     "block_all_entries": True,
-                    "summary": f"💤 BTC Ölü Testere Piyasada (4s bant: %{range_4h_pct:.2f} < %{active_chop_limit}). Altcoin işlemleri donduruldu."
+                    "summary": f"💤 BTC Ölü Testere Piyasada (4s bant: %{range_4h_pct:.2f} < %{active_chop_limit}). Altcoin işlemleri donduruldu.",
+                    "detailed_reason": detailed
                 }
 
             # 1. Acil Durum: Ani BTC Düşüşü (Dump Alert)
