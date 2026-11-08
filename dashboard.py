@@ -478,6 +478,12 @@ HTML_OFFICE_TEMPLATE = """
             border-left: 3px solid #38bdf8;
             color: #e0f2fe;
         }
+        .bubble-quant {
+            background: rgba(99, 102, 241, 0.08);
+            border-left: 3px solid #818cf8;
+            color: #e0e7ff;
+            font-weight: 500;
+        }
         .bubble-chief {
             background: rgba(245, 158, 11, 0.08);
             border-left: 3px solid #f59e0b;
@@ -818,6 +824,13 @@ HTML_OFFICE_TEMPLATE = """
             border-top-color: rgba(239, 68, 68, 0.75);
         }
 
+        .sims-bubble.quant {
+            border-color: rgba(99, 102, 241, 0.5) !important;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 15px rgba(99, 102, 241, 0.25) !important;
+        }
+        .sims-bubble.quant::after {
+            border-top-color: rgba(99, 102, 241, 0.7);
+        }
         .sims-bubble.chief {
             border-color: rgba(16, 185, 129, 0.65) !important;
             box-shadow: 0 0 20px rgba(16, 185, 129, 0.3) !important;
@@ -1197,6 +1210,11 @@ HTML_OFFICE_TEMPLATE = """
                     <div id="bubble-risk" class="sims-bubble risk" onclick="setOfficeCamera('table')" title="Tıkla: Masaya Odaklan">
                         <div class="sims-bubble-header">🛡️ RİSK ŞEFİ</div>
                         <div class="sims-bubble-body" id="text-risk">Kasa Kalkanı devrede: Maks 5x kaldıraç.</div>
+                    </div>
+                    <!-- Quant Simulation Agent Bubble -->
+                    <div id="bubble-quant" class="sims-bubble quant" onclick="setOfficeCamera('table')" title="Tıkla: Masaya Yaklaş">
+                        <div class="sims-bubble-header" style="color: #818cf8;">🎲 KUANT SİMÜLASYON</div>
+                        <div class="sims-bubble-body" id="text-quant">5,000 Monte Carlo fiyat yolu koşturuldu, TP olasılığı %68!</div>
                     </div>
                     <!-- Chief Analyst Bubble -->
                     <div id="bubble-chief" class="sims-bubble chief" onclick="setOfficeCamera('table')" title="Tıkla: Masaya Odaklan">
@@ -1989,6 +2007,21 @@ HTML_OFFICE_TEMPLATE = """
                             if (b.role === 'BEAR') { roleClass = 'bubble-bear'; roleColor = '#ef4444'; }
                             else if (b.role === 'MACRO') { roleClass = 'bubble-macro'; roleColor = '#38bdf8'; }
                             else if (b.role === 'CHIEF') { roleClass = 'bubble-chief'; roleColor = '#f59e0b'; }
+                            else if (b.role === 'QUANT') { roleClass = 'bubble-quant'; roleColor = '#818cf8'; }
+
+                            let metricsHtml = '';
+                            if (b.metrics) {
+                                const isWin = b.metrics.vote === 'APPROVED';
+                                metricsHtml = `
+                                    <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; font-size: 10px; font-family: monospace;">
+                                        <span style="background: rgba(99,102,241,0.18); border: 1px solid rgba(99,102,241,0.35); padding: 2px 6px; border-radius: 4px; color: #a5b4fc;">🎲 ${b.metrics.simulations || 5000} Yol</span>
+                                        <span style="background: rgba(34,197,94,0.18); border: 1px solid rgba(34,197,94,0.35); padding: 2px 6px; border-radius: 4px; color: #4ade80;">TP İhtimali: %${b.metrics.win_rate}</span>
+                                        <span style="background: rgba(239,68,68,0.18); border: 1px solid rgba(239,68,68,0.35); padding: 2px 6px; border-radius: 4px; color: #f87171;">SL Riski: %${b.metrics.loss_rate}</span>
+                                        <span style="background: rgba(56,189,248,0.18); border: 1px solid rgba(56,189,248,0.35); padding: 2px 6px; border-radius: 4px; color: #38bdf8;">Beklenti: +${b.metrics.expectancy_r}R</span>
+                                        <span style="background: ${isWin ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}; border: 1px solid ${isWin ? '#22c55e' : '#ef4444'}; padding: 2px 6px; border-radius: 4px; color: #fff; font-weight: 700;">${isWin ? '🟢 ONAYLANDI' : '🔴 VETO'}</span>
+                                    </div>
+                                `;
+                            }
 
                             bubblesHtml += `
                                 <div class="dialogue-bubble ${roleClass}">
@@ -1997,6 +2030,7 @@ HTML_OFFICE_TEMPLATE = """
                                         <span>${b.agent_name || b.role}</span>
                                     </div>
                                     <div>${b.argument || ''}</div>
+                                    ${metricsHtml}
                                 </div>
                             `;
                         });
@@ -2342,6 +2376,7 @@ const bubbleAnchors = {
     news: { pos: null, el: null, bodyEl: null, isSpeaking: false },
     risk: { pos: null, el: null, bodyEl: null, isSpeaking: false },
     chief: { pos: null, el: null, bodyEl: null, isSpeaking: false },
+    quant: { pos: null, el: null, bodyEl: null, isSpeaking: false },
     mehmet: { pos: null, el: null, bodyEl: null, isSpeaking: false },
     berat: { pos: null, el: null, bodyEl: null, isSpeaking: false },
     trade: { pos: null, el: null, bodyEl: null, isSpeaking: false }
@@ -3558,6 +3593,17 @@ function buildSpecialistAgents() {
             hairColor: 0x52525b,
             screenColor: 0x0369a1,
             hasGlasses: true
+        },
+        {
+            id: 'quant',
+            name: 'Kuant Simülasyon Uzmanı',
+            seatPos: [-1.35, 0, -1.8],
+            seatRotY: Math.PI / 2, // Masaya dönük (Chief'in tam karşısı)
+            deskPos: [-0.95, 0.78, -1.5],
+            suitColor: 0x4f46e5,   // Indigo Kuant Takım Elbisesi
+            hairColor: 0x1e1b4b,
+            screenColor: 0x6366f1, // Cyan/Indigo Kuant Fan Grafiği
+            hasGlasses: true
         }
     ];
 
@@ -3870,6 +3916,9 @@ function bindBubbleElements() {
 
     bubbleAnchors.chief.el = document.getElementById('bubble-chief');
     bubbleAnchors.chief.bodyEl = document.getElementById('text-chief');
+
+    bubbleAnchors.quant.el = document.getElementById('bubble-quant');
+    bubbleAnchors.quant.bodyEl = document.getElementById('text-quant');
 
     bubbleAnchors.mehmet.el = document.getElementById('bubble-mehmet');
     bubbleAnchors.mehmet.bodyEl = document.getElementById('text-mehmet');
