@@ -70,6 +70,7 @@ const bubbleAnchors = {
     news: { pos: null, el: null, bodyEl: null, isSpeaking: false },
     risk: { pos: null, el: null, bodyEl: null, isSpeaking: false },
     chief: { pos: null, el: null, bodyEl: null, isSpeaking: false },
+    quant: { pos: null, el: null, bodyEl: null, isSpeaking: false },
     mehmet: { pos: null, el: null, bodyEl: null, isSpeaking: false },
     berat: { pos: null, el: null, bodyEl: null, isSpeaking: false },
     trade: { pos: null, el: null, bodyEl: null, isSpeaking: false }
@@ -1286,6 +1287,17 @@ function buildSpecialistAgents() {
             hairColor: 0x52525b,
             screenColor: 0x0369a1,
             hasGlasses: true
+        },
+        {
+            id: 'quant',
+            name: 'Kuant Simülasyon Uzmanı',
+            seatPos: [-1.35, 0, -1.8],
+            seatRotY: Math.PI / 2, // Masaya dönük (Chief'in tam karşısı)
+            deskPos: [-0.95, 0.78, -1.5],
+            suitColor: 0x4f46e5,   // Indigo Kuant Takım Elbisesi
+            hairColor: 0x1e1b4b,
+            screenColor: 0x6366f1, // Cyan/Indigo Kuant Fan Grafiği
+            hasGlasses: true
         }
     ];
 
@@ -1598,6 +1610,9 @@ function bindBubbleElements() {
 
     bubbleAnchors.chief.el = document.getElementById('bubble-chief');
     bubbleAnchors.chief.bodyEl = document.getElementById('text-chief');
+
+    bubbleAnchors.quant.el = document.getElementById('bubble-quant');
+    bubbleAnchors.quant.bodyEl = document.getElementById('text-quant');
 
     bubbleAnchors.mehmet.el = document.getElementById('bubble-mehmet');
     bubbleAnchors.mehmet.bodyEl = document.getElementById('text-mehmet');
