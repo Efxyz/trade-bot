@@ -347,13 +347,16 @@ HTML_OFFICE_TEMPLATE = """
         }
         .log-item.approved { border-left: 3px solid var(--green); }
         .log-item.rejected { border-left: 3px solid #64748b; }
+        .log-item.protected { border-left: 3px solid #38bdf8; background: rgba(56, 189, 248, 0.04); }
 
         .log-top { display: flex; justify-content: space-between; align-items: center; }
         .log-sym { font-weight: 700; font-family: 'JetBrains Mono', monospace; }
         .log-time { color: var(--text-muted); font-size: 10px; }
-        .log-reason { font-size: 11px; color: var(--text-muted); line-height: 1.3; }
+        .log-reason { font-size: 11px; color: #cbd5e1; line-height: 1.55; margin-top: 3px; }
+        .log-reason strong { color: #f1f5f9; }
         .badge-appr { color: var(--green); font-weight: 700; }
         .badge-rej { color: #94a3b8; font-weight: 600; }
+        .badge-prot { color: #38bdf8; font-weight: 700; background: rgba(56,189,248,0.12); padding: 1px 7px; border-radius: 4px; font-size: 10px; }
 
         /* 📰 Sağ Altta Haber & Duygu Masası */
         .news-list {
@@ -1472,21 +1475,25 @@ HTML_OFFICE_TEMPLATE = """
                 let logHtml = '';
                 logs.forEach(l => {
                     const isAppr = l.status === 'APPROVED';
+                    const isProt = l.status === 'PROTECTED';
+                    let statusClass = isAppr ? 'approved' : (isProt ? 'protected' : 'rejected');
+                    let statusBadge = isAppr ? '<span class="badge-appr">✅ FIRSAT BULUNDU</span>' : (isProt ? '<span class="badge-prot">🛡️ SERMAYE KORUMASI</span>' : '<span class="badge-rej">❌ ELENDİ</span>');
+
                     let reasonTxt = l.reason || '';
                     if (reasonTxt.indexOf('[Son 1 Saatte') !== -1) {
                         const parts = reasonTxt.split('[Son 1 Saatte');
                         const prefix = parts[0];
                         const testPart = parts[1].replace(']', '').trim();
-                        reasonTxt = prefix + '<br><span style="color:#38bdf8; font-weight:600; background:rgba(56,189,248,0.12); padding:1px 6px; border-radius:3px; display:inline-block; margin-top:2px;">⏱️ Bu Saatte ' + testPart + '</span>';
+                        reasonTxt = prefix + '<br><span style="color:#38bdf8; font-weight:600; background:rgba(56,189,248,0.12); padding:1px 6px; border-radius:3px; display:inline-block; margin-top:4px;">⏱️ Bu Saatte ' + testPart + '</span>';
                     }
                     logHtml += `
-                        <div class="log-item ${isAppr ? 'approved' : 'rejected'}">
+                        <div class="log-item ${statusClass}">
                             <div class="log-top">
                                 <span class="log-sym">${l.symbol}</span>
-                                <span class="${isAppr ? 'badge-appr' : 'badge-rej'}">${isAppr ? '✅ FIRSAT BULUNDU' : '❌ ELENDİ'}</span>
+                                ${statusBadge}
                                 <span class="log-time">${l.time}</span>
                             </div>
-                            <div class="log-reason">${reasonTxt} ${l.details ? `(${l.details})` : ''}</div>
+                            <div class="log-reason">${reasonTxt} ${l.details ? `<br><span style="font-size:10px; color:#38bdf8; opacity:0.85; font-style:italic;">💡 Mod: ${l.details}</span>` : ''}</div>
                         </div>
                     `;
                 });
