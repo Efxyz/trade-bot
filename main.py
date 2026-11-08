@@ -80,9 +80,10 @@ class TradingBotOrchestrator:
         btc_regime = self.client.get_btc_regime()
         print(f"🛡️ [BTC Kalkanı] Durum: {btc_regime['status']} | {btc_regime.get('summary', '')}")
         if btc_regime.get("block_all_entries", False):
-            msg = btc_regime.get("summary", "BTC ölü testere piyasada, tarama donduruldu.")
-            print(f"🛑 [BTC Ölü Piyasa Freni] {msg}")
-            add_scanner_log("BTC KALKANI", "PROTECTED", msg, "Sermaye Koruma Modu")
+            summary_msg = btc_regime.get("summary", "BTC ölü testere piyasada, tarama donduruldu.")
+            detailed_msg = btc_regime.get("detailed_reason") or summary_msg
+            print(f"🛑 [BTC Ölü Piyasa Freni] {summary_msg}")
+            add_scanner_log("BTC KALKANI", "PROTECTED", detailed_msg, "Sermaye Koruma Modu (0 Risk)")
             return
 
         # 2.5 ZARARLI İŞLEM SONRASI SOĞUMA MOLASI (Anti-Overtrading Cooldown)
