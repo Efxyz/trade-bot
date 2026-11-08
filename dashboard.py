@@ -827,6 +827,24 @@ HTML_OFFICE_TEMPLATE = """
             border-top-color: rgba(16, 185, 129, 0.75);
         }
 
+        .sims-bubble.friend-mehmet {
+            border-color: rgba(45, 212, 191, 0.65) !important;
+            box-shadow: 0 0 20px rgba(45, 212, 191, 0.3) !important;
+            background: rgba(8, 28, 26, 0.68) !important;
+        }
+        .sims-bubble.friend-mehmet::after {
+            border-top-color: rgba(45, 212, 191, 0.75);
+        }
+
+        .sims-bubble.friend-berat {
+            border-color: rgba(96, 165, 250, 0.65) !important;
+            box-shadow: 0 0 20px rgba(96, 165, 250, 0.3) !important;
+            background: rgba(12, 22, 38, 0.68) !important;
+        }
+        .sims-bubble.friend-berat::after {
+            border-top-color: rgba(96, 165, 250, 0.75);
+        }
+
         .sims-bubble-header {
             display: flex;
             align-items: center;
@@ -1185,6 +1203,16 @@ HTML_OFFICE_TEMPLATE = """
                         <div class="sims-bubble-header">🏛️ BAŞ STRATEJİST</div>
                         <div class="sims-bubble-body" id="text-chief">Efe Bey, piyasa şu an chop bölgesinde, bekliyoruz.</div>
                     </div>
+                    <!-- Mehmet Bubble (Arkadaş) -->
+                    <div id="bubble-mehmet" class="sims-bubble friend-mehmet" onclick="setOfficeCamera('chill')" title="Tıkla: Mehmet Konuşsun">
+                        <div class="sims-bubble-header" style="color: #2dd4bf;">🏓 MEHMET (ARKADAŞ)</div>
+                        <div class="sims-bubble-body" id="text-mehmet">Berat çay koysana kanka ya, semaver kaynıyor!</div>
+                    </div>
+                    <!-- Berat Bubble (Arkadaş) -->
+                    <div id="bubble-berat" class="sims-bubble friend-berat" onclick="setOfficeCamera('chill')" title="Tıkla: Berat Konuşsun">
+                        <div class="sims-bubble-header" style="color: #60a5fa;">⚽ BERAT (ARKADAŞ)</div>
+                        <div class="sims-bubble-body" id="text-berat">Mehmet masa tenisinde dün şansın yaver gitti, gel rövanşa!</div>
+                    </div>
                     <!-- Bilgisayar Ekranı Canlı İşlem Baloncuğu -->
                     <div id="tradeMonitorBubble" class="sims-trade-bubble idle" onclick="switchLeftView('positions')" title="Tıkla: Pozisyon Detaylarını Aç">
                         💤 AKTİF İŞLEM YOK (200 Parite Radarda)
@@ -1201,6 +1229,7 @@ HTML_OFFICE_TEMPLATE = """
                         <button class="office-hud-btn active" id="btnCamBoss" onclick="setOfficeCamera('boss')" title="Patron Efe'ye Odaklan">👑 Patron Efe</button>
                         <button class="office-hud-btn" id="btnCamTable" onclick="setOfficeCamera('table')" title="Ajanların Masasına Odaklan">📊 Masa</button>
                         <button class="office-hud-btn" id="btnCamIso" onclick="setOfficeCamera('iso')" title="İzometrik Kuşbakışı">🏢 Kuşbakışı</button>
+                        <button class="office-hud-btn" id="btnCamChill" onclick="setOfficeCamera('chill')" title="Mehmet & Berat Oyun & Çay Alanı">🏓 Oyun & Çay</button>
                         <button class="office-hud-btn" id="btnToggleBubbles" onclick="cycleBubbleMode()" title="Baloncuk Görünümünü Değiştir (Akıllı/Tümü/Patron/Gizli)">💬 Balon</button>
                         <button class="office-hud-btn" id="btnOfficeFs" onclick="toggleOfficeFullscreen()" title="Tam Ekran Modu">⛶ Tam Ekran</button>
                         <button class="office-hud-btn" id="btnOfficeAudio" onclick="toggleOfficeSound()" title="Ofis Sesi">🔊</button>
@@ -2224,12 +2253,17 @@ HTML_OFFICE_TEMPLATE = """
         }
 
 /* ==========================================================================
-   🎮 3D SİMS TARZI YAPAY ZEKA TİCARET OFİSİ (THREE.JS ENGINE) - v3.0.0
-   Tam Anlamıyla Yaşayan Ofis Simülasyonu:
-   1. Masa & Karakter Ergonomisi: Masaya girme bug'ı tamamen giderildi.
-   2. Herkesin Kendi Bilgisayarı: Her ajanın masada çift monitörlü işlem terminali.
-   3. Şeffaf & Dinamik Baloncuklar: Glassmorphic şeffaflık, konuştukça açılır ve söner.
-   4. Otonom Ofis Rutini: Çalışanlar kalkar, yürür, kahve alır, tuvalete gider, patrona rapor sunar!
+   🎮 3D SİMS TARZI YAPAY ZEKA TİCARET OFİSİ (THREE.JS ENGINE) - v4.0.0
+   Özellikler:
+   1. Arkadaşlar: Mehmet & Berat (Çalışmıyor, Masa Tenisi, Langırt, Çay/Goygoy)
+   2. Bağımsız Sandalyeler: Yürürken sandalyeyle yürüme bug'ı tamamen giderildi.
+   3. Herkese Özel Bilgisayar & Mouse: Monitörler çalışanlara bakıyor, optik mouse'lar eklendi.
+   4. Şeffaf Glassmorphic Baloncuklar: Sadece konuşunca açılır, söner. Zengin esprili cümleler.
+   5. Dinlenme & Çay Köşesi: Semaverli Türk çay köşesi, deri lounge, çay/sigara dinlenme alanı.
+   6. Portatif Tuvalet: Gereksiz duvar kapısı yerine portatif kabin WC.
+   7. Şehir Silüeti Kaldırıldı: Arkada sade, lüks ahşap akustik çıtalı penthouse duvarı.
+   8. Dev İkili Ekran: Efe'nin arkasındaki dev ekranda Canlı BTC Grafiği + Açık Pozisyonlar Kâr/Zarar.
+   9. Yumuşak Işıklandırma: Masadaki parlama/glare bug'ı giderildi.
    ========================================================================== */
 
 let officeScene, officeCamera, officeRenderer, officeControls;
@@ -2241,19 +2275,22 @@ let plumbobMesh = null;
 let plumbobLight = null;
 let bossGroup = null;
 let bossHeadMesh = null;
-let wcSignLight = null;
-let wcSignMesh = null;
+let portableWcLight = null;
+let portableWcSign = null;
 
-// Ajanlar Sözlüğü (Navigasyon, Kemikler ve Durum Yönetimi)
+// Arkadaşlar (Mehmet & Berat)
+const friends = {};
+
+// Uzman Ajanlar Sözlüğü (Scanner, TA, Risk, News, Chief)
 const agents = {};
 
-// Masa Monitörleri ve Işıklar
+// Masa Monitörleri ve Ekranlar
 let officeDeskScreens = [];
-let officeDeskLight = null;
-let wallCanvasTexture = null;
-let wallCanvasCtx = null;
+let bigWallTexture = null;
+let bigWallCtx = null;
+let bigWallScreenMesh = null;
 
-// Kamera Hedefleri (Lerp / Yumuşak Geçiş İçin)
+// Kamera Hedefleri
 let camTargetPos = null;
 let camLookTarget = null;
 let camCurrentLook = null;
@@ -2261,8 +2298,9 @@ let camCurrentLook = null;
 // Baloncuk Görünüm Modu & Zamanlayıcılar
 let currentBubbleMode = window.innerWidth < 768 ? 'smart' : 'all';
 let bubbleSpeechTimers = {};
-let nextAutonomousActionTime = 6000;
-let nextDialogueTime = 3000;
+let nextAutonomousActionTime = 4000;
+let nextDialogueTime = 2500;
+let nextFriendsGameTime = 5000;
 
 // Karakter Balon Çapaları (3D Dünya Konumu -> 2D Ekran Yansıtması)
 const bubbleAnchors = {
@@ -2272,6 +2310,8 @@ const bubbleAnchors = {
     news: { pos: null, el: null, bodyEl: null, isSpeaking: false },
     risk: { pos: null, el: null, bodyEl: null, isSpeaking: false },
     chief: { pos: null, el: null, bodyEl: null, isSpeaking: false },
+    mehmet: { pos: null, el: null, bodyEl: null, isSpeaking: false },
+    berat: { pos: null, el: null, bodyEl: null, isSpeaking: false },
     trade: { pos: null, el: null }
 };
 
@@ -2318,33 +2358,41 @@ function playOfficeSound(type = 'click') {
             osc.start(now);
             osc.stop(now + 0.35);
         } else if (type === 'talk') {
-            // Sims tarzı sevimli gevezelik sesi
             osc.type = 'sine';
-            const f1 = 300 + Math.random() * 250;
+            const f1 = 280 + Math.random() * 280;
             osc.frequency.setValueAtTime(f1, now);
-            osc.frequency.linearRampToValueAtTime(f1 * 1.4, now + 0.07);
-            gain.gain.setValueAtTime(0.05, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+            osc.frequency.linearRampToValueAtTime(f1 * 1.35, now + 0.07);
+            gain.gain.setValueAtTime(0.04, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
             osc.start(now);
-            osc.stop(now + 0.14);
-        } else if (type === 'coffee') {
-            // Espresso buharı / fincan sesi
-            osc.type = 'triangle';
-            osc.frequency.setValueAtTime(1200, now);
-            osc.frequency.exponentialRampToValueAtTime(400, now + 0.12);
+            osc.stop(now + 0.12);
+        } else if (type === 'pingpong') {
+            // Masa tenisi topu sekme sesi
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(800 + Math.random() * 300, now);
+            osc.frequency.exponentialRampToValueAtTime(300, now + 0.05);
             gain.gain.setValueAtTime(0.06, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
             osc.start(now);
-            osc.stop(now + 0.15);
+            osc.stop(now + 0.05);
+        } else if (type === 'tea') {
+            // Çay bardağı tıkırtısı / demlik sesi
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(1500, now);
+            osc.frequency.exponentialRampToValueAtTime(900, now + 0.08);
+            gain.gain.setValueAtTime(0.05, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+            osc.start(now);
+            osc.stop(now + 0.09);
         } else if (type === 'trade') {
             osc.type = 'square';
             osc.frequency.setValueAtTime(523.25, now);
             osc.frequency.setValueAtTime(659.25, now + 0.1);
             osc.frequency.setValueAtTime(783.99, now + 0.2);
-            gain.gain.setValueAtTime(0.09, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+            gain.gain.setValueAtTime(0.08, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.40);
             osc.start(now);
-            osc.stop(now + 0.45);
+            osc.stop(now + 0.40);
         }
     } catch (e) {}
 }
@@ -2384,7 +2432,7 @@ function cycleBubbleMode() {
 }
 
 // -------------------------------------------------------------
-// DİNAMİK KONUŞMA BALONCUKLARI SİSTEMİ (FADE IN & FADE OUT)
+// DİNAMİK KONUŞMA BALONCUKLARI SİSTEMİ (ŞEFFAF FADE IN & FADE OUT)
 // -------------------------------------------------------------
 function triggerSpeech(charId, text, durationMs = 5000) {
     if (currentBubbleMode === 'off') return;
@@ -2397,17 +2445,14 @@ function triggerSpeech(charId, text, durationMs = 5000) {
         anchor.bodyEl.innerText = text;
     }
 
-    // Baloncuğu şeffaf halden aç
     anchor.isSpeaking = true;
     anchor.el.classList.add('speaking');
     playOfficeSound('talk');
 
-    // Var olan zamanlayıcıyı sıfırla
     if (bubbleSpeechTimers[charId]) {
         clearTimeout(bubbleSpeechTimers[charId]);
     }
 
-    // Belirli süre sonra yumuşakça söndür
     bubbleSpeechTimers[charId] = setTimeout(() => {
         anchor.isSpeaking = false;
         anchor.el.classList.remove('speaking');
@@ -2488,18 +2533,18 @@ function initOffice3D() {
 
     // 1. Sahne & Sis
     officeScene = new THREE.Scene();
-    officeScene.background = new THREE.Color(0x090e18);
-    officeScene.fog = new THREE.FogExp2(0x090e18, 0.02);
+    officeScene.background = new THREE.Color(0x0a0f1d);
+    officeScene.fog = new THREE.FogExp2(0x0a0f1d, 0.018);
 
     // 2. Kamera
     const initialFov = aspect < 1.0 ? Math.min(65, 45 / Math.max(0.68, aspect)) : 45;
     officeCamera = new THREE.PerspectiveCamera(initialFov, aspect, 0.1, 100);
     const isMobile = aspect < 1.0 || width < 768;
-    officeCamera.position.set(0, isMobile ? 5.6 : 5.0, isMobile ? 8.6 : 7.6);
+    officeCamera.position.set(0, isMobile ? 5.8 : 5.2, isMobile ? 8.8 : 7.8);
     camCurrentLook = new THREE.Vector3(0, 1.2, 0);
     officeCamera.lookAt(camCurrentLook);
 
-    // 3. Renderer
+    // 3. Renderer (Yüksek Kalite)
     officeRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
     officeRenderer.setSize(width, height);
     officeRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2.5));
@@ -2526,35 +2571,42 @@ function initOffice3D() {
         };
     }
 
-    // 5. Işıklandırma
+    // 5. Işıklandırma (Parlama & Glare Bug'ı Tamamen Giderilmiş)
     setupOfficeLights();
 
-    // 6. Ofis Mimarisi: Zemin, Halı, Manzara Penceresi, Kahve İstasyonu & WC Kapısı
+    // 6. Ofis Mimarisi: Ahşap Akustik Duvarlar, Çay Köşesi, Portatif WC, Masa Tenisi & Langırt Alanı
     buildOfficeArchitecture();
 
-    // 7. Kusursuz Ergonomik Trading Masası & Monitörler (Masanın içine girme bug'ı 0)
+    // 7. Trading Masası & Monitörler (Yumuşak mat kaplama, optik mouse'lar)
     buildTradingDesk();
 
-    // 8. 👑 BAŞ KOLTUK / PATRON: EFE (Siyah Takım Elbise, Işıklı Plumbob, Altın İsimlik)
+    // 8. 👑 BAŞ KOLTUK / PATRON: EFE (Siyah Takım Elbise, Işıklı Plumbob, MacBook, Altın İsimlik)
     buildBossEfe();
 
-    // 9. 5 Uzman Yapay Zeka Ajanı (Kendi Çalışma Masaları, Çift Monitörleri ve Yürüme Kemikleri)
+    // 9. Efe'nin Arkasındaki Dev Ekranda İKİLİ GÖRÜNÜM (BTC Grafiği + Canlı Kâr/Zarar)
+    buildGiantWallDualScreen();
+
+    // 10. 5 Uzman Yapay Zeka Ajanı (Bağımsız Sandalyeler, Yüze Bakan Monitörler & Mouse'lar)
     buildSpecialistAgents();
 
-    // 10. Çapa Noktalarını DOM Elementlerine Bağla
+    // 11. 🏓 ⚽ PATRONUN ARKADAŞLARI: MEHMET & BERAT (Çalışmaz, Gezer, Masa Tenisi, Langırt, Çay)
+    buildFriendsMehmetAndBerat();
+
+    // 12. Çapa Noktalarını DOM Elementlerine Bağla
     bindBubbleElements();
 
     officeInitialized = true;
 
-    // Varsayılan kamera açısı
     setOfficeCamera('boss');
 
-    // Başlangıçta Patron Efe ekibe hoş geldin der
     setTimeout(() => {
-        triggerSpeech('boss', "Piyasayı tarayın beyler, acele yok, sermaye koruma önceliğimiz!", 6000);
+        triggerSpeech('boss', "Piyasayı tarayın beyler, acele yok! Disiplin #1 kuralımız.", 6000);
     }, 1200);
 
-    // Animasyon Döngüsünü Başlat
+    setTimeout(() => {
+        triggerSpeech('mehmet', "Berat çay koysana kanka ya, semaver kaynıyor!", 5000);
+    }, 3500);
+
     if (!officeAnimFrameId) {
         animateOffice(0);
     }
@@ -2566,243 +2618,493 @@ function initOffice3D() {
 }
 
 // -------------------------------------------------------------
-// IŞIKLANDIRMA SİSTEMİ
+// IŞIKLANDIRMA SİSTEMİ (MASADAKİ PARLAMA BUG'I ÇÖZÜLDÜ)
 // -------------------------------------------------------------
 function setupOfficeLights() {
-    const ambientLight = new THREE.AmbientLight(0xdce7ff, 0.95);
+    // Dengeli ortam ışığı
+    const ambientLight = new THREE.AmbientLight(0xdbe6f7, 0.88);
     officeScene.add(ambientLight);
 
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1.15);
-    dirLight.position.set(6, 12, 8);
+    // Ana yumuşak yönlü ışık
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.85);
+    dirLight.position.set(5, 11, 7);
     dirLight.castShadow = true;
     dirLight.shadow.mapSize.width = 1024;
     dirLight.shadow.mapSize.height = 1024;
     dirLight.shadow.bias = -0.001;
     officeScene.add(dirLight);
 
-    // Patron Efe Tepe Spotu
-    const bossSpot = new THREE.PointLight(0xfbbf24, 1.6, 9);
-    bossSpot.position.set(0, 4.2, -2.4);
+    // Patron Efe Tepe Spotu (Sıcak Altın)
+    const bossSpot = new THREE.PointLight(0xfbbf24, 1.2, 8);
+    bossSpot.position.set(0, 3.8, -2.4);
     officeScene.add(bossSpot);
 
-    // Efe Rim Işığı
-    const bossRimLight = new THREE.PointLight(0x38bdf8, 0.7, 6);
-    bossRimLight.position.set(0, 2.0, -3.6);
-    officeScene.add(bossRimLight);
+    // Çay ve Oyun Alanı Spotu
+    const gameSpot = new THREE.PointLight(0x38bdf8, 0.9, 9);
+    gameSpot.position.set(6.2, 4.0, 0);
+    officeScene.add(gameSpot);
 
-    // Masa Dinamik İşlem Işığı
-    officeDeskLight = new THREE.PointLight(0x38bdf8, 1.2, 8);
-    officeDeskLight.position.set(0, 1.8, 0);
-    officeScene.add(officeDeskLight);
+    const teaSpot = new THREE.PointLight(0xf59e0b, 0.8, 8);
+    teaSpot.position.set(-6.2, 3.8, 0);
+    officeScene.add(teaSpot);
 }
 
 // -------------------------------------------------------------
-// OFİS MİMARİSİ: Kahve Barı, WC Kapısı, Panoramik Pencere, Zemin
+// OFİS MİMARİSİ: ŞEHİR SİLÜETİ KALDIRILDI, ÇAY KÖŞESİ, PORTATİF WC
 // -------------------------------------------------------------
 function buildOfficeArchitecture() {
-    // 1. Zemin
+    // 1. Zemin (Lüks Koyu Meşe Parke)
     const floorGeo = new THREE.PlaneGeometry(24, 20);
-    const floorMat = new THREE.MeshStandardMaterial({ color: 0x141a27, roughness: 0.45, metalness: 0.12 });
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x141a27, roughness: 0.55, metalness: 0.08 });
     const floor = new THREE.Mesh(floorGeo, floorMat);
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     officeScene.add(floor);
 
-    // 2. Yönetici Halısı
-    const rugGeo = new THREE.PlaneGeometry(13.5, 9.5);
-    const rugMat = new THREE.MeshStandardMaterial({ color: 0x0c1322, roughness: 0.85 });
+    // 2. Ana İşlem Masası Halısı
+    const rugGeo = new THREE.PlaneGeometry(12.5, 9.0);
+    const rugMat = new THREE.MeshStandardMaterial({ color: 0x0c1322, roughness: 0.9 });
     const rug = new THREE.Mesh(rugGeo, rugMat);
     rug.rotation.x = -Math.PI / 2;
     rug.position.set(0, 0.015, 0);
     rug.receiveShadow = true;
     officeScene.add(rug);
 
-    // Halı altın bordürü
-    const borderGeo = new THREE.RingGeometry(4.7, 4.8, 4);
-    const borderMat = new THREE.MeshBasicMaterial({ color: 0xd97706, side: THREE.DoubleSide });
-    const rugBorder = new THREE.Mesh(borderGeo, borderMat);
-    rugBorder.rotation.x = -Math.PI / 2;
-    rugBorder.position.set(0, 0.02, 0);
-    rugBorder.scale.set(1.4, 1.0, 1.0);
-    officeScene.add(rugBorder);
+    // 3. Arka Duvar (Şehir silüeti kaldırıldı; modern koyu ahşap akustik çıtalı duvar)
+    buildAcousticBackWall();
 
-    // 3. Arka Duvar & Panoramik Şehir Penceresi
-    const backWallGeo = new THREE.BoxGeometry(24, 9, 0.3);
-    const backWallMat = new THREE.MeshStandardMaterial({ color: 0x101726, roughness: 0.7 });
-    const backWall = new THREE.Mesh(backWallGeo, backWallMat);
-    backWall.position.set(0, 4.5, -6.5);
+    // 4. ☕ GELENEKSEL TÜRK ÇAY KÖŞESİ (Semaver, Demlik, İnce Belli Bardaklar)
+    buildTurkishTeaCorner(-6.2, 0, -1.2);
+
+    // 5. 🛋️ ÇALIŞAN DİNLENME & ÇAY-SİGARA KÖŞESİ (Lüks Deri Kanepe, Sehpa)
+    buildLoungeBreakArea(-6.5, 0, 1.8);
+
+    // 6. 🚻 MODERN PORTATİF KABİN TUVALET (Gereksiz kapı yerine kabin WC)
+    buildPortableRestroom(-8.0, 0, 4.2);
+
+    // 7. 🏓 MASA TENİSİ (PING-PONG) MASASI (Mehmet & Berat Oyun Alanı)
+    buildPingPongTable(6.2, 0, -1.2);
+
+    // 8. ⚽ LANGIRT MASASI (FOOSBALL) (Mehmet & Berat Oyun Alanı)
+    buildFoosballTable(6.2, 0, 1.5);
+
+    // 9. Saksı Bitkileri
+    buildPottedPlant(-9.5, 0, -4.5);
+    buildPottedPlant(9.5, 0, -4.5);
+}
+
+// Şehir silüeti yerine modern ahşap akustik çıtalı lüks duvar
+function buildAcousticBackWall() {
+    const wallGeo = new THREE.BoxGeometry(24, 8.5, 0.3);
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x111624, roughness: 0.75 });
+    const backWall = new THREE.Mesh(wallGeo, wallMat);
+    backWall.position.set(0, 4.25, -6.5);
     officeScene.add(backWall);
 
-    // Pencere & Gökdelenler
-    const windowFrameGeo = new THREE.BoxGeometry(15, 5.5, 0.4);
-    const windowFrameMat = new THREE.MeshStandardMaterial({ color: 0x050811, metalness: 0.8 });
-    const windowFrame = new THREE.Mesh(windowFrameGeo, windowFrameMat);
-    windowFrame.position.set(0, 4.2, -6.4);
-    officeScene.add(windowFrame);
-
-    const glassGeo = new THREE.PlaneGeometry(14.6, 5.1);
-    const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x60a5fa, transparent: true, opacity: 0.2, transmission: 0.7 });
-    const glass = new THREE.Mesh(glassGeo, glassMat);
-    glass.position.set(0, 4.2, -6.35);
-    officeScene.add(glass);
-
-    buildSkylineCity();
-    buildWallDisplay();
-
-    // 4. ☕ ESPRESSO KAHVE İSTASYONU (Sağ Arka Köşe: x = 5.0, z = 2.0)
-    buildCoffeeStation(5.0, 0, 2.0);
-
-    // 5. 🚻 TUVALET / WC KAPISI (Sol Arka Köşe: x = -5.0, z = 2.0)
-    buildRestroomDoor(-5.0, 0, 2.0);
-
-    // 6. Saksı Bitkileri
-    buildPottedPlant(-5.6, 0, -4.8);
-    buildPottedPlant(5.6, 0, -4.8);
-}
-
-function buildSkylineCity() {
-    const cityGroup = new THREE.Group();
-    cityGroup.position.set(0, 0, -11);
-
-    const bldgColors = [0x0b1329, 0x070c1b, 0x0f1938, 0x091024];
-    const windowMats = [
-        new THREE.MeshBasicMaterial({ color: 0xfacc15 }),
-        new THREE.MeshBasicMaterial({ color: 0x38bdf8 }),
-        new THREE.MeshBasicMaterial({ color: 0xffffff })
-    ];
-
-    for (let i = 0; i < 20; i++) {
-        const posX = -14 + i * 1.5 + (Math.random() - 0.5) * 0.8;
-        const bldgHeight = 5 + Math.random() * 8;
-        const bldgWidth = 1.0 + Math.random() * 1.2;
-        const bldgDepth = 1.0 + Math.random() * 1.2;
-
-        const bldgGeo = new THREE.BoxGeometry(bldgWidth, bldgHeight, bldgDepth);
-        const bldgMat = new THREE.MeshStandardMaterial({ color: bldgColors[i % bldgColors.length], roughness: 0.6 });
-        const bldg = new THREE.Mesh(bldgGeo, bldgMat);
-        bldg.position.set(posX, bldgHeight / 2 - 1, (Math.random() - 0.5) * 2);
-        cityGroup.add(bldg);
-
-        if (Math.random() > 0.3) {
-            const winGeo = new THREE.PlaneGeometry(0.15, 0.2);
-            const winMat = windowMats[Math.floor(Math.random() * windowMats.length)];
-            for (let y = 1; y < bldgHeight - 1; y += 0.8) {
-                const winMesh = new THREE.Mesh(winGeo, winMat);
-                winMesh.position.set(posX + (Math.random() - 0.5) * 0.4, y, bldg.position.z + bldgDepth / 2 + 0.02);
-                cityGroup.add(winMesh);
-            }
-        }
+    // Akustik Dikey Ahşap Çıtalar (Minimalist Penthouse Dekoru)
+    const slatMat = new THREE.MeshStandardMaterial({ color: 0x3d2b1f, roughness: 0.6 });
+    for (let x = -11.5; x <= 11.5; x += 0.45) {
+        // Dev ekranın arkasına gelen kısmı açık bırak
+        if (x > -3.5 && x < 3.5) continue;
+        const slat = new THREE.Mesh(new THREE.BoxGeometry(0.12, 8.0, 0.08), slatMat);
+        slat.position.set(x, 4.25, -6.32);
+        officeScene.add(slat);
     }
-    officeScene.add(cityGroup);
 }
 
-function buildWallDisplay() {
+// -------------------------------------------------------------
+// 👑 DEV DUVAR EKRANI: İKİLİ GÖRÜNÜM (BTC GRAFİĞİ + KÂR/ZARAR PnL)
+// -------------------------------------------------------------
+function buildGiantWallDualScreen() {
     const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 128;
-    wallCanvasCtx = canvas.getContext('2d');
-    wallCanvasCtx.fillStyle = '#060a12';
-    wallCanvasCtx.fillRect(0, 0, 512, 128);
-    wallCanvasCtx.fillStyle = '#f59e0b';
-    wallCanvasCtx.font = 'bold 24px monospace';
-    wallCanvasCtx.fillText('⚡ AI FUND OFFICE LIVE', 30, 45);
-    wallCanvasCtx.fillStyle = '#38bdf8';
-    wallCanvasCtx.font = '18px monospace';
-    wallCanvasCtx.fillText('BTC FUTURES DESK | BOSS: EFE', 30, 80);
+    canvas.width = 1024;
+    canvas.height = 512;
+    bigWallCtx = canvas.getContext('2d');
 
-    wallCanvasTexture = new THREE.CanvasTexture(canvas);
-    const wallScreenGeo = new THREE.PlaneGeometry(5.0, 1.25);
-    const wallScreenMat = new THREE.MeshBasicMaterial({ map: wallCanvasTexture });
-    const wallScreen = new THREE.Mesh(wallScreenGeo, wallScreenMat);
-    wallScreen.position.set(-4.5, 5.0, -6.3);
-    officeScene.add(wallScreen);
-}
-
-// ☕ Kahve & Espresso İstasyonu
-function buildCoffeeStation(x, y, z) {
-    const stationGroup = new THREE.Group();
-    stationGroup.position.set(x, y, z);
-
-    // Ahşap bar tezgahı
-    const counterGeo = new THREE.BoxGeometry(1.6, 0.85, 0.9);
-    const counterMat = new THREE.MeshStandardMaterial({ color: 0x1f293d, roughness: 0.5 });
-    const counter = new THREE.Mesh(counterGeo, counterMat);
-    counter.position.y = 0.425;
-    counter.castShadow = true;
-    stationGroup.add(counter);
-
-    // Mermer tezgah üstü
-    const marbleGeo = new THREE.BoxGeometry(1.66, 0.05, 0.96);
-    const marbleMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.2 });
-    const marble = new THREE.Mesh(marbleGeo, marbleMat);
-    marble.position.y = 0.875;
-    stationGroup.add(marble);
-
-    // İtalyan Espresso Makinesi
-    const machineGeo = new THREE.BoxGeometry(0.65, 0.55, 0.55);
-    const machineMat = new THREE.MeshStandardMaterial({ color: 0xd1d5db, metalness: 0.9, roughness: 0.2 });
-    const machine = new THREE.Mesh(machineGeo, machineMat);
-    machine.position.set(-0.25, 1.17, 0);
-    stationGroup.add(machine);
-
-    // Kırmızı güç ışığı
-    const ledGeo = new THREE.SphereGeometry(0.02, 8, 8);
-    const ledMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
-    const led = new THREE.Mesh(ledGeo, ledMat);
-    led.position.set(-0.25, 1.35, 0.29);
-    stationGroup.add(led);
-
-    // Kahve Fincanları Grubu
-    const cupMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 });
-    [-0.05, 0.15, 0.35].forEach((cx, idx) => {
-        const cupGeo = new THREE.CylinderGeometry(0.06, 0.05, 0.09, 12);
-        const cup = new THREE.Mesh(cupGeo, cupMat);
-        cup.position.set(cx, 0.94, 0.15 + (idx % 2) * 0.1);
-        stationGroup.add(cup);
+    renderBigWallScreenContent({
+        btcPrice: '76,500',
+        btcStatus: 'DEAD_CHOP (4s Bant: %0.40)',
+        activePositions: []
     });
 
-    officeScene.add(stationGroup);
+    bigWallTexture = new THREE.CanvasTexture(canvas);
+    bigWallTexture.anisotropy = 4;
+
+    // Efe'nin tam arkasındaki devasa 85-inç İkili Monitör
+    const screenGeo = new THREE.PlaneGeometry(6.6, 2.8);
+    const screenMat = new THREE.MeshBasicMaterial({ map: bigWallTexture });
+    bigWallScreenMesh = new THREE.Mesh(screenGeo, screenMat);
+    bigWallScreenMesh.position.set(0, 4.2, -6.3);
+    officeScene.add(bigWallScreenMesh);
+
+    // Ekranın lüks altın/metal çerçevesi
+    const frameGeo = new THREE.BoxGeometry(6.75, 2.95, 0.08);
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.8, roughness: 0.2 });
+    const frame = new THREE.Mesh(frameGeo, frameMat);
+    frame.position.set(0, 4.2, -6.35);
+    officeScene.add(frame);
 }
 
-// 🚻 Tuvalet / WC Kapısı & Işıklı Tabelası
-function buildRestroomDoor(x, y, z) {
+// Dev Ekrandaki İkili Görünümü Dinamik Çizen Fonksiyon
+function renderBigWallScreenContent(info) {
+    if (!bigWallCtx) return;
+    const ctx = bigWallCtx;
+
+    // Arka plan: Koyu donanma mavisi / siyah
+    ctx.fillStyle = '#070b14';
+    ctx.fillRect(0, 0, 1024, 512);
+
+    // Üst Bar: Başlık
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, 1024, 56);
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, 0, 1024, 56);
+
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = 'bold 24px Inter, monospace';
+    ctx.fillText('👑 PATRON: EFE | DEV İKİLİ STRATEJİ EKRANI (FUTURES & CANLI PnL)', 30, 38);
+
+    // İkili Görünüm Ayırıcı Dikey Çizgi
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(512, 56);
+    ctx.lineTo(512, 512);
+    ctx.stroke();
+
+    // ================= SOL YARI: 📈 CANLI BTC VADELİ MUM GRAFİĞİ =================
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 20px Inter, sans-serif';
+    ctx.fillText('📈 CANLI BTC / USDT (FUTURES)', 35, 95);
+
+    ctx.fillStyle = '#f1f5f9';
+    ctx.font = 'bold 36px monospace';
+    ctx.fillText(`$${info.btcPrice || '76,250.0'}`, 35, 145);
+
+    ctx.fillStyle = (info.btcStatus && info.btcStatus.includes('BULL')) ? '#10b981' : '#f59e0b';
+    ctx.font = '16px monospace';
+    ctx.fillText(`● REJİM: ${info.btcStatus || 'DEAD_CHOP (Bant: %0.40)'}`, 35, 180);
+
+    // Stilize 15D Mum Grafiği Çizimi
+    drawStylizedCandlesticks(ctx, 35, 210, 440, 260);
+
+    // ================= SAĞ YARI: ⚡ AÇIK POZİSYONLAR & KÂR/ZARAR PnL =================
+    ctx.fillStyle = '#10b981';
+    ctx.font = 'bold 20px Inter, sans-serif';
+    ctx.fillText('⚡ CANLI POZİSYON KÂR / ZARAR DURUMU', 545, 95);
+
+    const positions = info.activePositions || [];
+    if (positions.length > 0) {
+        positions.slice(0, 3).forEach((pos, idx) => {
+            const yOffset = 135 + idx * 115;
+            const pnl = Number(pos.unrealized_pnl_pct || 0);
+            const isPos = pnl >= 0;
+            const pnlText = (isPos ? '+' : '') + pnl.toFixed(2) + '%';
+            const dollarText = (pos.gross_pnl_pct !== undefined ? (isPos ? '+$' : '-$') + Math.abs(pos.gross_pnl_pct).toFixed(2) : '');
+
+            ctx.fillStyle = isPos ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+            ctx.fillRect(540, yOffset, 450, 95);
+            ctx.strokeStyle = isPos ? '#10b981' : '#ef4444';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(540, yOffset, 450, 95);
+
+            ctx.fillStyle = isPos ? '#10b981' : '#ef4444';
+            ctx.font = 'bold 26px monospace';
+            ctx.fillText(`${isPos ? '🟢' : '🔴'} ${pos.symbol || 'COIN'} ${pos.direction || 'LONG'}`, 555, yOffset + 40);
+
+            ctx.font = 'bold 30px monospace';
+            ctx.fillText(`${pnlText}`, 840, yOffset + 42);
+
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '15px monospace';
+            ctx.fillText(`Fiyat: $${Number(pos.live_price || 0).toLocaleString()} | Giriş: $${Number(pos.entry_price || 0).toLocaleString()}`, 555, yOffset + 75);
+        });
+    } else {
+        // Açık Pozisyon Yok: Sermaye Koruma & Tarama Durumu
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.08)';
+        ctx.fillRect(540, 135, 450, 200);
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.25)';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(540, 135, 450, 200);
+
+        ctx.fillStyle = '#facc15';
+        ctx.font = 'bold 24px monospace';
+        ctx.fillText('💤 AKTİF İŞLEM YOK', 640, 200);
+
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '16px monospace';
+        ctx.fillText('📡 200+ Parite 15M Taranıyor...', 610, 240);
+        ctx.fillText('🛡️ Kasa Kalkanı: 0/4 Pozisyon Kotası', 590, 275);
+        ctx.fillText('⚖️ Maksimum 5x Kaldıraç Kilitli', 615, 305);
+    }
+}
+
+// Mum Grafiği Çizici Yardımcı
+function drawStylizedCandlesticks(ctx, startX, startY, w, h) {
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 1;
+    for (let y = startY; y <= startY + h; y += 50) {
+        ctx.beginPath();
+        ctx.moveTo(startX, y);
+        ctx.lineTo(startX + w, y);
+        ctx.stroke();
+    }
+
+    const candleCount = 14;
+    const candleW = w / candleCount;
+    const baseP = startY + h * 0.55;
+    let curP = baseP;
+
+    for (let i = 0; i < candleCount; i++) {
+        const cx = startX + i * candleW + candleW * 0.2;
+        const change = (Math.sin(i * 1.5) * 25) + (i % 2 === 0 ? 12 : -10);
+        const openP = curP;
+        const closeP = curP - change;
+        const highP = Math.min(openP, closeP) - 15;
+        const lowP = Math.max(openP, closeP) + 15;
+        const isGreen = closeP < openP;
+
+        ctx.strokeStyle = isGreen ? '#10b981' : '#ef4444';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(cx + candleW * 0.3, highP);
+        ctx.lineTo(cx + candleW * 0.3, lowP);
+        ctx.stroke();
+
+        ctx.fillStyle = isGreen ? '#10b981' : '#ef4444';
+        ctx.fillRect(cx, Math.min(openP, closeP), candleW * 0.6, Math.max(Math.abs(closeP - openP), 4));
+
+        curP = closeP;
+    }
+}
+
+// -------------------------------------------------------------
+// ☕ GELENEKSEL TÜRK ÇAY KÖŞESİ (Semaver, Demlik, İnce Belli Bardak)
+// -------------------------------------------------------------
+function buildTurkishTeaCorner(x, y, z) {
+    const teaGroup = new THREE.Group();
+    teaGroup.position.set(x, y, z);
+
+    // Ahşap Çay Masası
+    const tableGeo = new THREE.BoxGeometry(1.6, 0.82, 1.0);
+    const tableMat = new THREE.MeshStandardMaterial({ color: 0x271c14, roughness: 0.6 });
+    const table = new THREE.Mesh(tableGeo, tableMat);
+    table.position.y = 0.41;
+    table.castShadow = true;
+    teaGroup.add(table);
+
+    // Nostaljik Pirinç/Bakır Semaver
+    const semaverBaseGeo = new THREE.CylinderGeometry(0.24, 0.22, 0.45, 16);
+    const brassMat = new THREE.MeshStandardMaterial({ color: 0xd97706, metalness: 0.85, roughness: 0.2 });
+    const semaverBase = new THREE.Mesh(semaverBaseGeo, brassMat);
+    semaverBase.position.set(-0.25, 1.05, 0);
+    teaGroup.add(semaverBase);
+
+    // Üstündeki Porselen Demlik
+    const demlikGeo = new THREE.CylinderGeometry(0.12, 0.14, 0.18, 14);
+    const demlikMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 });
+    const demlik = new THREE.Mesh(demlikGeo, demlikMat);
+    demlik.position.set(-0.25, 1.34, 0);
+    teaGroup.add(demlik);
+
+    // İnce Belli Çay Bardakları Tepsisi
+    const trayGeo = new THREE.BoxGeometry(0.7, 0.02, 0.5);
+    const trayMat = new THREE.MeshStandardMaterial({ color: 0xd4d4d8, metalness: 0.9 });
+    const tray = new THREE.Mesh(trayGeo, trayMat);
+    tray.position.set(0.35, 0.83, 0);
+    teaGroup.add(tray);
+
+    // İnce Belli Çay Bardakları (Tavşan Kanı Çaylı)
+    const glassMat = new THREE.MeshPhysicalMaterial({ color: 0xb91c1c, transmission: 0.7, transparent: true, opacity: 0.85, roughness: 0.1 });
+    [-0.15, 0.15].forEach((gx, i) => {
+        const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.035, 0.10, 12), glassMat);
+        glass.position.set(0.35 + gx, 0.88, (i % 2 === 0 ? 0.08 : -0.08));
+        teaGroup.add(glass);
+    });
+
+    officeScene.add(teaGroup);
+}
+
+// -------------------------------------------------------------
+// 🛋️ DİNLENME & ÇAY-SİGARA KÖŞESİ (LOUNGE KANEPE & SEHPA)
+// -------------------------------------------------------------
+function buildLoungeBreakArea(x, y, z) {
+    const loungeGroup = new THREE.Group();
+    loungeGroup.position.set(x, y, z);
+
+    // Lüks Deri İkili Kanepe (Çalışanlar Dinlenmeye Gelir)
+    const sofaMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5 });
+    
+    // Kanepe Oturağı
+    const sofaSeat = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.28, 0.85), sofaMat);
+    sofaSeat.position.y = 0.35;
+    sofaSeat.castShadow = true;
+    loungeGroup.add(sofaSeat);
+
+    // Kanepe Sırtlığı
+    const sofaBack = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.70, 0.22), sofaMat);
+    sofaBack.position.set(0, 0.72, -0.32);
+    loungeGroup.add(sofaBack);
+
+    // Kanepe Yan Kolçakları
+    [-0.85, 0.85].forEach(sx => {
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.50, 0.85), sofaMat);
+        arm.position.set(sx, 0.50, 0);
+        loungeGroup.add(arm);
+    });
+
+    // Küçük Yuvarlak Cam Sehpa
+    const tableBase = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.25, 0.42, 16), new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.9 }));
+    tableBase.position.set(0, 0.21, 0.95);
+    loungeGroup.add(tableBase);
+
+    const glassTop = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.03, 16), new THREE.MeshPhysicalMaterial({ color: 0x38bdf8, transmission: 0.8, opacity: 0.7, transparent: true }));
+    glassTop.position.set(0, 0.43, 0.95);
+    loungeGroup.add(glassTop);
+
+    // Sehpa Üstündeki Küllük
+    const ashtray = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.03, 12), new THREE.MeshStandardMaterial({ color: 0xe2e8f0 }));
+    ashtray.position.set(0, 0.45, 0.95);
+    loungeGroup.add(ashtray);
+
+    officeScene.add(loungeGroup);
+}
+
+// -------------------------------------------------------------
+// 🚻 PORTATİF KABİN TUVALET (MODERN KOMPOZİT BOOTH WC)
+// -------------------------------------------------------------
+function buildPortableRestroom(x, y, z) {
     const wcGroup = new THREE.Group();
     wcGroup.position.set(x, y, z);
 
-    // Kapı Kasası & Duvar Paneli
-    const frameGeo = new THREE.BoxGeometry(1.4, 2.5, 0.15);
-    const frameMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.6 });
-    const frame = new THREE.Mesh(frameGeo, frameMat);
-    frame.position.y = 1.25;
-    wcGroup.add(frame);
+    // Kabin Gövdesi (Antrasit / Modern Prefabrik Modül)
+    const cabinGeo = new THREE.BoxGeometry(1.4, 2.4, 1.4);
+    const cabinMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6 });
+    const cabin = new THREE.Mesh(cabinGeo, cabinMat);
+    cabin.position.y = 1.2;
+    cabin.castShadow = true;
+    wcGroup.add(cabin);
 
-    // Buzlu Cam Kapı Kanadı
-    const doorGeo = new THREE.BoxGeometry(1.15, 2.3, 0.08);
-    const doorMat = new THREE.MeshPhysicalMaterial({ color: 0x38bdf8, roughness: 0.3, transmission: 0.6, transparent: true, opacity: 0.85 });
+    // Kabin Kapısı
+    const doorGeo = new THREE.BoxGeometry(0.9, 2.1, 0.06);
+    const doorMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.5 });
     const door = new THREE.Mesh(doorGeo, doorMat);
-    door.position.set(0, 1.15, 0.02);
+    door.position.set(0, 1.08, 0.71);
     wcGroup.add(door);
 
-    // Krom Kapı Kolu
-    const handleGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.25, 8);
-    const handleMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.95 });
-    const handle = new THREE.Mesh(handleGeo, handleMat);
-    handle.position.set(-0.45, 1.1, 0.08);
+    // Metalik Kapı Kolu
+    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.18, 0.08), new THREE.MeshStandardMaterial({ color: 0xd4d4d8, metalness: 0.95 }));
+    handle.position.set(0.35, 1.05, 0.75);
     wcGroup.add(handle);
 
-    // Kapı Üstü Neon Tabela: "🚻 WC"
-    const signGeo = new THREE.BoxGeometry(0.8, 0.25, 0.08);
-    const signMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, emissive: 0x0369a1, emissiveIntensity: 0.8 });
-    wcSignMesh = new THREE.Mesh(signGeo, signMat);
-    wcSignMesh.position.set(0, 2.65, 0.1);
-    wcGroup.add(wcSignMesh);
+    // "🚻 PORTATİF WC" Tabelası
+    const sign = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.22, 0.06), new THREE.MeshStandardMaterial({ color: 0x0284c7, emissive: 0x0369a1, emissiveIntensity: 0.7 }));
+    sign.position.set(0, 2.25, 0.72);
+    wcGroup.add(sign);
+    portableWcSign = sign;
 
-    // Kapı Dolu/Boş Işığı (Yeşil = Boş, Turuncu = Dolu)
-    wcSignLight = new THREE.PointLight(0x10b981, 1.2, 4);
-    wcSignLight.position.set(0, 2.65, 0.25);
-    wcGroup.add(wcSignLight);
+    // Meşguliyet Işığı (Yeşil = Boş, Turuncu = Dolu)
+    portableWcLight = new THREE.PointLight(0x10b981, 1.3, 4.0);
+    portableWcLight.position.set(0, 2.25, 0.85);
+    wcGroup.add(portableWcLight);
 
     officeScene.add(wcGroup);
+}
+
+// -------------------------------------------------------------
+// 🏓 MASA TENİSİ (PING-PONG) MASASI (MEHMET & BERAT)
+// -------------------------------------------------------------
+function buildPingPongTable(x, y, z) {
+    const tableGroup = new THREE.Group();
+    tableGroup.position.set(x, y, z);
+
+    // Mavi / Yeşil Masa Tablası (Standart Ölçüler)
+    const topGeo = new THREE.BoxGeometry(2.4, 0.06, 1.4);
+    const topMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.35 });
+    const tableTop = new THREE.Mesh(topGeo, topMat);
+    tableTop.position.y = 0.76;
+    tableTop.castShadow = true;
+    tableGroup.add(tableTop);
+
+    // Beyaz Çizgiler (Kenar ve Orta Çizgi)
+    const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const centerLine = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.005, 0.03), lineMat);
+    centerLine.position.set(0, 0.795, 0);
+    tableGroup.add(centerLine);
+
+    // Masa Tenisi Filesi (Ortadaki Dikey File)
+    const netGeo = new THREE.BoxGeometry(0.04, 0.16, 1.5);
+    const netMat = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, roughness: 0.8 });
+    const net = new THREE.Mesh(netGeo, netMat);
+    net.position.set(0, 0.87, 0);
+    tableGroup.add(net);
+
+    // Çelik Ayaklar
+    const legMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.8 });
+    [[-1.0, -0.55], [1.0, -0.55], [-1.0, 0.55], [1.0, 0.55]].forEach(([lx, lz]) => {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.76, 12), legMat);
+        leg.position.set(lx, 0.38, lz);
+        tableGroup.add(leg);
+    });
+
+    // Raketler & Top
+    const racketMat = new THREE.MeshStandardMaterial({ color: 0xef4444 });
+    const racket1 = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.02, 14), racketMat);
+    racket1.position.set(-0.8, 0.80, 0.3);
+    tableGroup.add(racket1);
+
+    const racket2 = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.02, 14), new THREE.MeshStandardMaterial({ color: 0x1e293b }));
+    racket2.position.set(0.8, 0.80, -0.3);
+    tableGroup.add(racket2);
+
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.03, 12, 12), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    ball.position.set(0.1, 0.82, 0.1);
+    tableGroup.add(ball);
+
+    officeScene.add(tableGroup);
+}
+
+// -------------------------------------------------------------
+// ⚽ LANGIRT MASASI (FOOSBALL TABLE) (MEHMET & BERAT)
+// -------------------------------------------------------------
+function buildFoosballTable(x, y, z) {
+    const foosballGroup = new THREE.Group();
+    foosballGroup.position.set(x, y, z);
+
+    // Langırt Ahşap Kasası
+    const boxGeo = new THREE.BoxGeometry(1.8, 0.38, 1.0);
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.4 });
+    const box = new THREE.Mesh(boxGeo, woodMat);
+    box.position.y = 0.70;
+    box.castShadow = true;
+    foosballGroup.add(box);
+
+    // Yeşil Saha Zemini
+    const pitchGeo = new THREE.BoxGeometry(1.65, 0.02, 0.85);
+    const pitchMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.5 });
+    const pitch = new THREE.Mesh(pitchGeo, pitchMat);
+    pitch.position.y = 0.75;
+    foosballGroup.add(pitch);
+
+    // Metalik Çubuklar (Kollar)
+    const rodMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.95 });
+    [-0.55, -0.25, 0.05, 0.35, 0.55].forEach(rx => {
+        const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 1.4, 10), rodMat);
+        rod.rotation.x = Math.PI / 2;
+        rod.position.set(rx, 0.82, 0);
+        foosballGroup.add(rod);
+    });
+
+    // 4 Sağlam Bacak
+    const legMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.7 });
+    [[-0.8, -0.42], [0.8, -0.42], [-0.8, 0.42], [0.8, 0.42]].forEach(([lx, lz]) => {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.70, 0.12), legMat);
+        leg.position.set(lx, 0.35, lz);
+        foosballGroup.add(leg);
+    });
+
+    officeScene.add(foosballGroup);
 }
 
 function buildPottedPlant(x, y, z) {
@@ -2818,9 +3120,8 @@ function buildPottedPlant(x, y, z) {
 
     const leafMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.4, side: THREE.DoubleSide });
     for (let i = 0; i < 7; i++) {
-        const leafGeo = new THREE.SphereGeometry(0.3, 8, 8);
-        leafGeo.scale(0.8, 1.4, 0.1);
-        const leaf = new THREE.Mesh(leafGeo, leafMat);
+        const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), leafMat);
+        leaf.scale.set(0.8, 1.4, 0.1);
         const angle = (i / 7) * Math.PI * 2;
         leaf.position.set(Math.cos(angle) * 0.3, 1.1 + Math.sin(i) * 0.2, Math.sin(angle) * 0.3);
         leaf.rotation.set(0.4, angle, 0.3);
@@ -2831,52 +3132,43 @@ function buildPottedPlant(x, y, z) {
 }
 
 // -------------------------------------------------------------
-// KUSURSUZ ERGONOMİK TRADING MASASI (BUG & İÇE GİRME %100 GİDERİLDİ)
+// TRADING MASASI (YUMUŞAK MAT KAPLAMA, GLARSIZ)
 // -------------------------------------------------------------
 function buildTradingDesk() {
     const tableGroup = new THREE.Group();
 
-    // Standart masa ölçüleri: Genişlik: 2.2m (X: -1.1 ile +1.1), Uzunluk: 4.8m (Z: -2.4 ile +2.4)
-    // Masa tablası üst seviyesi: y = 0.78m (Ergonomik çalışma yüksekliği)
-    const topGeo = new THREE.BoxGeometry(2.2, 0.06, 4.8);
-    const topMat = new THREE.MeshStandardMaterial({ color: 0x182030, roughness: 0.35, metalness: 0.25 });
+    // Genişlik: 2.0m, Uzunluk: 4.6m, Üst yüzey yüksekliği: y = 0.78m
+    const topGeo = new THREE.BoxGeometry(2.0, 0.06, 4.6);
+    // Mat koyu füme kaplama (Parlama sıfırlandı)
+    const topMat = new THREE.MeshStandardMaterial({ color: 0x182030, roughness: 0.65, metalness: 0.1 });
     const tableTop = new THREE.Mesh(topGeo, topMat);
     tableTop.position.set(0, 0.78, 0);
     tableTop.castShadow = true;
     tableTop.receiveShadow = true;
     tableGroup.add(tableTop);
 
-    // Altın beveled kenarlık
-    const trimGeo = new THREE.BoxGeometry(2.24, 0.02, 4.84);
-    const trimMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.85, roughness: 0.2 });
-    const trim = new THREE.Mesh(trimGeo, trimMat);
+    // İnce altın beveled kenarlık
+    const trim = new THREE.Mesh(new THREE.BoxGeometry(2.04, 0.02, 4.64), new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.5, metalness: 0.3 }));
     trim.position.set(0, 0.80, 0);
     tableGroup.add(trim);
 
-    // Masa Ayakları: 4 Adet Ağır Çelik Kolon
-    const legGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.78, 16);
-    const legMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.9, roughness: 0.3 });
-    [
-        [-0.95, -2.2],
-        [0.95, -2.2],
-        [-0.95, 2.2],
-        [0.95, 2.2]
-    ].forEach(([lx, lz]) => {
-        const leg = new THREE.Mesh(legGeo, legMat);
+    // Ayaklar
+    const legMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.8 });
+    [[-0.9, -2.1], [0.9, -2.1], [-0.9, 2.1], [0.9, 2.1]].forEach(([lx, lz]) => {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.78, 16), legMat);
         leg.position.set(lx, 0.39, lz);
         leg.castShadow = true;
         tableGroup.add(leg);
     });
 
-    // Masanın Ortasındaki Canlı İşlem Ana Göstergesi (Holografik Panel)
-    const centerDisplayGeo = new THREE.BoxGeometry(0.9, 0.45, 0.04);
-    const centerMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, emissive: 0x0369a1, emissiveIntensity: 0.8 });
+    // Masanın Ortasındaki Küçük Canlı İşlem Ekranı
+    const centerDisplayGeo = new THREE.BoxGeometry(0.8, 0.40, 0.04);
+    const centerMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, emissive: 0x0369a1, emissiveIntensity: 0.7 });
     const centerScr = new THREE.Mesh(centerDisplayGeo, centerMat);
-    centerScr.position.set(0, 1.05, 0);
+    centerScr.position.set(0, 1.02, 0);
     tableGroup.add(centerScr);
     officeDeskScreens.push(centerScr);
 
-    // Canlı İşlem Balonunun Çapa Noktası
     bubbleAnchors.trade.pos = new THREE.Vector3(0, 1.45, 0);
 
     officeScene.add(tableGroup);
@@ -2884,18 +3176,19 @@ function buildTradingDesk() {
 
 // -------------------------------------------------------------
 // 👑 BAŞ KOLTUK / PATRON: EFE
-// Siyah Takım Elbise, Işıklı Sims Plumbob'u, Altın İsimlik, Apple MacBook
 // -------------------------------------------------------------
 function buildBossEfe() {
     bossGroup = new THREE.Group();
-    bossGroup.position.set(0, 0, -2.4); // Masanın başı (z = -2.4), +Z'ye bakıyor
+    bossGroup.position.set(0, 0, -2.3);
     bossGroup.rotation.y = 0;
 
-    // 1. Executive Yönetici Koltuğu (Siyah Deri & Altın Çerçeveli)
+    // Bağımsız Executive Yönetici Koltuğu
     const chairGroup = new THREE.Group();
-    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9, roughness: 0.1 });
-    const leatherMat = new THREE.MeshStandardMaterial({ color: 0x090c10, roughness: 0.35, metalness: 0.15 });
-    const goldMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.85, roughness: 0.2 });
+    chairGroup.position.set(0, 0, -2.3);
+
+    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9 });
+    const leatherMat = new THREE.MeshStandardMaterial({ color: 0x090c10, roughness: 0.35 });
+    const goldMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.85 });
 
     const piston = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.45, 16), chromeMat);
     piston.position.y = 0.225;
@@ -2903,13 +3196,11 @@ function buildBossEfe() {
 
     const seat = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.1, 0.7), leatherMat);
     seat.position.y = 0.45;
-    seat.castShadow = true;
     chairGroup.add(seat);
 
     const back = new THREE.Mesh(new THREE.BoxGeometry(0.72, 1.0, 0.1), leatherMat);
     back.position.set(0, 0.98, -0.32);
     back.rotation.x = -0.06;
-    back.castShadow = true;
     chairGroup.add(back);
 
     [-0.38, 0.38].forEach(ax => {
@@ -2917,25 +3208,21 @@ function buildBossEfe() {
         arm.position.set(ax, 0.65, -0.05);
         chairGroup.add(arm);
     });
-    bossGroup.add(chairGroup);
+    officeScene.add(chairGroup);
 
-    // 2. Patron Efe'nin Gövdesi: Siyah Özel Dikim Takım Elbise
-    const suitMat = new THREE.MeshStandardMaterial({ color: 0x0e1117, roughness: 0.32, metalness: 0.25 });
-    const shirtMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.25 });
-    const tieMat = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.1, metalness: 0.3 });
+    // Efe'nin Gövdesi: Siyah Takım Elbise
+    const suitMat = new THREE.MeshStandardMaterial({ color: 0x0a0c10, roughness: 0.32, metalness: 0.2 });
+    const shirtMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+    const tieMat = new THREE.MeshStandardMaterial({ color: 0x000000 });
 
-    // Oturan bacaklar (Masanın altında rahatça durur)
     const legs = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.18, 0.55), suitMat);
     legs.position.set(0, 0.54, 0.05);
     bossGroup.add(legs);
 
-    // Gövde (Ceket)
     const torso = new THREE.Mesh(new THREE.BoxGeometry(0.60, 0.58, 0.34), suitMat);
     torso.position.set(0, 0.90, -0.05);
-    torso.castShadow = true;
     bossGroup.add(torso);
 
-    // Beyaz Gömlek Yakası & Siyah Kravat
     const collar = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.18), shirtMat);
     collar.position.set(0, 1.15, 0.07);
     bossGroup.add(collar);
@@ -2944,12 +3231,6 @@ function buildBossEfe() {
     tie.position.set(0, 1.02, 0.14);
     bossGroup.add(tie);
 
-    // Altın Yaka İğnesi
-    const pin = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.035, 0.02), goldMat);
-    pin.position.set(-0.18, 1.10, 0.13);
-    bossGroup.add(pin);
-
-    // Kollar & Eller (Masanın üstüne uzanır, klavye/laptop yanında durur)
     [-0.34, 0.34].forEach(ax => {
         const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.42, 0.12), suitMat);
         arm.position.set(ax, 0.85, 0.18);
@@ -2957,29 +3238,24 @@ function buildBossEfe() {
         bossGroup.add(arm);
     });
 
-    // 3. Baş & Saç
+    // Baş & Saç
     const headGroup = new THREE.Group();
     headGroup.position.set(0, 1.35, -0.02);
 
-    const skinMat = new THREE.MeshStandardMaterial({ color: 0xf5c6a5, roughness: 0.5 });
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.34, 0.30), skinMat);
-    head.castShadow = true;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.34, 0.30), new THREE.MeshStandardMaterial({ color: 0xf5c6a5 }));
     headGroup.add(head);
 
-    const hair = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.12, 0.32), new THREE.MeshStandardMaterial({ color: 0x171717, roughness: 0.7 }));
+    const hair = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.12, 0.32), new THREE.MeshStandardMaterial({ color: 0x171717 }));
     hair.position.set(0, 0.16, -0.01);
     headGroup.add(hair);
 
     bossHeadMesh = headGroup;
     bossGroup.add(headGroup);
 
-    // 4. Efe'nin Masasındaki Apple MacBook & Altın İsimlik
     buildBossDeskItems(bossGroup);
-
-    // 5. ✨ IŞIK SAÇAN DÖNEN SİMS PLUMBOB (Yeşil Kristal)
     buildSimsPlumbob(bossGroup);
 
-    bubbleAnchors.boss.pos = new THREE.Vector3(0, 2.35, -2.4);
+    bubbleAnchors.boss.pos = new THREE.Vector3(0, 2.35, -2.3);
 
     officeScene.add(bossGroup);
 }
@@ -2988,14 +3264,7 @@ function buildSimsPlumbob(parentGroup) {
     const plumbobGeo = new THREE.OctahedronGeometry(0.18, 0);
     plumbobGeo.scale(0.85, 1.7, 0.85);
 
-    const plumbobMat = new THREE.MeshStandardMaterial({
-        color: 0x22c55e,
-        emissive: 0x16a34a,
-        emissiveIntensity: 1.0,
-        roughness: 0.15,
-        metalness: 0.4
-    });
-
+    const plumbobMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, emissive: 0x16a34a, emissiveIntensity: 1.0, roughness: 0.15 });
     plumbobMesh = new THREE.Mesh(plumbobGeo, plumbobMat);
     plumbobMesh.position.set(0, 1.95, -0.02);
 
@@ -3007,8 +3276,7 @@ function buildSimsPlumbob(parentGroup) {
 }
 
 function buildBossDeskItems(parentGroup) {
-    // Apple MacBook Pro (Gümüş Alüminyum & Parlayan Ekran)
-    const macBase = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.02, 0.32), new THREE.MeshStandardMaterial({ color: 0xd8e0e8, metalness: 0.85, roughness: 0.2 }));
+    const macBase = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.02, 0.32), new THREE.MeshStandardMaterial({ color: 0xd8e0e8, metalness: 0.85 }));
     macBase.position.set(0, 0.82, 0.45);
     parentGroup.add(macBase);
 
@@ -3033,12 +3301,12 @@ function buildBossDeskItems(parentGroup) {
     ctx.fillText('👑 PATRON: EFE', 256, 80);
 
     const plateTex = new THREE.CanvasTexture(canvas);
-    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.20, 0.10), new THREE.MeshStandardMaterial({ map: plateTex, metalness: 0.75, roughness: 0.25 }));
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.20, 0.10), new THREE.MeshStandardMaterial({ map: plateTex, metalness: 0.75 }));
     plate.position.set(0, 0.88, 0.75);
     plate.rotation.x = -0.28;
     parentGroup.add(plate);
 
-    // Beyaz İtalyan Porselen Espresso Fincanı
+    // Fincan
     const saucer = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.07, 0.015, 16), new THREE.MeshStandardMaterial({ color: 0xffffff }));
     saucer.position.set(0.42, 0.82, 0.48);
     parentGroup.add(saucer);
@@ -3049,139 +3317,133 @@ function buildBossDeskItems(parentGroup) {
 }
 
 // -------------------------------------------------------------
-// 5 UZMAN AJAN (HERKESİN KENDİ BİLGİSAYARI & ÇALIŞMA MASASI)
+// 5 UZMAN AJAN (BAĞIMSIZ SANDALYELER & ÇALIŞANA BAKAN MONİTÖRLER)
 // -------------------------------------------------------------
 function buildSpecialistAgents() {
-    // 1. SCANNER AGENT (Sol Üst: x = -1.55, z = -0.7, Doğuya/Masaya Bakar)
+    // 1. SCANNER AGENT (Sol Üst: x = -1.55, z = -0.75)
     createAgentWorkstation({
         id: 'scanner',
         name: 'Scanner Agent',
-        seatPos: [-1.55, 0, -0.7],
-        seatRotY: Math.PI / 2,
-        deskPos: [-0.65, 0.78, -0.7],
-        suitColor: 0x1d4ed8, // Siber Mavi
+        seatPos: [-1.55, 0, -0.75],
+        seatRotY: Math.PI / 2, // Masaya doğru bakıyor
+        deskPos: [-0.60, 0.78, -0.75],
+        suitColor: 0x1d4ed8, // Mavi
         hairColor: 0x334155,
-        screenColor: 0x0284c7, // Cyan Radar
-        chartType: 'RADAR 200+ SCAN',
+        screenColor: 0x0284c7,
         phrases: [
-            "Radar: 200 parite tarandı, piyasada hacim bekliyoruz.",
-            "BTC testerede, altcoinlerde acele işlem yok.",
-            "Kırılım sinyalleri taranıyor, masadayım."
+            "Radar: 200 parite tarandı, BTC testerede bekliyoruz.",
+            "4s hacim sıkışması taranıyor, altcoinler güvenli modda.",
+            "Hacimsiz coinler elendi, majör pariteler izleniyor."
         ]
     });
 
-    // 2. TA ANALYST (Sol Alt: x = -1.55, z = +0.7, Doğuya/Masaya Bakar)
+    // 2. TA ANALYST (Sol Alt: x = -1.55, z = +0.75)
     createAgentWorkstation({
         id: 'ta',
         name: 'Teknik Analist',
-        seatPos: [-1.55, 0, 0.7],
+        seatPos: [-1.55, 0, 0.75],
         seatRotY: Math.PI / 2,
-        deskPos: [-0.65, 0.78, 0.7],
-        suitColor: 0x7e22ce, // Mor / Eflatun
+        deskPos: [-0.60, 0.78, 0.75],
+        suitColor: 0x7e22ce, // Mor
         hairColor: 0x475569,
         hasGlasses: true,
-        screenColor: 0x9333ea, // Mor Mum Grafik
-        chartType: 'BTC 4S BOLLINGER',
+        screenColor: 0x9333ea,
         phrases: [
-            "BTC 4s bant daralması %0.40, sıkışma devam ediyor.",
-            "EMA20 ve RSI uyumsuzluğu takip ediliyor.",
-            "Breakout teyidi gelmeden emir açmıyoruz."
+            "BTC 4s bant daralması %0.40! Sıkışma had safhada.",
+            "RSI 48 seviyesinde nötr, EMA20 üstünde tutunma var.",
+            "Breakout teyidi gelmeden acele emir açmıyoruz."
         ]
     });
 
-    // 3. RISK OFFICER (Sağ Üst: x = +1.55, z = -0.7, Batıya/Masaya Bakar)
+    // 3. RISK OFFICER (Sağ Üst: x = +1.55, z = -0.75)
     createAgentWorkstation({
         id: 'risk',
         name: 'Risk & Kasa Şefi',
-        seatPos: [1.55, 0, -0.7],
+        seatPos: [1.55, 0, -0.75],
         seatRotY: -Math.PI / 2,
-        deskPos: [0.65, 0.78, -0.7],
-        suitColor: 0xb91c1c, // Bordo / Kırmızı
+        deskPos: [0.60, 0.78, -0.75],
+        suitColor: 0xb91c1c, // Kırmızı
         hairColor: 0x0f172a,
-        screenColor: 0xdc2626, // Kırmızı Kalkan
-        chartType: '5X LEVERAGE CAP',
+        screenColor: 0xdc2626,
         phrases: [
-            "Kasa Kalkanı devrede: Maksimum 5x kaldıraç kilitli.",
-            "İşlem başına %1.5 sermaye riski tavanı onaylandı.",
-            "Teminat oranları güvende, risk kontrol altında."
+            "Kasa Kalkanı devrede: Maks 5x kaldıraç, %1.5 risk tavanı kilitli.",
+            "Sermaye koruma modu aktif, teminat güvende.",
+            "Disiplin kuralımız ihlal edilmeyecek."
         ]
     });
 
-    // 4. NEWS & MACRO AGENT (Sağ Alt: x = +1.55, z = +0.7, Batıya/Masaya Bakar)
+    // 4. NEWS & MACRO AGENT (Sağ Alt: x = +1.55, z = +0.75)
     createAgentWorkstation({
         id: 'news',
         name: 'Haber & Makro Ajanı',
-        seatPos: [1.55, 0, 0.7],
+        seatPos: [1.55, 0, 0.75],
         seatRotY: -Math.PI / 2,
-        deskPos: [0.65, 0.78, 0.7],
-        suitColor: 0xd97706, // Amber / Turuncu
+        deskPos: [0.60, 0.78, 0.75],
+        suitColor: 0xd97706, // Amber
         hairColor: 0x1e293b,
-        screenColor: 0xf59e0b, // Amber Bloomberg Terminal
-        chartType: 'MACRO FEED / RATES',
+        screenColor: 0xf59e0b,
         phrases: [
             "Funding rate stabil, global piyasalarda şok veri yok.",
             "Makro haber akışı sakin, likidite dengeli.",
-            "Fed faiz beklentileri ve fonlama oranları normal."
+            "Fed faiz beklentileri normal seviyede seyrediyor."
         ]
     });
 
-    // 5. CHIEF ANALYST (Patron Efe'nin Yanı / Masanın Baş Köşesi: x = 1.3, z = -1.9)
+    // 5. CHIEF ANALYST (Masanın Başı / Efe'nin Yanı: x = 1.35, z = -1.8)
     createAgentWorkstation({
         id: 'chief',
         name: 'Baş Stratejist',
-        seatPos: [1.3, 0, -1.9],
+        seatPos: [1.35, 0, -1.8],
         seatRotY: -Math.PI / 3.5,
         deskPos: [0.95, 0.78, -1.5],
-        suitColor: 0x059669, // Zümrüt Yeşili
+        suitColor: 0x059669, // Yeşil
         hairColor: 0x18181b,
         screenColor: 0x10b981,
-        chartType: 'COMMITTEE MATRIX',
         isStandingByDefault: true,
         phrases: [
-            "Efe Bey, piyasa şu an beklemede. Şartlar oluşursa komite onaylayacak.",
-            "Tüm ajanlar masada koordineli çalışıyor.",
-            "Trend teyidi durumunda hazır bekliyoruz."
+            "Efe Bey, piyasa beklemede. Şartlar oluşursa komite onaylayacak.",
+            "Dev ekrandaki pozisyon ve rejim matrisini güncelledim efendim.",
+            "Tüm ajanlar masada koordineli çalışıyor."
         ]
     });
 }
 
-// Tek Bir Ajanın Çalışma Masası, Monitörleri ve Karakterini İnşa Eder
+// Tek Bir Ajanın Bağımsız Sandalyesi, Masadaki Monitörleri ve Karakterini İnşa Eder
 function createAgentWorkstation(cfg) {
     const isRightSide = cfg.seatPos[0] > 0;
     const isChief = cfg.id === 'chief';
 
-    // 1. Karakter Grubu (Root)
-    const agentGroup = new THREE.Group();
-    agentGroup.position.set(...cfg.seatPos);
-    agentGroup.rotation.y = cfg.seatRotY;
-
-    // 2. Koltuk (Chief ayakta başlar, diğerleri oturur)
+    // 1. BAĞIMSIZ SANDALYE (Sahneye direkt eklenir, ajanla birlikte yürümez!)
     const chairGroup = new THREE.Group();
-    chairGroup.position.set(0, 0, 0);
+    chairGroup.position.set(...cfg.seatPos);
+    chairGroup.rotation.y = cfg.seatRotY;
 
     const chairSeat = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.08, 0.55), new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6 }));
     chairSeat.position.y = 0.44;
-    chairSeat.castShadow = true;
     chairGroup.add(chairSeat);
 
     const chairBack = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.65, 0.08), new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6 }));
     chairBack.position.set(0, 0.80, -0.27);
     chairGroup.add(chairBack);
 
-    const chairLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.44, 12), new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.8 }));
+    const chairLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.44, 12), new THREE.MeshStandardMaterial({ color: 0x475569 }));
     chairLeg.position.y = 0.22;
     chairGroup.add(chairLeg);
 
-    agentGroup.add(chairGroup);
+    officeScene.add(chairGroup);
 
-    // 3. Karakter Kemikleri & Gövdesi
+    // 2. ÇALIŞANA BAKAN MONİTÖRLER & OPTİK MOUSE
+    buildWorkerDeskEquipment(cfg, isRightSide);
+
+    // 3. KARAKTER MODELİ (Sadece karakter hareket eder)
+    const agentGroup = new THREE.Group();
+    agentGroup.position.set(...cfg.seatPos);
+    agentGroup.rotation.y = cfg.seatRotY;
+
     const bodyGroup = new THREE.Group();
-    bodyGroup.position.y = 0;
-
     const clothMat = new THREE.MeshStandardMaterial({ color: cfg.suitColor, roughness: 0.45 });
-    const skinMat = new THREE.MeshStandardMaterial({ color: 0xfbd0b0, roughness: 0.6 });
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0xfbd0b0 });
 
-    // Bacaklar
     const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.42, 0.14), clothMat);
     leftLeg.position.set(-0.14, 0.21, 0);
     bodyGroup.add(leftLeg);
@@ -3190,13 +3452,10 @@ function createAgentWorkstation(cfg) {
     rightLeg.position.set(0.14, 0.21, 0);
     bodyGroup.add(rightLeg);
 
-    // Gövde
     const torso = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.52, 0.28), clothMat);
     torso.position.y = 0.70;
-    torso.castShadow = true;
     bodyGroup.add(torso);
 
-    // Kollar
     const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.40, 0.11), clothMat);
     leftArm.position.set(-0.28, 0.68, 0.12);
     leftArm.rotation.x = Math.PI / 4;
@@ -3207,12 +3466,10 @@ function createAgentWorkstation(cfg) {
     rightArm.rotation.x = Math.PI / 4;
     bodyGroup.add(rightArm);
 
-    // Baş & Saç
     const headGroup = new THREE.Group();
     headGroup.position.set(0, 1.10, 0);
 
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.30, 0.26), skinMat);
-    head.castShadow = true;
     headGroup.add(head);
 
     const hair = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.10, 0.28), new THREE.MeshStandardMaterial({ color: cfg.hairColor, roughness: 0.8 }));
@@ -3228,10 +3485,6 @@ function createAgentWorkstation(cfg) {
     bodyGroup.add(headGroup);
     agentGroup.add(bodyGroup);
 
-    // 4. Masadaki Kendi Bilgisayarı (Herkesin Önündeki Çift Monitör & Klavye)
-    buildAgentDeskComputer(cfg);
-
-    // Ajanı Sözlüğe Kaydet
     agents[cfg.id] = {
         id: cfg.id,
         name: cfg.name,
@@ -3256,37 +3509,36 @@ function createAgentWorkstation(cfg) {
     officeScene.add(agentGroup);
 }
 
-// Her Ajanın Önündeki Özel Çift Monitörlü İşlem İstasyonu
-function buildAgentDeskComputer(cfg) {
-    const isRight = cfg.seatPos[0] > 0;
+// Çalışanın Önündeki Çift Monitör & Optik Mouse (Yüzü Tam Çalışana Bakar)
+function buildWorkerDeskEquipment(cfg, isRightSide) {
     const compGroup = new THREE.Group();
     compGroup.position.set(...cfg.deskPos);
-    // Monitörlerin yüzü ajana doğru dönük olmalı
-    compGroup.rotation.y = isRight ? -Math.PI / 2 : Math.PI / 2;
+    // Sol taraftakiler için (x < 0) ekranlar sola bakar (+PI/2), sağdakiler için sağa bakar (-PI/2)
+    compGroup.rotation.y = isRightSide ? -Math.PI / 2 : Math.PI / 2;
 
     const screenMat = new THREE.MeshStandardMaterial({
         color: cfg.screenColor,
         emissive: cfg.screenColor,
-        emissiveIntensity: 0.85,
-        roughness: 0.2
+        emissiveIntensity: 0.75,
+        roughness: 0.3
     });
 
-    // 1. Ana Analiz Ekranı
+    // 1. Ana Ekran
     const scr1 = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.30, 0.02), screenMat);
     scr1.position.set(-0.25, 0.24, 0);
-    scr1.rotation.y = 0.15;
+    scr1.rotation.y = 0.14;
     compGroup.add(scr1);
     officeDeskScreens.push(scr1);
 
-    // 2. Yan Takip Ekranı (Dikey/Kavisli)
+    // 2. Yan Takip Ekranı
     const scr2 = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.28, 0.02), screenMat);
     scr2.position.set(0.24, 0.23, 0);
-    scr2.rotation.y = -0.18;
+    scr2.rotation.y = -0.16;
     compGroup.add(scr2);
     officeDeskScreens.push(scr2);
 
-    // Metalik Monitör Standı
-    const standMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.85 });
+    // Metalik Stand
+    const standMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.8 });
     const standBar = new THREE.Mesh(new THREE.BoxGeometry(0.70, 0.03, 0.03), standMat);
     standBar.position.set(0, 0.22, -0.05);
     compGroup.add(standBar);
@@ -3295,20 +3547,137 @@ function buildAgentDeskComputer(cfg) {
     standPost.position.set(0, 0.11, -0.05);
     compGroup.add(standPost);
 
-    // Masa Üstü Mekanik Klavye & Mouse Pad
-    const pad = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.005, 0.30), new THREE.MeshStandardMaterial({ color: 0x090e17, roughness: 0.8 }));
-    pad.position.set(0, 0.005, 0.24);
-    compGroup.add(pad);
-
+    // Klavye
     const kb = new THREE.Mesh(new THREE.BoxGeometry(0.40, 0.012, 0.14), new THREE.MeshStandardMaterial({ color: 0x1e293b }));
-    kb.position.set(-0.06, 0.015, 0.24);
+    kb.position.set(-0.06, 0.015, 0.22);
     compGroup.add(kb);
 
-    const mouse = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.015, 0.10), new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 0.3 }));
-    mouse.position.set(0.22, 0.015, 0.24);
+    // 🖱️ OPTİK MOUSE & MOUSE PAD
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.005, 0.28), new THREE.MeshStandardMaterial({ color: 0x090e17, roughness: 0.9 }));
+    pad.position.set(0, 0.005, 0.22);
+    compGroup.add(pad);
+
+    const mouse = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.018, 0.10), new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3 }));
+    mouse.position.set(0.22, 0.016, 0.22);
     compGroup.add(mouse);
 
+    // Mouse LED Işığı
+    const mouseLed = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.005, 0.03), new THREE.MeshBasicMaterial({ color: 0x38bdf8 }));
+    mouseLed.position.set(0.22, 0.026, 0.22);
+    compGroup.add(mouseLed);
+
     officeScene.add(compGroup);
+}
+
+// -------------------------------------------------------------
+// 🏓 ⚽ PATRONUN ARKADAŞLARI: MEHMET & BERAT
+// (Çalışmıyor! Masa Tenisi, Langırt, Çay, Espriler & Goygoy)
+// -------------------------------------------------------------
+function buildFriendsMehmetAndBerat() {
+    // MEHMET (Cool nane yeşili hoodie, bej pantolon, raket tutar)
+    createFriendCharacter({
+        id: 'mehmet',
+        name: 'Mehmet (Patronun Arkadaşı)',
+        startPos: [5.2, 0, -1.2], // Masa tenisi başında
+        startRotY: Math.PI / 2,
+        suitColor: 0x0d9488, // Nane Yeşili / Turkuaz Hoodie
+        hairColor: 0x292524,
+        phrases: [
+            "Berat çay koysana kanka ya, semaver kaynıyor!",
+            "Masa tenisinde dün 11-4 yendim seni unutma!",
+            "Efe patron oldu bize çay bile ısmarlamıyor haha.",
+            "Langırtın kalecisini çok iyi çeviriyorum bu sefer affetmem.",
+            "Kanka Bitcoin rekor kırar mı sence? gerçi bana ne Efe düşünsün.",
+            "Ofisin çayı da efsaneymiş, demlik tam kıvamında."
+        ]
+    });
+
+    // BERAT (Lacivert / Bordo kolej ceketi, spor ayakkabı, langırt başında)
+    createFriendCharacter({
+        id: 'berat',
+        name: 'Berat (Patronun Arkadaşı)',
+        startPos: [7.2, 0, -1.2], // Masa tenisinin diğer ucu
+        startRotY: -Math.PI / 2,
+        suitColor: 0x1e3a8a, // Lacivert Kolej Ceketi
+        hairColor: 0x1c1917,
+        phrases: [
+            "Mehmet masa tenisinde rüzgar vardı o yüzden yendin, gel rövanşa!",
+            "Çayı ben koydum zaten, şekeri sen getir.",
+            "Efe'ye bak takım elbiseyle Wall Street kurdu gibi oturuyor maşallah.",
+            "Langırt 7'de biter kanka, bahse var mısın?",
+            "Ajanlar da harıl harıl çalışıyor valla, kolay gelsin beyler.",
+            "Masa tenisinde bu sefer falso vereceğim gör bak."
+        ]
+    });
+}
+
+function createFriendCharacter(cfg) {
+    const friendGroup = new THREE.Group();
+    friendGroup.position.set(...cfg.startPos);
+    friendGroup.rotation.y = cfg.startRotY;
+
+    const bodyGroup = new THREE.Group();
+    const clothMat = new THREE.MeshStandardMaterial({ color: cfg.suitColor, roughness: 0.5 });
+    const pantsMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.6 });
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0xfbd0b0 });
+
+    const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.44, 0.14), pantsMat);
+    leftLeg.position.set(-0.14, 0.22, 0);
+    bodyGroup.add(leftLeg);
+
+    const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.44, 0.14), pantsMat);
+    rightLeg.position.set(0.14, 0.22, 0);
+    bodyGroup.add(rightLeg);
+
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.50, 0.54, 0.30), clothMat);
+    torso.position.y = 0.72;
+    bodyGroup.add(torso);
+
+    const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.42, 0.11), clothMat);
+    leftArm.position.set(-0.30, 0.70, 0.08);
+    leftArm.rotation.x = Math.PI / 6;
+    bodyGroup.add(leftArm);
+
+    const rightArm = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.42, 0.11), clothMat);
+    rightArm.position.set(0.30, 0.70, 0.08);
+    rightArm.rotation.x = Math.PI / 4;
+    bodyGroup.add(rightArm);
+
+    // Baş & Saç
+    const headGroup = new THREE.Group();
+    headGroup.position.set(0, 1.14, 0);
+
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.30, 0.26), skinMat);
+    headGroup.add(head);
+
+    const hair = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.12, 0.28), new THREE.MeshStandardMaterial({ color: cfg.hairColor, roughness: 0.8 }));
+    hair.position.set(0, 0.15, 0);
+    headGroup.add(hair);
+
+    bodyGroup.add(headGroup);
+    friendGroup.add(bodyGroup);
+
+    friends[cfg.id] = {
+        id: cfg.id,
+        name: cfg.name,
+        group: friendGroup,
+        bodyGroup: bodyGroup,
+        headGroup: headGroup,
+        leftLeg: leftLeg,
+        rightLeg: rightLeg,
+        leftArm: leftArm,
+        rightArm: rightArm,
+        homePos: new THREE.Vector3(...cfg.startPos),
+        homeRotY: cfg.startRotY,
+        state: 'PLAYING_PINGPONG',
+        waypoints: [],
+        currentWpIdx: 0,
+        phrases: cfg.phrases
+    };
+
+    bubbleAnchors[cfg.id].pos = new THREE.Vector3(cfg.startPos[0], 2.0, cfg.startPos[2]);
+
+    officeScene.add(friendGroup);
 }
 
 // -------------------------------------------------------------
@@ -3333,20 +3702,27 @@ function bindBubbleElements() {
     bubbleAnchors.chief.el = document.getElementById('bubble-chief');
     bubbleAnchors.chief.bodyEl = document.getElementById('text-chief');
 
+    bubbleAnchors.mehmet.el = document.getElementById('bubble-mehmet');
+    bubbleAnchors.mehmet.bodyEl = document.getElementById('text-mehmet');
+
+    bubbleAnchors.berat.el = document.getElementById('bubble-berat');
+    bubbleAnchors.berat.bodyEl = document.getElementById('text-berat');
+
     bubbleAnchors.trade.el = document.getElementById('tradeMonitorBubble');
 
-    // Herhangi bir karaktere veya balonuna tıklandığında anında konuşturalım
     Object.keys(bubbleAnchors).forEach(key => {
         const item = bubbleAnchors[key];
         if (item.el) {
             item.el.addEventListener('click', () => {
                 if (key === 'boss') {
-                    triggerSpeech('boss', "Acele işlem yok! Kriterler net: Sermaye koruma kuralımız #1.");
+                    triggerSpeech('boss', "Piyasayı tarayın beyler, acele işlem yok! Sermaye koruma önceliğimiz.");
                     setOfficeCamera('boss');
                 } else if (agents[key]) {
                     const phr = agents[key].phrases;
-                    const randPhrase = phr[Math.floor(Math.random() * phr.length)];
-                    triggerSpeech(key, randPhrase, 5000);
+                    triggerSpeech(key, phr[Math.floor(Math.random() * phr.length)], 5000);
+                } else if (friends[key]) {
+                    const phr = friends[key].phrases;
+                    triggerSpeech(key, phr[Math.floor(Math.random() * phr.length)], 5000);
                 }
             });
         }
@@ -3354,7 +3730,7 @@ function bindBubbleElements() {
 }
 
 // -------------------------------------------------------------
-// 3D DÜNYADAN 2D EKRANA BALON YANSITMASI (ŞEFFAF & DİNAMİK)
+// 3D DÜNYADAN 2D EKRANA BALON YANSITMASI
 // -------------------------------------------------------------
 function updateBubblePositions() {
     if (!officeRenderer || !officeCamera) return;
@@ -3370,16 +3746,19 @@ function updateBubblePositions() {
         const item = bubbleAnchors[key];
         if (!item || !item.el) return;
 
-        // Trade balonu her zaman görünür, diğer karakterler konuştukça (.speaking sınıfıyla) açılır
         if (key !== 'trade' && !item.isSpeaking) {
             return;
         }
 
-        // Çapa pozisyonu karakterin anlık konumuna göre dinamik takip eder (Yürürken kafasını izler!)
         let worldPos = item.pos;
-        if (key !== 'trade' && key !== 'boss' && agents[key]) {
-            worldPos = agents[key].group.position.clone();
-            worldPos.y += 1.95;
+        if (key !== 'trade' && key !== 'boss') {
+            if (agents[key]) {
+                worldPos = agents[key].group.position.clone();
+                worldPos.y += 1.95;
+            } else if (friends[key]) {
+                worldPos = friends[key].group.position.clone();
+                worldPos.y += 2.0;
+            }
         }
 
         if (!worldPos) return;
@@ -3405,52 +3784,165 @@ function updateBubblePositions() {
 }
 
 // -------------------------------------------------------------
-// OTONOM OFİS RUTİNİ: KAHVE ALMA, TUVALET, PATRONA RAPOR VERME
+// OTONOM RUTİNLER: ÇALIŞANLAR VE ARKADAŞLAR
 // -------------------------------------------------------------
 function updateAutonomousOfficeAI(deltaTime, time) {
-    // 1. Periyodik Konuşma Döngüsü (Her 8-12 saniyede bir karakter konuşur)
+    // 1. Zengin & Esprili Diyalog Döngüsü (Her 6-9 saniyede bir konuşma)
     if (time > nextDialogueTime) {
-        nextDialogueTime = time + 8000 + Math.random() * 5000;
-        const availableSpeakers = ['boss', 'scanner', 'ta', 'risk', 'news', 'chief'];
-        const chosen = availableSpeakers[Math.floor(Math.random() * availableSpeakers.length)];
+        nextDialogueTime = time + 6500 + Math.random() * 4000;
+        const allKeys = ['boss', 'scanner', 'ta', 'risk', 'news', 'chief', 'mehmet', 'berat'];
+        const chosen = allKeys[Math.floor(Math.random() * allKeys.length)];
+
         if (chosen === 'boss') {
             const bossLines = [
-                "Disiplin #1 kuralımız, acele yok beyler.",
-                "Piyasayı tarayın, güçlü kırılım görürseniz masaya getirin.",
-                "Sermaye kalkanı devrede, gereksiz risk almıyoruz."
+                "Piyasayı tarayın beyler, acele yok! Sermaye koruma kuralımız #1.",
+                "Mehmet, Berat sesinizi azaltın komite toplantıdayız haha!",
+                "Risk Şefi, kaldıraç ve marjini çift kontrol et.",
+                "Trend teyidi gelmeden tek bir cent bile riske atılmayacak."
             ];
             triggerSpeech('boss', bossLines[Math.floor(Math.random() * bossLines.length)], 5000);
         } else if (agents[chosen]) {
             const phr = agents[chosen].phrases;
             triggerSpeech(chosen, phr[Math.floor(Math.random() * phr.length)], 5000);
+        } else if (friends[chosen]) {
+            const phr = friends[chosen].phrases;
+            triggerSpeech(chosen, phr[Math.floor(Math.random() * phr.length)], 5000);
         }
     }
 
-    // 2. Otonom Yürüme Eylemi Tetikleyici (Her 16-24 saniyede bir çalışan kalkıp dolaşır)
+    // 2. Mehmet ve Berat Aktivite Değişimi (Masa Tenisi, Langırt, Çay Köşesi, Efe'nin Yanı)
+    if (time > nextFriendsGameTime) {
+        nextFriendsGameTime = time + 14000 + Math.random() * 8000;
+        const gameType = Math.floor(Math.random() * 4); // 0: PingPong, 1: Langırt, 2: Çay Köşesi, 3: Efe Ziyareti
+        switchFriendsActivity(gameType);
+    }
+
+    // 3. Çalışanların Yürüme Rutini (Kahve / Portatif WC / Dinlenme Lounge / Rapor)
     if (time > nextAutonomousActionTime) {
-        nextAutonomousActionTime = time + 16000 + Math.random() * 10000;
-        
-        // Sadece şu an oturan çalışanlardan birini seç
+        nextAutonomousActionTime = time + 18000 + Math.random() * 10000;
         const candidateIds = ['scanner', 'ta', 'risk', 'news'];
         const seatedCandidates = candidateIds.filter(id => agents[id] && agents[id].state === 'SEATED_WORKING');
-        
+
         if (seatedCandidates.length > 0) {
-            const walkerId = seatedCandidates[Math.floor(Math.random() * seatedCandidates.length)];
-            const walker = agents[walkerId];
-            
-            // Yapılacak Eylemi Seç: Kahve (0), Tuvalet (1), Patrona Rapor (2)
-            const actionType = Math.floor(Math.random() * 3);
+            const walker = agents[seatedCandidates[Math.floor(Math.random() * seatedCandidates.length)]];
+            const actionType = Math.floor(Math.random() * 4);
             startAgentActivity(walker, actionType);
         }
     }
 
-    // 3. Çalışanların Yürüme ve Kemik Animasyonlarını Güncelle
-    Object.keys(agents).forEach(id => {
-        updateSingleAgentMovement(agents[id], deltaTime, time);
-    });
+    // Kemik ve Yürüme Animasyonları
+    Object.keys(agents).forEach(id => updateSingleAgentMovement(agents[id], deltaTime, time));
+    Object.keys(friends).forEach(id => updateFriendMovement(friends[id], deltaTime, time));
 }
 
-// Bir Ajan İçin Aktivite Başlatır (Waypoints / Koridor Navigasyonu)
+// Mehmet & Berat'ın Aktiviteleri Arasında Geçiş
+function switchFriendsActivity(actType) {
+    const m = friends['mehmet'];
+    const b = friends['berat'];
+    if (!m || !b) return;
+
+    if (actType === 0) {
+        // Masa Tenisi Maçı
+        m.waypoints = [new THREE.Vector3(5.0, 0, -1.2)];
+        b.waypoints = [new THREE.Vector3(7.4, 0, -1.2)];
+        m.state = 'WALKING';
+        b.state = 'WALKING';
+        m.targetState = 'PLAYING_PINGPONG';
+        b.targetState = 'PLAYING_PINGPONG';
+        m.finalRotY = Math.PI / 2;
+        b.finalRotY = -Math.PI / 2;
+        triggerSpeech('mehmet', "Berat masa tenisinde bu sefer seni devireceğim!", 4500);
+    } else if (actType === 1) {
+        // Langırt Maçı
+        m.waypoints = [new THREE.Vector3(5.2, 0, 1.5)];
+        b.waypoints = [new THREE.Vector3(7.2, 0, 1.5)];
+        m.state = 'WALKING';
+        b.state = 'WALKING';
+        m.targetState = 'PLAYING_FOOSBALL';
+        b.targetState = 'PLAYING_FOOSBALL';
+        m.finalRotY = Math.PI / 2;
+        b.finalRotY = -Math.PI / 2;
+        triggerSpeech('berat', "Langırt 7'de biter kanka, bahse var mısın?", 4500);
+    } else if (actType === 2) {
+        // Çay Köşesinde Çay İçme
+        m.waypoints = [new THREE.Vector3(0, 0, 3.2), new THREE.Vector3(-5.2, 0, -1.2)];
+        b.waypoints = [new THREE.Vector3(0, 0, 3.2), new THREE.Vector3(-4.5, 0, -1.2)];
+        m.state = 'WALKING';
+        b.state = 'WALKING';
+        m.targetState = 'DRINKING_TEA';
+        b.targetState = 'DRINKING_TEA';
+        m.finalRotY = -Math.PI / 2;
+        b.finalRotY = Math.PI / 2;
+        triggerSpeech('mehmet', "Kanka semaverden iki tavşan kanı çay çekelim ya.", 4500);
+        playOfficeSound('tea');
+    } else {
+        // Efe'ye Selam Verme / Goygoy
+        m.waypoints = [new THREE.Vector3(2.2, 0, -2.1)];
+        b.waypoints = [new THREE.Vector3(2.8, 0, -2.1)];
+        m.state = 'WALKING';
+        b.state = 'WALKING';
+        m.targetState = 'CHATTING_WITH_BOSS';
+        b.targetState = 'CHATTING_WITH_BOSS';
+        m.finalRotY = -Math.PI / 2;
+        b.finalRotY = -Math.PI / 2;
+        triggerSpeech('mehmet', "Efe patron oldu bizi tanımaz artık haha!", 4500);
+    }
+}
+
+function updateFriendMovement(fr, deltaTime, time) {
+    if (fr.state === 'PLAYING_PINGPONG') {
+        // Raket sallama hareketi
+        fr.rightArm.rotation.x = Math.PI / 3 + Math.sin(time * 0.008) * 0.35;
+        if (Math.random() < 0.015) playOfficeSound('pingpong');
+        return;
+    }
+
+    if (fr.state === 'PLAYING_FOOSBALL') {
+        // Langırt kolu çevirme hareketi
+        fr.leftArm.rotation.x = Math.PI / 4 + Math.sin(time * 0.01) * 0.25;
+        fr.rightArm.rotation.x = Math.PI / 4 + Math.cos(time * 0.01) * 0.25;
+        return;
+    }
+
+    if (fr.state === 'DRINKING_TEA' || fr.state === 'CHATTING_WITH_BOSS') {
+        fr.rightArm.rotation.x = Math.PI / 3 + Math.sin(time * 0.003) * 0.15;
+        return;
+    }
+
+    if (fr.state === 'WALKING') {
+        if (!fr.waypoints || fr.currentWpIdx >= fr.waypoints.length) {
+            fr.state = fr.targetState || 'IDLE';
+            fr.group.rotation.y = fr.finalRotY || 0;
+            fr.leftLeg.rotation.x = 0;
+            fr.rightLeg.rotation.x = 0;
+            return;
+        }
+
+        const targetWp = fr.waypoints[fr.currentWpIdx];
+        const currentPos = fr.group.position;
+        const dir = new THREE.Vector3().subVectors(targetWp, currentPos);
+        const dist = dir.length();
+
+        if (dist < 0.1) {
+            fr.currentWpIdx++;
+        } else {
+            dir.normalize();
+            const step = Math.min(dist, 1.9 * deltaTime);
+            currentPos.addScaledVector(dir, step);
+
+            const targetAngle = Math.atan2(dir.x, dir.z);
+            fr.group.rotation.y = THREE.MathUtils.lerp(fr.group.rotation.y, targetAngle, 0.15);
+
+            const walkCycle = time * 0.01;
+            fr.leftLeg.rotation.x = Math.sin(walkCycle) * 0.45;
+            fr.rightLeg.rotation.x = -Math.sin(walkCycle) * 0.45;
+            fr.leftArm.rotation.x = -Math.sin(walkCycle) * 0.35;
+            fr.rightArm.rotation.x = Math.sin(walkCycle) * 0.35;
+        }
+    }
+}
+
+// Bir Ajan İçin Aktivite Başlatır (Yürürken Sandalye Masada Kalır!)
 function startAgentActivity(ag, actionType) {
     const isLeft = ag.homePos.x < 0;
     const corridorX = isLeft ? -2.4 : 2.4;
@@ -3459,39 +3951,46 @@ function startAgentActivity(ag, actionType) {
     ag.activityType = actionType;
 
     if (actionType === 0) {
-        // ☕ KAHVEYE GİDİŞ: Sandalyeden çık -> Koridora geç -> Ön koridora yürü -> Kahve makinesine yanaş
+        // Çay Köşesine Gidiş
         ag.waypoints = [
             new THREE.Vector3(corridorX, 0, ag.homePos.z),
-            new THREE.Vector3(corridorX, 0, 2.0),
-            new THREE.Vector3(4.2, 0, 2.0)
+            new THREE.Vector3(corridorX, 0, 2.2),
+            new THREE.Vector3(-5.0, 0, -1.2)
         ];
-        ag.destinationPhrase = "☕ Taze bir espresso alayım, piyasa takibi yoğun geçiyor...";
-        ag.returnAction = () => { ag.waypoints = [ new THREE.Vector3(corridorX, 0, 2.0), new THREE.Vector3(corridorX, 0, ag.homePos.z), ag.homePos.clone() ]; };
+        ag.destinationPhrase = "Tavşan kanı bir bardak çay alayım, piyasa takibi yoğun...";
+        ag.returnAction = () => { ag.waypoints = [new THREE.Vector3(corridorX, 0, 2.2), new THREE.Vector3(corridorX, 0, ag.homePos.z), ag.homePos.clone()]; };
     } else if (actionType === 1) {
-        // 🚻 TUVALETE GİDİŞ: Koridora geç -> WC kapısına yanaş
+        // Portatif WC'ye Gidiş
         ag.waypoints = [
             new THREE.Vector3(corridorX, 0, ag.homePos.z),
-            new THREE.Vector3(corridorX, 0, 2.0),
-            new THREE.Vector3(-4.2, 0, 2.0)
+            new THREE.Vector3(corridorX, 0, 2.5),
+            new THREE.Vector3(-7.2, 0, 4.2)
         ];
-        ag.destinationPhrase = "🚻 Kısa bir ihtiyaç molası...";
-        ag.returnAction = () => { ag.waypoints = [ new THREE.Vector3(corridorX, 0, 2.0), new THREE.Vector3(corridorX, 0, ag.homePos.z), ag.homePos.clone() ]; };
+        ag.destinationPhrase = "Kısa bir ihtiyaç molası...";
+        ag.returnAction = () => { ag.waypoints = [new THREE.Vector3(corridorX, 0, 2.5), new THREE.Vector3(corridorX, 0, ag.homePos.z), ag.homePos.clone()]; };
+    } else if (actionType === 2) {
+        // Dinlenme / Sigara Lounge Alanına Gidiş
+        ag.waypoints = [
+            new THREE.Vector3(corridorX, 0, ag.homePos.z),
+            new THREE.Vector3(corridorX, 0, 1.8),
+            new THREE.Vector3(-5.6, 0, 1.8)
+        ];
+        ag.destinationPhrase = "Lounge'da 5 dakika dinlenip bir çay-sigara molası veriyorum.";
+        ag.returnAction = () => { ag.waypoints = [new THREE.Vector3(corridorX, 0, 1.8), new THREE.Vector3(corridorX, 0, ag.homePos.z), ag.homePos.clone()]; };
     } else {
-        // 👑 PATRONA RAPOR GÖTÜRME: Koridora geç -> Patronun masasının sağına yürü
+        // Patrona Rapor Sunma
         ag.waypoints = [
             new THREE.Vector3(corridorX, 0, ag.homePos.z),
-            new THREE.Vector3(corridorX, 0, -2.0),
-            new THREE.Vector3(isLeft ? -1.1 : 1.1, 0, -2.0)
+            new THREE.Vector3(corridorX, 0, -2.1),
+            new THREE.Vector3(isLeft ? -1.0 : 1.0, 0, -2.1)
         ];
-        ag.destinationPhrase = "Efe Bey, son piyasa ve tarama özetini getirdim.";
-        ag.returnAction = () => { ag.waypoints = [ new THREE.Vector3(corridorX, 0, -2.0), new THREE.Vector3(corridorX, 0, ag.homePos.z), ag.homePos.clone() ]; };
+        ag.destinationPhrase = "Efe Bey, son tarama ve risk özetini getirdim.";
+        ag.returnAction = () => { ag.waypoints = [new THREE.Vector3(corridorX, 0, -2.1), new THREE.Vector3(corridorX, 0, ag.homePos.z), ag.homePos.clone()]; };
     }
 }
 
-// Tek Bir Ajanın Adım Adım Yürümesini ve Kemiklerini Hareket Ettirir
 function updateSingleAgentMovement(ag, deltaTime, time) {
     if (ag.state === 'SEATED_WORKING') {
-        // Otururken hafif nefes alma ve klavyede yazma hareketi
         ag.leftArm.rotation.x = Math.PI / 3.5 + Math.sin(time * 0.005) * 0.05;
         ag.rightArm.rotation.x = Math.PI / 3.5 + Math.cos(time * 0.005) * 0.05;
         ag.leftLeg.rotation.x = 0;
@@ -3502,20 +4001,17 @@ function updateSingleAgentMovement(ag, deltaTime, time) {
 
     if (ag.state === 'WALKING') {
         if (ag.currentWpIdx >= ag.waypoints.length) {
-            // Hedefe ulaşıldı!
             ag.state = 'AT_DESTINATION';
             ag.destinationTimer = Date.now() + 4500;
             triggerSpeech(ag.id, ag.destinationPhrase, 4000);
 
             if (ag.activityType === 0) {
-                playOfficeSound('coffee');
+                playOfficeSound('tea');
             } else if (ag.activityType === 1) {
-                // WC meşgul ışığını turuncu yap
-                if (wcSignLight) wcSignLight.color.setHex(0xf59e0b);
-            } else if (ag.activityType === 2) {
-                // Patron Efe başını sallar ve yanıt verir
+                if (portableWcLight) portableWcLight.color.setHex(0xf59e0b); // WC Dolu
+            } else if (ag.activityType === 3) {
                 setTimeout(() => {
-                    triggerSpeech('boss', "Güzel rapor, temkinli kalıp devam ediyoruz.", 4000);
+                    triggerSpeech('boss', "Güzel analiz, disiplinli devam ediyoruz.", 4000);
                 }, 1500);
             }
             return;
@@ -3530,28 +4026,23 @@ function updateSingleAgentMovement(ag, deltaTime, time) {
             ag.currentWpIdx++;
         } else {
             dir.normalize();
-            // Yürüme hızı: saniyede 1.8 birim
             const step = Math.min(dist, 1.8 * deltaTime);
             currentPos.addScaledVector(dir, step);
 
-            // Gittiği yöne doğru yumuşakça dön
             const targetAngle = Math.atan2(dir.x, dir.z);
             ag.group.rotation.y = THREE.MathUtils.lerp(ag.group.rotation.y, targetAngle, 0.15);
 
-            // Sims Yürüme Animasyonu: Bacak ve kol salınımı
             const walkCycle = time * 0.01;
             ag.leftLeg.rotation.x = Math.sin(walkCycle) * 0.45;
             ag.rightLeg.rotation.x = -Math.sin(walkCycle) * 0.45;
             ag.leftArm.rotation.x = -Math.sin(walkCycle) * 0.35;
             ag.rightArm.rotation.x = Math.sin(walkCycle) * 0.35;
-            ag.bodyGroup.position.y = Math.abs(Math.sin(walkCycle * 2)) * 0.04; // Adım atarken hafif zıplama
+            ag.bodyGroup.position.y = Math.abs(Math.sin(walkCycle * 2)) * 0.04;
         }
     } else if (ag.state === 'AT_DESTINATION') {
-        // Hedefte bekleme süresi bittiğinde geri masaya dönüş yolunu başlat
         if (Date.now() > ag.destinationTimer) {
-            if (ag.activityType === 1 && wcSignLight) {
-                // WC ışığını tekrar yeşil yap
-                wcSignLight.color.setHex(0x10b981);
+            if (ag.activityType === 1 && portableWcLight) {
+                portableWcLight.color.setHex(0x10b981); // WC Boş
             }
             ag.state = 'WALKING_BACK';
             ag.returnAction();
@@ -3559,7 +4050,6 @@ function updateSingleAgentMovement(ag, deltaTime, time) {
         }
     } else if (ag.state === 'WALKING_BACK') {
         if (ag.currentWpIdx >= ag.waypoints.length) {
-            // Masaya geri oturdu!
             ag.state = 'SEATED_WORKING';
             ag.group.position.copy(ag.homePos);
             ag.group.rotation.y = ag.homeRotY;
@@ -3608,7 +4098,7 @@ function setOfficeCamera(mode = 'boss') {
         const btn = document.getElementById('btnCamBoss');
         if (btn) btn.classList.add('active');
         camTargetPos = new THREE.Vector3(0, 2.3, isPortrait ? 0.3 : -0.4);
-        camLookTarget = new THREE.Vector3(0, 1.5, -2.4);
+        camLookTarget = new THREE.Vector3(0, 1.5, -2.3);
         playOfficeSound('chime');
     } else if (mode === 'table') {
         const btn = document.getElementById('btnCamTable');
@@ -3650,7 +4140,7 @@ function animateOffice(time) {
         bossHeadMesh.rotation.y = Math.sin(time * 0.001) * 0.08;
     }
 
-    // 3. Yaşayan Ofis Otonom Yapay Zekası (Yürüme, Kahve Alma, Tuvalet)
+    // 3. Otonom Ofis Yapay Zekası (Ajanlar ve Arkadaşlar)
     updateAutonomousOfficeAI(deltaTime, time);
 
     // 4. Yumuşak Kamera Geçişi
@@ -3694,7 +4184,15 @@ function updateOffice3DData(data) {
     const logs = data.scanner_logs || [];
     const statusPill = document.getElementById('officeStatusPill');
 
-    // 1. Bilgisayar Ekranı Canlı İşlem Baloncuğu & Ekran Işıkları
+    // 1. Dev Arka Plandaki İkili Ekranı Güncelle
+    renderBigWallScreenContent({
+        btcPrice: btc.btc_price ? Number(btc.btc_price).toLocaleString('en-US', {minimumFractionDigits: 1}) : '76,500.0',
+        btcStatus: `${btc.status || 'DEAD_CHOP'} (4s Bant: %${btc.range_pct || '0.40'})`,
+        activePositions: positions
+    });
+    if (bigWallTexture) bigWallTexture.needsUpdate = true;
+
+    // 2. Bilgisayar Ekranı Canlı İşlem Baloncuğu
     const tradeBubble = bubbleAnchors.trade.el;
     if (positions.length > 0) {
         const pos = positions[0];
@@ -3720,13 +4218,9 @@ function updateOffice3DData(data) {
         officeDeskScreens.forEach(scr => {
             if (scr.material) {
                 scr.material.emissive.setHex(glowColor);
-                scr.material.emissiveIntensity = 1.0;
+                scr.material.emissiveIntensity = 0.9;
             }
         });
-        if (officeDeskLight) {
-            officeDeskLight.color.setHex(glowColor);
-            officeDeskLight.intensity = 1.8;
-        }
 
         if (statusPill) {
             statusPill.innerHTML = `⚡ <strong>CANLI İŞLEM:</strong> ${sym} (${pnlText})`;
@@ -3740,20 +4234,16 @@ function updateOffice3DData(data) {
         officeDeskScreens.forEach(scr => {
             if (scr.material) {
                 scr.material.emissive.setHex(0x0284c7);
-                scr.material.emissiveIntensity = 0.7;
+                scr.material.emissiveIntensity = 0.6;
             }
         });
-        if (officeDeskLight) {
-            officeDeskLight.color.setHex(0x38bdf8);
-            officeDeskLight.intensity = 1.2;
-        }
         if (statusPill) {
             statusPill.innerHTML = `👑 Efe Masada | Piyasayı Gözlüyor`;
             statusPill.style.color = '#94a3b8';
         }
     }
 
-    // 2. Canlı Rejime Göre Patron Efe ve Ajanların Cümlelerini Güncelle
+    // 3. Canlı Veriye Göre Cümleler
     if (bubbleAnchors.boss.bodyEl) {
         if (positions.length > 0) {
             bubbleAnchors.boss.bodyEl.innerText = "İşlem açık beyler! Hedeflere sadık kalın, stop seviyesini koruyun.";
@@ -3761,31 +4251,15 @@ function updateOffice3DData(data) {
             bubbleAnchors.boss.bodyEl.innerText = "Piyasada ölü testere var. Acele işlem yok, sermaye koruma kuralımız #1!";
         } else if (btc.status === 'BULLISH') {
             bubbleAnchors.boss.bodyEl.innerText = "BTC yukarı yönlü kırılımda. En güçlü pariteyi önüme getirin!";
-        } else if (btc.status === 'DUMP_ALERT') {
-            bubbleAnchors.boss.bodyEl.innerText = "Sert düşüş alarmı! Risk Şefi, kaldıraçları ve teminatı kilitle.";
         }
     }
 
     if (bubbleAnchors.scanner.bodyEl && logs.length > 0) {
-        const lastLog = logs[0];
-        bubbleAnchors.scanner.bodyEl.innerText = `Radar: ${lastLog.symbol || 'PARİTE'} incelendi [${lastLog.status || 'OK'}].`;
+        bubbleAnchors.scanner.bodyEl.innerText = `Radar: ${logs[0].symbol || 'PARİTE'} incelendi [${logs[0].status || 'OK'}].`;
     }
 
     if (bubbleAnchors.ta.bodyEl) {
-        const range = btc.range_pct !== undefined ? btc.range_pct : '0.40';
-        bubbleAnchors.ta.bodyEl.innerText = `BTC 4s bant daralması: %${range}. EMA & Bollinger sıkışmasını gözlüyorum.`;
-    }
-
-    if (wallCanvasCtx && wallCanvasTexture && btc.btc_price) {
-        wallCanvasCtx.fillStyle = '#060a12';
-        wallCanvasCtx.fillRect(0, 0, 512, 128);
-        wallCanvasCtx.fillStyle = '#f59e0b';
-        wallCanvasCtx.font = 'bold 24px monospace';
-        wallCanvasCtx.fillText(`⚡ BTC: $${Number(btc.btc_price).toLocaleString()} [${btc.status || 'OK'}]`, 20, 45);
-        wallCanvasCtx.fillStyle = positions.length > 0 ? '#10b981' : '#38bdf8';
-        wallCanvasCtx.font = '18px monospace';
-        wallCanvasCtx.fillText(positions.length > 0 ? `AKTİF POZİSYON: ${positions[0].symbol}` : `SERMAYE KORUMA MODU | PATRON: EFE`, 20, 85);
-        wallCanvasTexture.needsUpdate = true;
+        bubbleAnchors.ta.bodyEl.innerText = `BTC 4s bant daralması: %${btc.range_pct || '0.40'}. EMA & Bollinger sıkışması var.`;
     }
 }
 
