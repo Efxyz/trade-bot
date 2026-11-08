@@ -27,6 +27,7 @@ from agents.notifier_agent import NotifierAgent
 from agents.tracker_agent import CounterfactualTrackerAgent
 from agents.telegram_command_agent import TelegramCommandAgent
 from agents.ai_analyst_agent import AIAnalystAgent
+from agents.quant_simulation_agent import QuantSimulationAgent
 from core.binance_streamer import start_streamer, pop_hot_symbols, add_stream_symbol, is_streamer_connected
 from dashboard import start_dashboard
 
@@ -45,6 +46,7 @@ class TradingBotOrchestrator:
         self.tracker = CounterfactualTrackerAgent(self.client)
         self.cmd_agent = TelegramCommandAgent(self)
         self.ai_analyst = AIAnalystAgent()
+        self.quant_sim = QuantSimulationAgent(default_simulations=5000, win_threshold_pct=60.0)
 
         # Canlı WebSocket Veri Boru Hattını Başlat
         try:
@@ -167,8 +169,23 @@ class TradingBotOrchestrator:
                     add_scanner_log(symbol, "REJECTED", risk_report.get("reason", "Risk kurallarına uymadı"))
                     continue
 
+                # Ajan 3.2: Kuant & Monte Carlo Fiyat Yolu Simülasyon Ajanı (5,000 Bağımsız Yol)
+                quant_sim = self.quant_sim.simulate_setup(symbol, ta_setup, candles_15m, num_simulations=5000)
+                win_pct = quant_sim.get("win_probability_pct", 0.0)
+
+                if not quant_sim.get("is_approved", False):
+                    add_scanner_log(
+                        symbol,
+                        "REJECTED",
+                        f"Kuant Simülasyon Veto Etti (5,000 Yol: TP İhtimali %{win_pct:.1f} < %60.0)",
+                        f"Stop Loss Riski: %{quant_sim.get('loss_probability_pct', 0.0):.1f}"
+                    )
+                    continue
+
                 # Ajan 3.5: AI Baş Analisti & Yatırım Komitesi Tartışması (Adversarial Multi-Agent Chamber)
-                ai_verdict = self.ai_analyst.evaluate_setup(ta_setup, risk_report, news_analysis, btc_regime, ticker, funding_data)
+                ai_verdict = self.ai_analyst.evaluate_setup(
+                    ta_setup, risk_report, news_analysis, btc_regime, ticker, funding_data, quant_sim=quant_sim
+                )
                 debate_data = ai_verdict.get("debate_data", {})
 
                 if not ai_verdict.get("ai_approved", True):
@@ -202,6 +219,7 @@ class TradingBotOrchestrator:
                     "news_summary": f"🏛️ Komite Puanı: {ai_verdict.get('ai_confidence', 0)}/10 | {ai_verdict.get('ai_critique', '')}",
                     "ta_reasons": ta_setup["ta_reasons"],
                     "ai_verdict": ai_verdict,
+                    "quant_sim": quant_sim,
                     "debate_json": debate_data,
                     "chart_entry_png": ""
                 }
