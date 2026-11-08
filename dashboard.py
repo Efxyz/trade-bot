@@ -1349,6 +1349,20 @@ HTML_OFFICE_TEMPLATE = """
         let tvWidget = null;
         let lastRenderedInterval = null;
 
+        // 3D Ofis Başlatma Köprüsü (Hata Korumalı)
+        function initOrResizeOffice3D() {
+            try {
+                if (typeof init3DOffice === 'function' && !officeInitialized) {
+                    init3DOffice();
+                } else if (typeof resizeOffice3D === 'function') {
+                    resizeOffice3D();
+                }
+            } catch (e) {
+                console.error("Office init safeguard error:", e);
+            }
+        }
+        const initOffice3D = initOrResizeOffice3D;
+
         function switchLeftView(mode) {
             currentLeftView = mode;
             localStorage.setItem('leftViewMode', mode);
@@ -1413,7 +1427,11 @@ HTML_OFFICE_TEMPLATE = """
                 if (tfGroup) tfGroup.style.display = 'none';
                 const leftPanel = document.getElementById('leftPanel');
                 if (leftPanel) leftPanel.classList.add('office-view-active');
-                initOrResizeOffice3D();
+                try {
+                    initOrResizeOffice3D();
+                } catch (e) {
+                    console.error("switchLeftView office error:", e);
+                }
             }
             if (mode !== 'office') {
                 const leftPanel = document.getElementById('leftPanel');
@@ -2621,8 +2639,10 @@ function init3DOffice() {
     const target = document.getElementById('officeCanvasTarget');
     if (!target) return;
 
-    const width = target.clientWidth || target.offsetWidth || 800;
-    const height = target.clientHeight || target.offsetHeight || 520;
+    let width = target.clientWidth || target.offsetWidth;
+    let height = target.clientHeight || target.offsetHeight;
+    if (!width || width < 100) width = 800;
+    if (!height || height < 100) height = 520;
 
     // 1. Sahne
     officeScene = new THREE.Scene();
@@ -2700,6 +2720,9 @@ function init3DOffice() {
     bindBubbleElements();
 
     officeInitialized = true;
+    setTimeout(resizeOffice3D, 50);
+    setTimeout(resizeOffice3D, 200);
+    setTimeout(resizeOffice3D, 600);
 
     setOfficeCamera('boss');
 
@@ -4531,8 +4554,30 @@ function resizeOffice3D() {
     }
 }
 
+// -------------------------------------------------------------
+// BAŞLATMA & BOYUTLANDIRMA KÖPRÜSÜ
+// -------------------------------------------------------------
+function initOrResizeOffice3D() {
+    try {
+        if (!officeInitialized) {
+            init3DOffice();
+        } else {
+            resizeOffice3D();
+        }
+    } catch (e) {
+        console.error("Office init/resize error:", e);
+    }
+}
+const initOffice3D = initOrResizeOffice3D;
+
         // Başlangıç Sol Görünümü ve Canlı Polling
-        switchLeftView(currentLeftView);
+        try {
+            switchLeftView(currentLeftView);
+        } catch (e) {
+            console.error("Initial switchLeftView error:", e);
+        }
+
+        // Canlı Polling Kesintisiz Başlatılır
         fetchTerminal();
         setInterval(fetchTerminal, 2000);
     </script>
