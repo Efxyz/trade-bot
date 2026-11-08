@@ -366,8 +366,10 @@ function init3DOffice() {
     const target = document.getElementById('officeCanvasTarget');
     if (!target) return;
 
-    const width = target.clientWidth || target.offsetWidth || 800;
-    const height = target.clientHeight || target.offsetHeight || 520;
+    let width = target.clientWidth || target.offsetWidth;
+    let height = target.clientHeight || target.offsetHeight;
+    if (!width || width < 100) width = 800;
+    if (!height || height < 100) height = 520;
 
     // 1. Sahne
     officeScene = new THREE.Scene();
@@ -445,6 +447,9 @@ function init3DOffice() {
     bindBubbleElements();
 
     officeInitialized = true;
+    setTimeout(resizeOffice3D, 50);
+    setTimeout(resizeOffice3D, 200);
+    setTimeout(resizeOffice3D, 600);
 
     setOfficeCamera('boss');
 
@@ -2275,3 +2280,19 @@ function resizeOffice3D() {
         officeRenderer.setSize(width, height);
     }
 }
+
+// -------------------------------------------------------------
+// BAŞLATMA & BOYUTLANDIRMA KÖPRÜSÜ
+// -------------------------------------------------------------
+function initOrResizeOffice3D() {
+    try {
+        if (!officeInitialized) {
+            init3DOffice();
+        } else {
+            resizeOffice3D();
+        }
+    } catch (e) {
+        console.error("Office init/resize error:", e);
+    }
+}
+const initOffice3D = initOrResizeOffice3D;
