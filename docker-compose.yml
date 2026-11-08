@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  tradebot:
+    build: .
+    container_name: binance_trade_bot
+    restart: always
+    ports:
+      - "5000:5000"
+    volumes:
+      # Veritabanı ve çıkarılan dersler kalıcı olsun
+      - ./data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+      - FLASK_ENV=production
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+
