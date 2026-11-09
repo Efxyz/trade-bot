@@ -49,7 +49,7 @@ class RiskOfficerAgent:
         rr = ta_setup["risk_reward"]
         is_empty_move = news_analysis.get("is_empty_move", False)
 
-        # 1. KRİTİK FİLTRE: BTC PİYASA ÇÖKÜŞ KALKANI (BTC Market Shield)
+        # 1. KRİTİK FİLTRE: BTC PİYASA ÇÖKÜŞ VE RALLİ KALKANI (BTC Market Shield)
         if btc_regime and btc_regime.get("block_longs", False) and direction == "LONG":
             return False, {
                 "decision": "REJECT",
@@ -57,6 +57,15 @@ class RiskOfficerAgent:
                     f"📌 <strong>Mevcut Durum:</strong> BTC Rejimi: {btc_regime.get('status', 'RISK')} ({btc_regime.get('summary', '')}).<br>"
                     f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Bitcoin düşüş veya ölü testere eğilimindeyken altcoinlerde LONG açmak sermayeyi yüksek riske atar.<br>"
                     f"🎯 <strong>Beklenen Şart:</strong> Bitcoin'in yeniden Boğa (BULLISH) trendine dönmesi."
+                )
+            }
+        if btc_regime and btc_regime.get("block_shorts", False) and direction == "SHORT":
+            return False, {
+                "decision": "REJECT",
+                "reason": (
+                    f"📌 <strong>Mevcut Durum:</strong> BTC Güçlü Yükseliş Rallisinde (+%{btc_regime.get('change_3h_pct', 0.0)}).<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Bitcoin sert ralli yaparken altcoinlerde SHORT açmak tasfiye (likidasyon) riski taşır.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> Rallinin durulması veya sağlıklı düzeltme vermesi."
                 )
             }
 
