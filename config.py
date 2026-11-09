@@ -95,7 +95,7 @@ MIN_4BAR_RANGE_PCT = 0.35       # Son 1 saatte dalgalanma %0.35'in altındaysa p
 BTC_CHOP_MIN_RANGE_4H_PCT = 0.80 # BTC 4 saatlik hareket alanı <%0.80 ise piyasa donuktur, işlem açılmaz
 
 # Tarama Aralığı (Aşırı İşlem ve Borsa Komisyonu Tuzağını Önleme)
-SCAN_INTERVAL_SECONDS = 90  # Her 90 saniyede bir tarar (Eski 45s makineli tüfek moduna son)
+SCAN_INTERVAL_SECONDS = 30  # Yüksek Hassasiyetli Turbo Tarama: Her 30 saniyede bir kesintisiz tarar (3x Hız, Sıfır Fırsat Kaçırma)
 
 # Zaman Dilimleri
 PRIMARY_TIMEFRAME = "15m"   # 15 Dakikalık Mumlar
