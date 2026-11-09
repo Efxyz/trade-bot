@@ -77,10 +77,11 @@ TARGET_PROFIT_PCT = 2.00        # Fiyatta ortalama %2.00 kâr hedefi (10x'te +%2
 MAX_SCALP_SL_PCT = 1.15         # Fiyatta maksimum %1.15 stop payı (Kayıp frenleme kalkanı)
 MIN_SCALP_SL_PCT = 0.85         # Minimum %0.85 stop (Gürültüye ezilmeme garantisi)
 MAX_SL_PCT_10X = 1.15           # 10x için max SL %1.15 (Marjin büyüklüğü küçültülerek risk $20'de sabitlenir)
-MAX_SL_PCT_20X = 0.75           # 20x için max SL %0.75 (Sniper dar stop)
+MAX_SL_PCT_20X = 1.00           # 20x Sniper için max SL %1.00 (Elit 85+ puanlı dar stoplu kurulumlar)
 MIN_RR_RATIO = 1.8              # Minimum 1:1.8 Risk/Ödül oranı (Eski 1.4 barajı asimetrik getiri için yükseltildi)
 MAX_HOLD_MINUTES = 90           # Hareketsiz pozisyonlara 90 dakika (6 mum) nefes payı tanı (Erken çıkış zararını önler)
 DAILY_MAX_NEW_TRADES = 4        # Keskin Nişancı Kotası: Günde en fazla 4 seçkin Grade A+ işlem (Borsa komisyon katili)
+DAILY_MAX_DRAWDOWN_USDT = 50.0  # Günlük Acil Durum Sigortası (Circuit Breaker): -$50 kayıpta taramayı 24s dondur
 
 # SMC & Confluence Kalite Eşiği (Sadece Kusursuz Grade A+ Kurulumlar - Keskin Nişancı Modu)
 MIN_CONFLUENCE_SCORE = 82       # 82 altı ortalama sinyaller kesinlikle elenir (Eski: 76)
