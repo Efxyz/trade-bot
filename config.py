@@ -71,18 +71,19 @@ LEVERAGE_STANDARD = 10  # 10x ile %1 fiyat hareketi = +%10 marjin karı
 LEVERAGE_HIGH = 20      # 20x ile %1 fiyat hareketi = +%20 marjin karı
 
 # ========================================================
-# RİSK / ÖDÜL VE VOLATİLİTE AYARLARI (GÜRÜLTÜYE KARŞI KORUMA)
+# RİSK / ÖDÜL VE VOLATİLİTE AYARLARI (KESKİN NİŞANCI & GÜRÜLTÜ KORUMASI)
 # ========================================================
-TARGET_PROFIT_PCT = 1.60        # Fiyatta ortalama %1.40 - %2.00 kâr hedefi (10x'te +%16, 20x'te +%32 marjin)
-MAX_SCALP_SL_PCT = 1.15         # Fiyatta maksimum %1.15 stop payı (Eski %1.35'ten düşürüldü - Kayıp frenleme)
+TARGET_PROFIT_PCT = 2.00        # Fiyatta ortalama %2.00 kâr hedefi (10x'te +%20 marjin karı)
+MAX_SCALP_SL_PCT = 1.15         # Fiyatta maksimum %1.15 stop payı (Kayıp frenleme kalkanı)
 MIN_SCALP_SL_PCT = 0.85         # Minimum %0.85 stop (Gürültüye ezilmeme garantisi)
 MAX_SL_PCT_10X = 1.15           # 10x için max SL %1.15 (Marjin büyüklüğü küçültülerek risk $20'de sabitlenir)
 MAX_SL_PCT_20X = 0.75           # 20x için max SL %0.75 (Sniper dar stop)
-MIN_RR_RATIO = 1.4              # Minimum 1:1.4 Risk/Ödül oranı
+MIN_RR_RATIO = 1.8              # Minimum 1:1.8 Risk/Ödül oranı (Eski 1.4 barajı asimetrik getiri için yükseltildi)
 MAX_HOLD_MINUTES = 90           # Hareketsiz pozisyonlara 90 dakika (6 mum) nefes payı tanı (Erken çıkış zararını önler)
+DAILY_MAX_NEW_TRADES = 4        # Keskin Nişancı Kotası: Günde en fazla 4 seçkin Grade A+ işlem (Borsa komisyon katili)
 
-# SMC & Confluence Kalite Eşiği (Sadece Kusursuz Grade A+ Kurulumlar)
-MIN_CONFLUENCE_SCORE = 76       # 76 altı zayıf / ortalama sinyaller kesinlikle elenir (Eski: 68)
+# SMC & Confluence Kalite Eşiği (Sadece Kusursuz Grade A+ Kurulumlar - Keskin Nişancı Modu)
+MIN_CONFLUENCE_SCORE = 82       # 82 altı ortalama sinyaller kesinlikle elenir (Eski: 76)
 
 # Likidite ve Slippage / Spread Koruması (Jesse & Hummingbot Standartları)
 MAX_ORDERBOOK_SPREAD_PCT = 0.12     # En iyi alış/satış makası %0.12'den genişse likidite tuzağı kabul edilir
