@@ -17,7 +17,8 @@ from config import (
     BINANCE_ROUNDTRIP_FEE_PCT,
     MIN_RR_RATIO,
     MAX_ORDERBOOK_SPREAD_PCT,
-    MAX_ALLOWED_FUNDING_RATE
+    MAX_ALLOWED_FUNDING_RATE,
+    MAX_POSITIONS_PER_DIRECTION
 )
 
 class RiskOfficerAgent:
@@ -103,6 +104,19 @@ class RiskOfficerAgent:
                         "reason": f"📌 <strong>Mevcut Durum:</strong> {symbol} paritesinde zaten açık bir işlem var.<br>⛔ <strong>Giriş Yapılmama Nedeni:</strong> Çift risk almayı engelleme kuralı.<br>🎯 <strong>Beklenen Şart:</strong> Mevcut pozisyonun kâr veya stopla kapanması."
                     }
 
+            # 1.8 TEK YÖNE YIĞILMA KALKANI (KORELASYON VE HEDGE KORUMASI - MAKS 3)
+            same_dir_count = sum(1 for s in active_signals if s.get("direction") == direction)
+            if same_dir_count >= MAX_POSITIONS_PER_DIRECTION:
+                opp_dir = "SHORT" if direction == "LONG" else "LONG"
+                return False, {
+                    "decision": "REJECT",
+                    "reason": (
+                        f"📌 <strong>Mevcut Durum:</strong> Radarda halihazırda {same_dir_count} adet {direction} pozisyonu açık.<br>"
+                        f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Tek Yöne Yığılma Kalkanı (Maksimum {MAX_POSITIONS_PER_DIRECTION} {direction} kotası dolu).<br>"
+                        f"🎯 <strong>Beklenen Şart:</strong> Portföy dengesi için zıt yönde ({opp_dir}) işlem bulunması veya bir {direction} pozisyonunun kapanması."
+                    )
+                }
+
         # 2. KALDIRAÇ VE SL UYGUNLUK DENETİMİ
         if leverage == 20:
             if sl_pct > MAX_SL_PCT_20X:
@@ -153,8 +167,8 @@ class RiskOfficerAgent:
         
         calculated_margin = target_risk_usd / total_sl_loss_fraction if total_sl_loss_fraction > 0 else (active_equity * 0.15)
         
-        # Dinamik marjin tavanı: Kasanın en fazla %35'i tek bir işleme ayrılabilir (Fon koruma kalkanı)
-        dynamic_max_margin = round(active_equity * 0.35, 1)
+        # Dinamik marjin tavanı: 5 pozisyon için kasanın en fazla %20'si tek bir işleme ayrılabilir
+        dynamic_max_margin = round(active_equity * 0.20, 1)
         allocated_margin = round(max(30.0, min(dynamic_max_margin, calculated_margin)), 1)
         actual_risk_usd = round(allocated_margin * total_sl_loss_fraction, 2)
 
