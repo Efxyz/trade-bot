@@ -1753,7 +1753,7 @@ HTML_OFFICE_TEMPLATE = """
             const stats = data.stats || {};
             // Kasa Kalkanı Kotası
             const shieldEl = document.getElementById('topShieldQuota');
-            const maxTrades = data.max_concurrent_trades || 4;
+            const maxTrades = data.max_concurrent_trades || 5;
             const currentTrades = (data.active_positions || []).length;
             if (shieldEl) {
                 shieldEl.innerText = `${currentTrades}/${maxTrades} Pozisyon`;
