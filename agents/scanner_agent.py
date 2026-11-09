@@ -60,11 +60,21 @@ def get_scanner_logs() -> List[Dict]:
         pass
     return list(SCANNER_ACTIVITY_LOGS)
 
-# Sentetik Hisse Senetleri ve İllikit Çöp Coin Kara Listesi (Sermaye Koruma Kalkanı)
+# Sentetik Hisse Senetleri, Kaldıraçlı Borsa ETF'leri ve Emtialar Kara Listesi (%100 Saf Kripto Kalkanı)
 SYNTHETIC_STOCK_BLACKLIST = {
-    "DELLUSDT", "MSTRUSDT", "IRENUSDT", "NVDAUSDT", "TSLAUSDT", "AAPLUSDT", 
-    "COINUSDT", "SQQQUSDT", "QQQUSDT", "SPYUSDT", "AMZNUSDT", "GOOGLUSDT",
-    "SKUUUSDT", "MUUUSDT", "CRCLUSDT"
+    # 1. ABD Hisse Senetleri & Pre-Market Çiftleri
+    "AAPLUSDT", "AMZNUSDT", "GOOGLUSDT", "MSFTUSDT", "METAUSDT", "NFLXUSDT",
+    "NVDAUSDT", "TSLAUSDT", "AMDUSDT", "INTCUSDT", "QCOMUSDT", "AVGOUSDT",
+    "ARMUSDT", "SMCIUSDT", "PLTRUSDT", "COINUSDT", "MSTRUSDT", "DELLUSDT",
+    "IRENUSDT", "CRCLUSDT", "SKUUUSDT", "MUUUSDT", "MUUSDT", "SNDKUSDT",
+    "SKHYNIXUSDT", "TSMUSDT", "AAOIUSDT", "CXMTUSDT", "BABAUSDT", "PDDUSDT",
+    
+    # 2. Kaldıraçlı Borsa & Endeks ETF'leri
+    "SOXLUSDT", "SOXSUSDT", "SQQQUSDT", "TQQQUSDT", "SPYUSDT", "QQQUSDT",
+    "KORUUSDT", "SPCXUSDT",
+    
+    # 3. Geleneksel Emtia & Ham Madde Çiftleri (Gap/Hafta Sonu Fitil Riski)
+    "XAUUSDT", "XAGUSDT", "BZUSDT", "CLUSDT", "COPPERUSDT"
 }
 
 class MarketScannerAgent:
@@ -92,7 +102,7 @@ class MarketScannerAgent:
             if t["quoteVolume"] >= self.min_volume 
             and t["symbol"] not in exclude_symbols
             and t["symbol"] not in SYNTHETIC_STOCK_BLACKLIST
-            and not any(t["symbol"].startswith(s) for s in ["DELL", "MSTR", "IREN", "NVDA", "TSLA", "SQQQ"])
+            and not any(t["symbol"].startswith(s) for s in ["DELL", "MSTR", "IREN", "NVDA", "TSLA", "SQQQ", "SOXL", "SOXS", "AAPL", "AMZN", "MSFT", "GOOGL", "SKHYNIX", "SNDK"])
         ]
 
         if not liquid_tickers:
