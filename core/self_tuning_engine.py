@@ -36,7 +36,7 @@ ADAPTIVE_CONFIG_PATH = DATA_DIR / "adaptive_hyperparams.json"
 # ========================================================
 SAFETY_GUARDRAILS = {
     "MAX_RISK_PER_TRADE_PCT": 2.0,       # Asla %2'nin üzerine çıkamaz
-    "MAX_CONCURRENT_TRADES_HARD": 2,     # Asla 2'den fazla eşzamanlı pozisyon açamaz
+    "MAX_CONCURRENT_TRADES_HARD": 5,     # Patron Onayı: Maksimum 5 eşzamanlı pozisyon
     "MAX_LEVERAGE_ALLOWED": 20,          # Asla 20x'in üzerine çıkamaz
     "MAX_DAILY_DRAWDOWN_PCT": 6.0,       # Günlük %6 kayıpta sistem otomatik kilitlenir
     "MIN_SL_FLOOR_PCT": 0.80,            # Stop mesafesi gürültüye ezilmemek için %0.80'den dar olamaz
