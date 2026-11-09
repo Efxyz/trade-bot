@@ -76,7 +76,7 @@ MIN_SCALP_SL_PCT = 0.95         # Minimum %0.95 stop (54 saniyede gürültüye s
 MAX_SL_PCT_10X = 1.35           # 10x için max SL %1.35 (Marjin büyüklüğü küçültülerek risk $20'de sabitlenir)
 MAX_SL_PCT_20X = 0.85           # 20x için max SL %0.85 (Sniper dar stop)
 MIN_RR_RATIO = 1.4              # Minimum 1:1.4 Risk/Ödül oranı
-MAX_HOLD_MINUTES = 45           # Hareketsiz pozisyonları 45 dakikada kapat (Parayı asla kitleme!)
+MAX_HOLD_MINUTES = 90           # Hareketsiz pozisyonlara 90 dakika (6 mum) nefes payı tanı (Erken çıkış zararını önler)
 
 # SMC & Confluence Kalite Eşiği (Sadece Kusursuz Grade A+ Kurulumlar)
 MIN_CONFLUENCE_SCORE = 76       # 76 altı zayıf / ortalama sinyaller kesinlikle elenir (Eski: 68)
