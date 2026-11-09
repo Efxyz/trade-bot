@@ -1214,7 +1214,7 @@ HTML_OFFICE_TEMPLATE = """
                     <!-- Quant Simulation Agent Bubble -->
                     <div id="bubble-quant" class="sims-bubble quant" onclick="setOfficeCamera('table')" title="Tıkla: Masaya Yaklaş">
                         <div class="sims-bubble-header" style="color: #818cf8;">🎲 KUANT SİMÜLASYON</div>
-                        <div class="sims-bubble-body" id="text-quant">5,000 Monte Carlo fiyat yolu koşturuldu, TP olasılığı %68!</div>
+                        <div class="sims-bubble-body" id="text-quant">10,000 Monte Carlo fiyat yolu koşturuldu, TP olasılığı %70+ filtrede!</div>
                     </div>
                     <!-- Chief Analyst Bubble -->
                     <div id="bubble-chief" class="sims-bubble chief" onclick="setOfficeCamera('table')" title="Tıkla: Masaya Odaklan">
@@ -2014,7 +2014,7 @@ HTML_OFFICE_TEMPLATE = """
                                 const isWin = b.metrics.vote === 'APPROVED';
                                 metricsHtml = `
                                     <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; font-size: 10px; font-family: monospace;">
-                                        <span style="background: rgba(99,102,241,0.18); border: 1px solid rgba(99,102,241,0.35); padding: 2px 6px; border-radius: 4px; color: #a5b4fc;">🎲 ${b.metrics.simulations || 5000} Yol</span>
+                                        <span style="background: rgba(99,102,241,0.18); border: 1px solid rgba(99,102,241,0.35); padding: 2px 6px; border-radius: 4px; color: #a5b4fc;">🎲 ${b.metrics.simulations || 10000} Yol</span>
                                         <span style="background: rgba(34,197,94,0.18); border: 1px solid rgba(34,197,94,0.35); padding: 2px 6px; border-radius: 4px; color: #4ade80;">TP İhtimali: %${b.metrics.win_rate}</span>
                                         <span style="background: rgba(239,68,68,0.18); border: 1px solid rgba(239,68,68,0.35); padding: 2px 6px; border-radius: 4px; color: #f87171;">SL Riski: %${b.metrics.loss_rate}</span>
                                         <span style="background: rgba(56,189,248,0.18); border: 1px solid rgba(56,189,248,0.35); padding: 2px 6px; border-radius: 4px; color: #38bdf8;">Beklenti: +${b.metrics.expectancy_r}R</span>
@@ -3944,7 +3944,7 @@ function updateAutonomousOfficeAI(deltaTime, time) {
     // 1. Rastgele Karakter Diyaloğu (Sırayla Konuşma)
     if (time > nextDialogueTime) {
         nextDialogueTime = time + 6500 + Math.random() * 4500;
-        const allKeys = ['boss', 'scanner', 'ta', 'risk', 'news', 'chief', 'mehmet', 'berat'];
+        const allKeys = ['boss', 'scanner', 'ta', 'risk', 'news', 'chief', 'quant', 'mehmet', 'berat'];
         const chosen = allKeys[Math.floor(Math.random() * allKeys.length)];
 
         if (chosen === 'boss') {
@@ -3997,6 +3997,12 @@ function updateAutonomousOfficeAI(deltaTime, time) {
                     "Efe Bey, piyasa şu an bekleme modunda. Sabır en büyük kârımız.",
                     "Trend teyidi gelmeden sermayeyi riske atmıyoruz.",
                     "Risk ve Teknik ekipleri tam koordinasyon halinde."
+                ],
+                quant: [
+                    "10,000 Monte Carlo stokastik yol simüle ediliyor. Eşiğimiz %70!",
+                    "GBM ve Jump Diffusion ile olasılık dağılımını hesaplıyorum.",
+                    "Beklenen R-Multiple pozitif ve TP ihtimali %70'in üzerindeyse onay veririm.",
+                    "10,000 simülasyonda Stop Loss riski yüksekse komiteyi anında veto ederim."
                 ]
             }[chosen];
             if (phr) triggerSpeech(chosen, phr[Math.floor(Math.random() * phr.length)], 5000);
