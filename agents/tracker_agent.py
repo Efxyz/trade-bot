@@ -179,7 +179,7 @@ class CounterfactualTrackerAgent:
                 final_status = "TIMEOUT_EXIT"
                 exit_price = current_price
                 raw_change = ((current_price - entry_price) / entry_price) if is_long else ((entry_price - current_price) / entry_price)
-                print(f"⏱️ [{symbol}] 45 dakika doldu! Hareketsiz pozisyon {current_price} seviyesinden kapatıldı.")
+                print(f"⏱️ [{symbol}] {MAX_HOLD_MINUTES} dakika doldu! Hareketsiz pozisyon {current_price} seviyesinden kapatıldı.")
 
             # 5. HEDEF (TP) VE MERDİVEN STOP KONTROLLERİ
             elif not is_closed:
@@ -316,7 +316,7 @@ class CounterfactualTrackerAgent:
         elif outcome == "CLOSED_BE":
             outcome_title = "[🛡️ KOMİSYON KORUMALI BE+]"
         elif outcome == "TIMEOUT_EXIT":
-            outcome_title = "[⏱️ ZAMAN AŞIMI - 45dk]"
+            outcome_title = f"[⏱️ ZAMAN AŞIMI - {MAX_HOLD_MINUTES}dk]"
         elif outcome == "MANUAL_CLOSE":
             outcome_title = "[🛑 EL İLE KAPATILDI]"
         else:
