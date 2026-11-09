@@ -61,7 +61,15 @@ class CounterfactualTrackerAgent:
             if not ticker:
                 continue
 
-            current_price = ticker["lastPrice"]
+            # Milisaniyelik Canlı WebSocket Fitil / Fiyat Kontrolü
+            try:
+                from core.binance_streamer import get_live_price, add_stream_symbol
+                add_stream_symbol(symbol)
+                ws_price = get_live_price(symbol)
+            except Exception:
+                ws_price = None
+
+            current_price = ws_price if ws_price else ticker["lastPrice"]
             direction = sig["direction"]
             is_long = (direction == "LONG")
             status = sig["status"]
