@@ -4,15 +4,15 @@ Tauric Research / Hedge Fund Quantitative Decision Engine
 
 Görevi:
 Teknik analizin uygun bulduğu coin üzerinde anlık fiyattan başlayarak
-hedef yöne doğru 5.000 bağımsız stokastik fiyat yolu (Geometric Brownian Motion + Jump Diffusion)
+hedef yöne doğru 10.000 bağımsız stokastik fiyat yolu (Geometric Brownian Motion + Jump Diffusion)
 koşturur. 
 
 Kazanma İhtimali (Win Probability): Fiyatın Stop-Loss'a çarpmadan önce Take-Profit'e ulaşma yüzdesi.
 Matematiksel Beklenti (R-Multiple): İşlemin beklenen getiri değeri.
 
 Karar Kuralı:
-- Simülasyon Win Probability >= %60.0 ve Matematiksel Beklenti > 0 ise -> OY: ONAYLANDI (APPROVED)
-- Simülasyon Win Probability < %60.0 ise -> OY: VETO / RED (REJECTED)
+- Simülasyon Win Probability >= %70.0 ve Matematiksel Beklenti > 0 ise -> OY: ONAYLANDI (APPROVED)
+- Simülasyon Win Probability < %70.0 ise -> OY: VETO / RED (REJECTED)
 """
 
 import numpy as np
@@ -20,11 +20,11 @@ from typing import Dict, List, Optional
 
 
 class QuantSimulationAgent:
-    def __init__(self, default_simulations: int = 5000, horizon_steps: int = 48, win_threshold_pct: float = 60.0):
+    def __init__(self, default_simulations: int = 10000, horizon_steps: int = 48, win_threshold_pct: float = 70.0):
         """
-        :param default_simulations: Koşturulacak stokastik fiyat yolu sayısı (Varsayılan: 5.000 yol)
+        :param default_simulations: Koşturulacak stokastik fiyat yolu sayısı (Varsayılan: 10.000 yol)
         :param horizon_steps: 15 dakikalık periyot adımı (48 adım = 12 saatlik projeksiyon)
-        :param win_threshold_pct: Ortak oya sunulması ve onay için gereken asgari kazanma ihtimali (%60.0)
+        :param win_threshold_pct: Ortak oya sunulması ve onay için gereken asgari kazanma ihtimali (%70.0)
         """
         self.default_simulations = default_simulations
         self.horizon_steps = horizon_steps
@@ -38,7 +38,7 @@ class QuantSimulationAgent:
         num_simulations: Optional[int] = None
     ) -> Dict:
         """
-        Aday parite üzerinde 5.000 Monte Carlo stokastik fiyat simülasyonu çalıştırır.
+        Aday parite üzerinde 10.000 Monte Carlo stokastik fiyat simülasyonu çalıştırır.
         """
         n_sims = num_simulations or self.default_simulations
         steps = self.horizon_steps
@@ -72,7 +72,7 @@ class QuantSimulationAgent:
         drift_bias = ((confluence_score - 50.0) / 100.0) * (sigma * 0.15)
         drift = (base_drift + drift_bias) if direction == "LONG" else (base_drift - drift_bias)
 
-        # 2. Vektörize Monte Carlo Simülasyonu (NumPy Matrisi: 5000 x 48)
+        # 2. Vektörize Monte Carlo Simülasyonu (NumPy Matrisi: 10000 x 48)
         # Z: Standart normal dağılım şokları
         Z = np.random.standard_normal((n_sims, steps))
         # Kripto piyasasına özgü mikro sıçramalar (Jump-diffusion: %4 ihtimalle ani fitil)
@@ -83,9 +83,9 @@ class QuantSimulationAgent:
         step_returns = (drift - 0.5 * (sigma ** 2)) * dt + (sigma * np.sqrt(dt) * Z) + jumps
         cum_returns = np.cumsum(step_returns, axis=1)
 
-        # 5.000 simüle edilmiş fiyat patikası
+        # 10.000 simüle edilmiş fiyat patikası
         sim_paths = current_price * np.exp(cum_returns)
-        # t=0 başlangıç fiyatını ekle (5000 x 49)
+        # t=0 başlangıç fiyatını ekle (10000 x 49)
         paths = np.hstack([np.full((n_sims, 1), current_price), sim_paths])
 
         # 3. First-Hit (İlk Çarpan Kazanır) Mantığı ile TP ve SL Analizi
@@ -183,6 +183,7 @@ class QuantSimulationAgent:
             "historical_volatility": 1.0,
             "vote": "REJECTED",
             "is_approved": False,
-            "argument": f"{symbol} için yetersiz mum verisi nedeniyle 5,000 simülasyon güven aralığına ulaşamadı. Sermaye koruma kuralı gereği VETO verildi.",
+            "argument": f"{symbol} için yetersiz mum verisi nedeniyle 10,000 simülasyon güven aralığına ulaşamadı. Sermaye koruma kuralı gereği VETO verildi.",
             "sample_paths": {}
         }
+
