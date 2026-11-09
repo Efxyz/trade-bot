@@ -124,7 +124,7 @@ class TradingBotOrchestrator:
         # Açık olan veya son 45 dk içinde açılıp kapanmış coinleri al (aynı coinleri tekrar denememek için)
         excluded_symbols = get_recently_traded_symbols(within_minutes=45)
 
-        candidates = self.scanner.scan_opportunities(limit=16, exclude_symbols=excluded_symbols)
+        candidates = self.scanner.scan_opportunities(limit=25, exclude_symbols=excluded_symbols)
 
         # Canlı WebSocket Balina & Sıcak Parite Akışı Kontrolü
         hot_items = pop_hot_symbols()
