@@ -7,7 +7,9 @@ and Background Telegram Command Listening.
 import sys
 import time
 import argparse
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+TURKEY_TZ = timezone(timedelta(hours=3))
 
 from config import (
     SCAN_INTERVAL_SECONDS,
@@ -62,13 +64,15 @@ class TradingBotOrchestrator:
         """Tek bir tam analiz ve takip döngüsü yürütür."""
         print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 🔍 Döngü Başladı...")
 
-        # 0.5 GÜN SONU OTOMATİK TELEGRAM RAPORU (Her gün saat 23:55 veya gece yarısında 24s özeti)
-        now = datetime.now()
-        today_str = now.strftime("%Y-%m-%d")
-        if (now.hour == 23 and now.minute >= 50) or (now.hour == 0 and now.minute <= 5):
+        # 0.5 GÜN SONU OTOMATİK TELEGRAM RAPORU (Her gün Türkiye Saati (TSİ / UTC+3) 23:55-23:59 veya 00:00-00:05)
+        # Bulut sunucuları (Railway Linux) UTC saat diliminde çalıştığından, TSİ (UTC+3) baz alınır.
+        now_utc = datetime.now(timezone.utc)
+        now_tr = now_utc.astimezone(TURKEY_TZ)
+        today_str = now_tr.strftime("%Y-%m-%d")
+        if (now_tr.hour == 23 and now_tr.minute >= 55) or (now_tr.hour == 0 and now_tr.minute <= 5):
             if self.last_daily_report_date != today_str:
                 try:
-                    print("📅 [Gün Sonu Raporu] 24 saatlik gün sonu raporu Telegram'a otomatik gönderiliyor...")
+                    print(f"📅 [Gün Sonu Raporu] 24 saatlik gün sonu raporu Telegram'a otomatik gönderiliyor... (TSİ {now_tr.strftime('%H:%M')})")
                     self.notifier.send_daily_summary_report()
                     self.last_daily_report_date = today_str
                 except Exception as rep_err:
