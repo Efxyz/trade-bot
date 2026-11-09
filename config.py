@@ -38,31 +38,33 @@ ESTIMATED_SLIPPAGE_PCT = 0.02          # %0.02 Tahmini kayma payı
 # ========================================================
 # MERDİVEN KÂR SİSTEMİ (STEP-LADDER PROFIT LOCKING)
 # ========================================================
+# MERDİVEN KÂR SİSTEMİ (STEP-LADDER PROFIT LOCKING)
+# ========================================================
 # Binance Futures Taker Komisyonu (%0.05 Giriş + %0.05 Çıkış = %0.10 raw price)
-# Merdiven basamakları: Fiyat kâra geçtikçe stop kademeli olarak yukarı (Long) veya aşağı (Short) çekilir
+# Merdiven basamakları: Fiyat kâra geçtikçe stop kademeli olarak kâra çekilir
+# Kalibre Edilmiş Güvenli Aralıklar: Fiyata nefes payı tanır, mikro fitillerle erken boğulmayı önler.
 ENABLE_LADDER_PROFIT = True
 
 LADDER_STEPS = [
-    # Basamak 1: Komisyon Korumalı Başabaş (BE+)
-    # Fiyat +%0.40 kâra ulaştığında stop'u komisyonu kurtaracak seviyeye çek (+%0.15 raw)
-    # Stop olsa dahi borsa komisyonu düşüldükten sonra Net kâr kalır!
-    {"step": 1, "trigger_raw_pct": 0.40, "lock_raw_pct": 0.15, "name": "🪜 Basamak 1 (BE+)"},
+    # Basamak 1: Komisyon Korumalı Güvenli Kâr Kilidi (BE+)
+    # Fiyat +%0.65 kâra ulaştığında stop'u +%0.25'e çek (10x'te net +%1.5 marjin cepte, %0.40 fitil payı)
+    {"step": 1, "trigger_raw_pct": 0.65, "lock_raw_pct": 0.25, "name": "🪜 Basamak 1 (BE+ %0.25 Kilit)"},
     
     # Basamak 2: Çeyrek Kâr Kilidi
-    # Fiyat +%0.75 kâra ulaştığında stop'u +%0.45 kâra çek (10x'te net +%3.5, 20x'te net +%7.0 marjin cepte)
-    {"step": 2, "trigger_raw_pct": 0.75, "lock_raw_pct": 0.45, "name": "🪜 Basamak 2 (%0.45 Kilit)"},
+    # Fiyat +%1.00 kâra ulaştığında stop'u +%0.60 kâra çek (10x'te net +%5.0 marjin cepte)
+    {"step": 2, "trigger_raw_pct": 1.00, "lock_raw_pct": 0.60, "name": "🪜 Basamak 2 (%0.60 Kilit)"},
     
     # Basamak 3: Yarım Kâr Kilidi
-    # Fiyat +%1.15 kâra ulaştığında stop'u +%0.80 kâra çek (10x'te net +%7.0, 20x'te net +%14.0 marjin cepte)
-    {"step": 3, "trigger_raw_pct": 1.15, "lock_raw_pct": 0.80, "name": "🪜 Basamak 3 (%0.80 Kilit)"},
+    # Fiyat +%1.45 kâra ulaştığında stop'u +%1.00 kâra çek (10x'te net +%9.0 marjin cepte)
+    {"step": 3, "trigger_raw_pct": 1.45, "lock_raw_pct": 1.00, "name": "🪜 Basamak 3 (%1.00 Kilit)"},
     
     # Basamak 4: Hedefe Yakın Koruma
-    # Fiyat +%1.55 kâra ulaştığında stop'u +%1.20 kâra çek (10x'te net +%11.0, 20x'te net +%22.0 marjin cepte)
-    {"step": 4, "trigger_raw_pct": 1.55, "lock_raw_pct": 1.20, "name": "🪜 Basamak 4 (%1.20 Kilit)"},
+    # Fiyat +%1.85 kâra ulaştığında stop'u +%1.45 kâra çek (10x'te net +%13.5 marjin cepte)
+    {"step": 4, "trigger_raw_pct": 1.85, "lock_raw_pct": 1.45, "name": "🪜 Basamak 4 (%1.45 Kilit)"},
 ]
 
-# Dinamik Kanal (Runner / Trailing Channel): Zirvenin %0.25 gerisinden iz sürme mesafesi
-LADDER_DYNAMIC_CHANNEL_PCT = 0.25
+# Dinamik Kanal (Runner / Trailing Channel): Zirvenin %0.30 gerisinden iz sürme mesafesi
+LADDER_DYNAMIC_CHANNEL_PCT = 0.30
 
 # Dinamik Kaldıraç (10x ve 20x)
 LEVERAGE_STANDARD = 10  # 10x ile %1 fiyat hareketi = +%10 marjin karı
@@ -72,10 +74,10 @@ LEVERAGE_HIGH = 20      # 20x ile %1 fiyat hareketi = +%20 marjin karı
 # RİSK / ÖDÜL VE VOLATİLİTE AYARLARI (GÜRÜLTÜYE KARŞI KORUMA)
 # ========================================================
 TARGET_PROFIT_PCT = 1.60        # Fiyatta ortalama %1.40 - %2.00 kâr hedefi (10x'te +%16, 20x'te +%32 marjin)
-MAX_SCALP_SL_PCT = 1.35         # Fiyatta maksimum %1.35 stop payı (Fitil ve gürültüye ezilmeme garantisi)
-MIN_SCALP_SL_PCT = 0.95         # Minimum %0.95 stop (54 saniyede gürültüye stop olmama koruması)
-MAX_SL_PCT_10X = 1.35           # 10x için max SL %1.35 (Marjin büyüklüğü küçültülerek risk $20'de sabitlenir)
-MAX_SL_PCT_20X = 0.85           # 20x için max SL %0.85 (Sniper dar stop)
+MAX_SCALP_SL_PCT = 1.15         # Fiyatta maksimum %1.15 stop payı (Eski %1.35'ten düşürüldü - Kayıp frenleme)
+MIN_SCALP_SL_PCT = 0.85         # Minimum %0.85 stop (Gürültüye ezilmeme garantisi)
+MAX_SL_PCT_10X = 1.15           # 10x için max SL %1.15 (Marjin büyüklüğü küçültülerek risk $20'de sabitlenir)
+MAX_SL_PCT_20X = 0.75           # 20x için max SL %0.75 (Sniper dar stop)
 MIN_RR_RATIO = 1.4              # Minimum 1:1.4 Risk/Ödül oranı
 MAX_HOLD_MINUTES = 90           # Hareketsiz pozisyonlara 90 dakika (6 mum) nefes payı tanı (Erken çıkış zararını önler)
 
