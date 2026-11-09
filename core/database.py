@@ -400,6 +400,17 @@ def get_active_positions_count() -> int:
         cursor.execute("SELECT COUNT(*) FROM signals WHERE status IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER')")
         return cursor.fetchone()[0]
 
+def get_today_trades_count() -> int:
+    """Bugün (Türkiye Saati ile 00:00'dan itibaren) açılan toplam işlem sayısını döner (Aşırı İşlem / Komisyon Kalkanı)."""
+    from datetime import datetime, timezone, timedelta
+    tr_tz = timezone(timedelta(hours=3))
+    today_start = datetime.now(timezone.utc).astimezone(tr_tz).strftime("%Y-%m-%d 00:00:00")
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM signals WHERE created_at >= ?", (today_start,))
+        row = cursor.fetchone()
+        return row[0] if row else 0
+
 def get_active_and_pending_signals() -> List[Dict]:
     """Halen takip edilmesi gereken aktif veya giriş bekleyen sinyalleri getirir."""
     with get_db_connection() as conn:
