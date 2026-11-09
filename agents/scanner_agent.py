@@ -13,9 +13,10 @@ from config import MIN_24H_VOLUME_USDT
 # Shared live activity logs for the Trading Office Terminal
 SCANNER_ACTIVITY_LOGS = deque(maxlen=50)
 
-# Cooldown tracking: symbol -> timestamp of last evaluation
+# Cooldown tracking: symbol -> timestamp of last evaluation (Çift Kademeli Dinamik Soğuma)
 _SCANNED_COOLDOWN: Dict[str, float] = {}
-COOLDOWN_SECONDS = 15 * 60  # 15 minutes before re-evaluating the same coin
+COOLDOWN_HOT_SECONDS = 90  # Sıcak volatilite liderleri için 90 sn (Sürekli radar altında)
+COOLDOWN_ROTATION_SECONDS = 180  # Genel piyasa rotasyonu için 3 dk (Eski 15 dk hantallığına son)
 _ROTATION_INDEX = 0
 
 # Son 1 saat içindeki kontrol sıklığı takibi
@@ -71,12 +72,14 @@ class MarketScannerAgent:
         self.client = client
         self.min_volume = min_volume
 
-    def scan_opportunities(self, limit: int = 16, exclude_symbols: Set[str] = None) -> List[Dict]:
+    def scan_opportunities(self, limit: int = 25, exclude_symbols: Set[str] = None) -> List[Dict]:
         """
-        Binance Futures'taki likit USDT.P kripto çiftleri arasında akıllı rotasyon yapar.
+        Binance Futures'taki likit USDT.P kripto çiftleri arasında yüksek frekanslı turbo rotasyon yapar.
         - Sentetik tokenize hisseleri ve illikit pariteleri filtreler.
-        - Yakın zamanda taranmış veya işlem yapılmış coinleri soğuma süresine (cooldown) alır.
-        - Her döngüde hem taze volatilite liderlerini hem de tüm piyasayı baştan sona tarar.
+        - Çift Kademeli Dinamik Soğuma (Dual-Tier Cooldown):
+          * Sıcak Volatilite Liderleri (Top 10): 90 saniye soğuma (sürekli radar altında)
+          * Genel Piyasa Rotasyonu: 180 saniye soğuma (tüm 250+ coin 5 dakikada taranır)
+        - Her döngüde 25 parite (10 Volatilite Lideri + 15 Rotasyon) taranır.
         """
         global _ROTATION_INDEX, _SCANNED_COOLDOWN
         now = time.time()
@@ -95,40 +98,40 @@ class MarketScannerAgent:
         if not liquid_tickers:
             return []
 
-        # 1. Havuz: Taze Volatilite / Hacim Liderleri (Son 15 dk taranmamışlar)
+        # 1. Havuz: Taze Volatilite / Hacim Liderleri (Son 90 sn taranmamışlar)
         fresh_movers = [
             t for t in liquid_tickers
-            if (now - _SCANNED_COOLDOWN.get(t["symbol"], 0)) >= COOLDOWN_SECONDS
+            if (now - _SCANNED_COOLDOWN.get(t["symbol"], 0)) >= COOLDOWN_HOT_SECONDS
         ]
         sorted_movers = sorted(
             fresh_movers,
             key=lambda x: abs(x["priceChangePercent"]),
             reverse=True
         )
-        pool_movers = sorted_movers[:6]
+        pool_movers = sorted_movers[:10]
         selected_symbols = {t["symbol"] for t in pool_movers}
 
-        # 2. Havuz: Tüm Piyasa Sıralı Rotasyonu (Kalan 200+ coini baştan sona sırayla tarar)
+        # 2. Havuz: Tüm Piyasa Sıralı Rotasyonu (Kalan 200+ coini baştan sona hızla tarar)
         remaining_tickers = [
             t for t in liquid_tickers
-            if t["symbol"] not in selected_symbols and (now - _SCANNED_COOLDOWN.get(t["symbol"], 0)) >= COOLDOWN_SECONDS
+            if t["symbol"] not in selected_symbols and (now - _SCANNED_COOLDOWN.get(t["symbol"], 0)) >= COOLDOWN_ROTATION_SECONDS
         ]
         # Eğer soğuma süresi yüzünden coin kalmadıysa süresi en eski olanları al
-        if len(remaining_tickers) < 10:
+        if len(remaining_tickers) < 15:
             remaining_tickers = [t for t in liquid_tickers if t["symbol"] not in selected_symbols]
 
-        # Piyasa rotasyon penceresi (her döngü 10 parite ileri kayar)
+        # Piyasa rotasyon penceresi (her döngü 15 parite ileri kayar)
         n_rem = len(remaining_tickers)
         pool_rotation = []
         if n_rem > 0:
             start_idx = _ROTATION_INDEX % n_rem
-            _ROTATION_INDEX = (start_idx + 10) % n_rem
+            _ROTATION_INDEX = (start_idx + 15) % n_rem
             # Dairesel seçim
-            for i in range(min(10, n_rem)):
+            for i in range(min(15, n_rem)):
                 idx = (start_idx + i) % n_rem
                 pool_rotation.append(remaining_tickers[idx])
 
-        candidates = pool_movers + pool_rotation
+        candidates = (pool_movers + pool_rotation)[:limit]
 
         # Seçilen coinleri soğuma zaman damgasıyla işaretle
         for c in candidates:
