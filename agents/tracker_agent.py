@@ -175,11 +175,21 @@ class CounterfactualTrackerAgent:
                     update_signal_status(sig_id, {"stop_loss": current_sl, "ladder_name": "⏱️ 30dk Kâr Kilidi"})
 
             if minutes_open >= MAX_HOLD_MINUTES:
-                is_closed = True
-                final_status = "TIMEOUT_EXIT"
-                exit_price = current_price
                 raw_change = ((current_price - entry_price) / entry_price) if is_long else ((entry_price - current_price) / entry_price)
-                print(f"⏱️ [{symbol}] {MAX_HOLD_MINUTES} dakika doldu! Hareketsiz pozisyon {current_price} seviyesinden kapatıldı.")
+                # Eğer pozisyon kârda ise hemen kârı kilitleyip çık:
+                if raw_change > 0.001:
+                    is_closed = True
+                    final_status = "TIMEOUT_PROFIT_EXIT"
+                    exit_price = current_price
+                    print(f"⏱️ [{symbol}] {MAX_HOLD_MINUTES} dk doldu: Pozisyon kârda ({raw_change*100:+.2f}%) kapatıldı.")
+                # Eğer pozisyon hafif ekside ancak Stop mesafesine çok uzaksa (<%0.4) ve 120 dk dolmadıysa gereksiz komisyon ödememek için ek nefes payı tanı:
+                elif minutes_open < 120 and abs(raw_change) < 0.004:
+                    pass
+                else:
+                    is_closed = True
+                    final_status = "TIMEOUT_EXIT"
+                    exit_price = current_price
+                    print(f"⏱️ [{symbol}] {minutes_open:.0f} dakika doldu! Hareketsiz pozisyon {current_price} seviyesinden kapatıldı.")
 
             # 5. HEDEF (TP) VE MERDİVEN STOP KONTROLLERİ
             elif not is_closed:
