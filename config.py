@@ -24,9 +24,10 @@ MIN_24H_VOLUME_USDT = 12_000_000  # Likit, anlık hacimli pariteler
 # FON YÖNETİMİ & KASA KALKANI (CAPITAL PROTECTION SHIELD)
 # ========================================================
 PORTFOLIO_EQUITY_USDT = 1000.0         # Başlangıç Fon Kasası ($1000 USDT)
-MAX_CONCURRENT_TRADES = 2              # Aşırı işlem tuzağını önlemek için max 2 pozisyon (Sermaye koruması)
+MAX_CONCURRENT_TRADES = 5              # Patron Onayı: Maksimum 5 eşzamanlı pozisyon (Yüksek alfa kapasitesi)
+MAX_POSITIONS_PER_DIRECTION = 3        # Tek Yöne Yığılma Kalkanı (Maksimum 3 LONG veya 3 SHORT)
 RISK_PER_TRADE_PCT = 2.0               # İşlem başına riske edilen maksimum kasa payı (%2.0 = $20 risk)
-MAX_ALLOCATED_MARGIN_PER_TRADE = 350.0 # Bir işleme ayrılabilecek maksimum marjin ($1000 / 2)
+MAX_ALLOCATED_MARGIN_PER_TRADE = 200.0 # Bir işleme ayrılabilecek taban maksimum marjin (%20 kuralı)
 POST_LOSS_COOLDOWN_MINUTES = 15        # Zararlı kapanış sonrası 15 dk karantina molası (İntikam işlemine son!)
 
 # Gerçekçi Borsa Komisyon & Fiyat Kayması (Binance Futures)
