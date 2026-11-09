@@ -59,6 +59,13 @@ def get_scanner_logs() -> List[Dict]:
         pass
     return list(SCANNER_ACTIVITY_LOGS)
 
+# Sentetik Hisse Senetleri ve İllikit Çöp Coin Kara Listesi (Sermaye Koruma Kalkanı)
+SYNTHETIC_STOCK_BLACKLIST = {
+    "DELLUSDT", "MSTRUSDT", "IRENUSDT", "NVDAUSDT", "TSLAUSDT", "AAPLUSDT", 
+    "COINUSDT", "SQQQUSDT", "QQQUSDT", "SPYUSDT", "AMZNUSDT", "GOOGLUSDT",
+    "SKUUUSDT", "MUUUSDT", "CRCLUSDT"
+}
+
 class MarketScannerAgent:
     def __init__(self, client: BinanceFuturesClient, min_volume: float = MIN_24H_VOLUME_USDT):
         self.client = client
@@ -66,7 +73,8 @@ class MarketScannerAgent:
 
     def scan_opportunities(self, limit: int = 16, exclude_symbols: Set[str] = None) -> List[Dict]:
         """
-        Binance Futures'taki 200+ likit USDT.P çifti arasında akıllı rotasyon yapar.
+        Binance Futures'taki likit USDT.P kripto çiftleri arasında akıllı rotasyon yapar.
+        - Sentetik tokenize hisseleri ve illikit pariteleri filtreler.
         - Yakın zamanda taranmış veya işlem yapılmış coinleri soğuma süresine (cooldown) alır.
         - Her döngüde hem taze volatilite liderlerini hem de tüm piyasayı baştan sona tarar.
         """
@@ -78,7 +86,10 @@ class MarketScannerAgent:
         
         liquid_tickers = [
             t for t in all_tickers.values()
-            if t["quoteVolume"] >= self.min_volume and t["symbol"] not in exclude_symbols
+            if t["quoteVolume"] >= self.min_volume 
+            and t["symbol"] not in exclude_symbols
+            and t["symbol"] not in SYNTHETIC_STOCK_BLACKLIST
+            and not any(t["symbol"].startswith(s) for s in ["DELL", "MSTR", "IREN", "NVDA", "TSLA", "SQQQ"])
         ]
 
         if not liquid_tickers:
