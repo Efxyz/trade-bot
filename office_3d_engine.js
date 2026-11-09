@@ -1638,7 +1638,7 @@ function updateAutonomousOfficeAI(deltaTime, time) {
     // 1. Rastgele Karakter Diyaloğu (Sırayla Konuşma)
     if (time > nextDialogueTime) {
         nextDialogueTime = time + 6500 + Math.random() * 4500;
-        const allKeys = ['boss', 'scanner', 'ta', 'risk', 'news', 'chief', 'mehmet', 'berat'];
+        const allKeys = ['boss', 'scanner', 'ta', 'risk', 'news', 'chief', 'quant', 'mehmet', 'berat'];
         const chosen = allKeys[Math.floor(Math.random() * allKeys.length)];
 
         if (chosen === 'boss') {
@@ -1691,6 +1691,12 @@ function updateAutonomousOfficeAI(deltaTime, time) {
                     "Efe Bey, piyasa şu an bekleme modunda. Sabır en büyük kârımız.",
                     "Trend teyidi gelmeden sermayeyi riske atmıyoruz.",
                     "Risk ve Teknik ekipleri tam koordinasyon halinde."
+                ],
+                quant: [
+                    "10,000 Monte Carlo stokastik yol simüle ediliyor. Eşiğimiz %70!",
+                    "GBM ve Jump Diffusion ile olasılık dağılımını hesaplıyorum.",
+                    "Beklenen R-Multiple pozitif ve TP ihtimali %70'in üzerindeyse onay veririm.",
+                    "10,000 simülasyonda Stop Loss ihtimali yüksekse komiteyi anında veto ederim."
                 ]
             }[chosen];
             if (phr) triggerSpeech(chosen, phr[Math.floor(Math.random() * phr.length)], 5000);
