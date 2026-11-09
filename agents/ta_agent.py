@@ -383,11 +383,11 @@ class TechnicalAnalysisAgent:
         sl_dist = max(min_sl_dist, min(max_sl_dist, curr_atr * 1.3))
         sl_pct = round((sl_dist / current_price) * 100, 2)
 
-        # Dinamik TP: En az 1:1.4 Risk/Ödül ve en az TARGET_PROFIT_PCT (%1.60)
+        # Dinamik TP: En az MIN_RR_RATIO (1:1.8) Risk/Ödül ve en az TARGET_PROFIT_PCT (%2.00)
         min_tp_dist = current_price * (TARGET_PROFIT_PCT / 100.0)
         tp_dist = max(sl_dist * MIN_RR_RATIO, min_tp_dist)
         tp_pct = round((tp_dist / current_price) * 100, 2)
-        actual_rr = round(tp_pct / sl_pct, 2) if sl_pct > 0 else 1.4
+        actual_rr = round(tp_pct / sl_pct, 2) if sl_pct > 0 else MIN_RR_RATIO
 
         # ==========================================
         # 🎯 SMC & QUANT CONFLUENCE SKORLAMA (0-100)
