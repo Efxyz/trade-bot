@@ -584,4 +584,13 @@ def clear_closed_trades_db():
         cursor.execute("DELETE FROM signals WHERE status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER')")
         conn.commit()
 
+def get_current_equity() -> float:
+    """Anlık toplam fon kasasını (Bileşik Kasa Değeri) döner (Örn: $1,000 + Net Dolar PnL)."""
+    try:
+        stats = get_performance_stats()
+        return float(stats.get("portfolio_balance", 1000.0))
+    except Exception:
+        return 1000.0
+
+
 
