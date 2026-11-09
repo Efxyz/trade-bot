@@ -92,6 +92,16 @@ class TradingBotOrchestrator:
             add_scanner_log("KASA KALKANI", "PROTECTED", msg, "Yeni Fırsat Arama Kilitlendi")
             return
 
+        # 1.6 KESKİN NİŞANCI GÜNLÜK KOTA KONTROLÜ (Aşırı İşlem & Borsa Komisyonu Kalkanı)
+        from config import DAILY_MAX_NEW_TRADES
+        from core.database import get_today_trades_count
+        today_trades_count = get_today_trades_count()
+        if today_trades_count >= DAILY_MAX_NEW_TRADES:
+            msg = f"Günlük azami {DAILY_MAX_NEW_TRADES} seçkin Grade A+ işlem kotası doldu ({today_trades_count}/{DAILY_MAX_NEW_TRADES}). Komisyon koruma kalkanı devrede."
+            print(f"🛡️ [Keskin Nişancı Kalkanı] {msg} Bugün yeni işlem aranmayacak (Borsaya Komisyon Yok).")
+            add_scanner_log("GÜNLÜK KOTA", "PROTECTED", msg, "Komisyon Koruma Kilidi")
+            return
+
         slots_left = MAX_CONCURRENT_TRADES - active_count
         print(f"🛡️ [Kasa Kalkanı] Aktif Pozisyon: {active_count}/{MAX_CONCURRENT_TRADES} | Kalan İşlem Kotası: {slots_left}")
 
