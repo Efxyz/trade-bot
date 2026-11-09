@@ -63,7 +63,7 @@ class ReflectorEngine:
         elif status == "TIMEOUT_EXIT":
             thesis_evaluation = f"Pozisyon {int(minutes_open)} dakika boyunca hedefe gitmedi, testere piyasasında yataya bağladı."
             lesson = (
-                f"{symbol} {direction} işlemi 45 dakika zaman aşımı nedeniyle kapatıldı (Net: {'+' if pnl_pct >= 0 else ''}%{pnl_pct}). "
+                f"{symbol} {direction} işlemi 90 dakika zaman aşımı nedeniyle kapatıldı (Net: {'+' if pnl_pct >= 0 else ''}%{pnl_pct}). "
                 f"Ders: Mikro-scalpingte hareketsiz pozisyonda beklemek fırsat maliyetidir; sermaye hemen likit edildi."
             )
             outcome_type = "TIMEOUT"
