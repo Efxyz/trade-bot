@@ -93,13 +93,25 @@ class TradingBotOrchestrator:
             return
 
         # 1.6 KESKİN NİŞANCI GÜNLÜK KOTA KONTROLÜ (Aşırı İşlem & Borsa Komisyonu Kalkanı)
-        from config import DAILY_MAX_NEW_TRADES
-        from core.database import get_today_trades_count
+        from config import DAILY_MAX_NEW_TRADES, DAILY_MAX_DRAWDOWN_USDT
+        from core.database import get_today_trades_count, get_today_net_dollar_loss
         today_trades_count = get_today_trades_count()
         if today_trades_count >= DAILY_MAX_NEW_TRADES:
             msg = f"Günlük azami {DAILY_MAX_NEW_TRADES} seçkin Grade A+ işlem kotası doldu ({today_trades_count}/{DAILY_MAX_NEW_TRADES}). Komisyon koruma kalkanı devrede."
             print(f"🛡️ [Keskin Nişancı Kalkanı] {msg} Bugün yeni işlem aranmayacak (Borsaya Komisyon Yok).")
             add_scanner_log("GÜNLÜK KOTA", "PROTECTED", msg, "Komisyon Koruma Kilidi")
+            return
+
+        # 1.7 GÜNLÜK AZAMİ KAYIP SİGORTASI (Daily Drawdown Circuit Breaker)
+        today_loss = get_today_net_dollar_loss()
+        if today_loss >= DAILY_MAX_DRAWDOWN_USDT:
+            msg = (
+                f"Günlük azami kayıp limiti (${DAILY_MAX_DRAWDOWN_USDT:.2f}) aşıldı! "
+                f"Bugünkü net zarar: -${today_loss:.2f}. Acil durum sigortası devreye girdi, "
+                f"tüm yeni girişler gün sonuna kadar donduruldu."
+            )
+            print(f"🛑 [Acil Durum Sigortası / Circuit Breaker] {msg}")
+            add_scanner_log("CIRCUIT BREAKER", "PROTECTED", msg, "Acil Durum Sermaye Sigortası")
             return
 
         slots_left = MAX_CONCURRENT_TRADES - active_count
