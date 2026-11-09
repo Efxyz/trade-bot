@@ -47,6 +47,7 @@ class TradingBotOrchestrator:
         self.cmd_agent = TelegramCommandAgent(self)
         self.ai_analyst = AIAnalystAgent()
         self.quant_sim = QuantSimulationAgent(default_simulations=10000, win_threshold_pct=70.0)
+        self.last_daily_report_date = None
 
         # Canlı WebSocket Veri Boru Hattını Başlat
         try:
@@ -60,6 +61,18 @@ class TradingBotOrchestrator:
     def run_cycle(self):
         """Tek bir tam analiz ve takip döngüsü yürütür."""
         print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 🔍 Döngü Başladı...")
+
+        # 0.5 GÜN SONU OTOMATİK TELEGRAM RAPORU (Her gün saat 23:55 veya gece yarısında 24s özeti)
+        now = datetime.now()
+        today_str = now.strftime("%Y-%m-%d")
+        if (now.hour == 23 and now.minute >= 50) or (now.hour == 0 and now.minute <= 5):
+            if self.last_daily_report_date != today_str:
+                try:
+                    print("📅 [Gün Sonu Raporu] 24 saatlik gün sonu raporu Telegram'a otomatik gönderiliyor...")
+                    self.notifier.send_daily_summary_report()
+                    self.last_daily_report_date = today_str
+                except Exception as rep_err:
+                    print(f"⚠️ Gün sonu raporu gönderme hatası: {rep_err}")
 
         # 1. Açık sanal işlemleri kontrol et (Break-Even & TP/SL takibi)
         print("📊 [Tracker Ajanı] Aktif sanal işlemler kontrol ediliyor...")
@@ -313,6 +326,7 @@ class TradingBotOrchestrator:
                 "⚡ *Kaldıraç:* Dinamik 10x ve 20x (Sniper)\n"
                 "🛡️ *Korumalar:* BTC Çöküş Kalkanı + Break-Even (Sıfır Risk)\n\n"
                 "💬 *Telegram Komutları:*\n"
+                "• `/rapor` : Son 24 saatlik gün sonu kâr/zarar ve işlem raporu\n"
                 "• `/tara` : Anında tarama yap\n"
                 "• `/durum` : 'Girseydim ne olurdu?' PnL raporu\n"
                 "• `/aktif` : Açık sanal işlemleri listele\n"
