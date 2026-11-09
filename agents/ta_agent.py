@@ -505,9 +505,11 @@ class TechnicalAnalysisAgent:
                     f"🎯 <strong>Beklenen Şart:</strong> RSI'ın {MIN_RSI_LONG}+ üzerine çıkıp alıcıların güçlenmesi."
                 )
 
-            leverage = 20 if (long_score >= 82 and sl_pct <= 0.85) else 10
-            grade = "Grade A+" if leverage == 20 else "Grade A"
-            setup_type = f"15m {leverage}x SMC SNIPER" if leverage == 20 else f"15m {leverage}x SMC SCALP"
+            # 20x Sniper Tetikleyici: Skor 85+ (Kusursuz SMC Onayı) ve Dar Stop (%1.00 altı)
+            is_sniper_20x = (long_score >= 85 and sl_pct <= 1.00)
+            leverage = 20 if is_sniper_20x else 10
+            grade = "Grade A+ (20x Sniper)" if is_sniper_20x else "Grade A"
+            setup_type = f"15m {leverage}x SMC SNIPER" if is_sniper_20x else f"15m {leverage}x SMC SCALP"
 
             stop_loss = round(current_price - sl_dist, 6)
             tp = round(current_price + tp_dist, 6)
@@ -566,9 +568,11 @@ class TechnicalAnalysisAgent:
                     f"🎯 <strong>Beklenen Şart:</strong> Boğa momentumunun zayıflayıp 55 altına inmesi."
                 )
 
-            leverage = 20 if (short_score >= 82 and sl_pct <= 0.85) else 10
-            grade = "Grade A+" if leverage == 20 else "Grade A"
-            setup_type = f"15m {leverage}x SMC SNIPER" if leverage == 20 else f"15m {leverage}x SMC SCALP"
+            # 20x Sniper Tetikleyici: Skor 85+ (Kusursuz SMC Onayı) ve Dar Stop (%1.00 altı)
+            is_sniper_20x = (short_score >= 85 and sl_pct <= 1.00)
+            leverage = 20 if is_sniper_20x else 10
+            grade = "Grade A+ (20x Sniper)" if is_sniper_20x else "Grade A"
+            setup_type = f"15m {leverage}x SMC SNIPER" if is_sniper_20x else f"15m {leverage}x SMC SCALP"
 
             stop_loss = round(current_price + sl_dist, 6)
             tp = round(current_price - tp_dist, 6)
