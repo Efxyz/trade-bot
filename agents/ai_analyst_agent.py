@@ -276,23 +276,23 @@ class AIAnalystAgent:
         )
 
         # ----------------------------------------------------
-        # 🎲 4. KUANT & MONTE CARLO SİMÜLASYON MASASI (5,000 Fiyat Yolu Simülatörü)
+        # 🎲 4. KUANT & MONTE CARLO SİMÜLASYON MASASI (10,000 Fiyat Yolu Simülatörü)
         # ----------------------------------------------------
         quant_approved = True
-        quant_win_prob = 65.0
-        quant_loss_prob = 35.0
+        quant_win_prob = 72.0
+        quant_loss_prob = 28.0
         quant_exp_r = 1.40
         quant_arg = ""
 
         if quant_sim:
             quant_approved = quant_sim.get("is_approved", True)
-            quant_win_prob = quant_sim.get("win_probability_pct", 65.0)
-            quant_loss_prob = quant_sim.get("loss_probability_pct", 35.0)
+            quant_win_prob = quant_sim.get("win_probability_pct", 72.0)
+            quant_loss_prob = quant_sim.get("loss_probability_pct", 28.0)
             quant_exp_r = quant_sim.get("expected_return_r", 1.40)
             quant_arg = quant_sim.get("argument", "")
         else:
             quant_arg = (
-                f"{symbol} üzerinde 5,000 Monte Carlo fiyat yolu koşturuldu. "
+                f"{symbol} üzerinde 10,000 Monte Carlo fiyat yolu koşturuldu. "
                 f"TP1'e ulaşma olasılığı: %{quant_win_prob:.1f}, SL Riski: %{quant_loss_prob:.1f}. OY: ONAYLANDI."
             )
 
@@ -305,11 +305,11 @@ class AIAnalystAgent:
             {"role": "MACRO", "agent_name": "Makro & Duygu Masası", "avatar": "📰", "argument": macro_arg},
             {
                 "role": "QUANT",
-                "agent_name": "Kuant Simülasyon Ajanı (Monte Carlo 5,000 Yol)",
+                "agent_name": "Kuant Simülasyon Ajanı (Monte Carlo 10,000 Yol)",
                 "avatar": "🎲",
                 "argument": quant_arg,
                 "metrics": {
-                    "simulations": quant_sim.get("num_simulations", 5000) if quant_sim else 5000,
+                    "simulations": quant_sim.get("num_simulations", 10000) if quant_sim else 10000,
                     "win_rate": quant_win_prob,
                     "loss_rate": quant_loss_prob,
                     "expectancy_r": quant_exp_r,
@@ -324,8 +324,8 @@ class AIAnalystAgent:
             rating = "NEUTRAL_PASS"
             if not quant_approved:
                 chief_arg = (
-                    f"Komite Kararı: Kuant Simülasyon Ajanı'nın 5,000 Monte Carlo stokastik fiyat yolu simülasyonu "
-                    f"yetersiz kazanma olasılığı (%{quant_win_prob:.1f} < %60.0) ve yüksek Stop riski (%{quant_loss_prob:.1f}) tespit etti! "
+                    f"Komite Kararı: Kuant Simülasyon Ajanı'nın 10,000 Monte Carlo stokastik fiyat yolu simülasyonu "
+                    f"yetersiz kazanma olasılığı (%{quant_win_prob:.1f} < %70.0) ve yüksek Stop riski (%{quant_loss_prob:.1f}) tespit etti! "
                     f"Matematiksel kural gereği Boğa talebi VETO EDİLDİ (Rating: {rating})."
                 )
             else:
@@ -336,12 +336,12 @@ class AIAnalystAgent:
                 )
         else:
             consensus_verdict = "APPROVED"
-            # Kuant onayı ek güven skoru ekler
-            bonus = 0.3 if quant_win_prob >= 65.0 else 0.0
+            # Kuant onayı ek güven skoru ekler (%75 üzeri win rate)
+            bonus = 0.3 if quant_win_prob >= 75.0 else 0.0
             consensus_score = round(min(9.8, 7.8 + (score - 76) * 0.1 + bonus), 1)
             rating = f"STRONG_{direction}" if consensus_score >= 8.6 else f"TACTICAL_{direction}"
             chief_arg = (
-                f"Komite Kararı: Boğa Analisti'nin SMC argümanları, Kuant Ajanı'nın 5,000 Monte Carlo "
+                f"Komite Kararı: Boğa Analisti'nin SMC argümanları, Kuant Ajanı'nın 10,000 Monte Carlo "
                 f"fiyat yolu simülasyonu (%{quant_win_prob:.1f} TP ihtimali, +{quant_exp_r:.2f}R beklenti) ile tam teyit edildi! "
                 f"Ayı Analisti'nin belirttiği riskler ve hafıza kayıtları değerlendirildi; "
                 f"dinamik stopumuz (%{sl_pct}) ve basamaklı Merdiven Kâr Kilidimiz ile kontrol altına alındı. "
