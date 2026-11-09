@@ -468,6 +468,26 @@ class TechnicalAnalysisAgent:
             short_score += 10
             short_factors.append(f"RSI İdeal Baskı ({curr_rsi:.1f})")
 
+        # --- 0. 1 SAATLİK MAKRO TREND KALKANI (1h Macro Confluence Shield) ---
+        # Üst zaman diliminin ana yönüne karşı ters işlem açılması kesinlikle yasaklanır
+        if candles_1h and len(candles_1h) >= 20:
+            closes_1h = [c["close"] for c in candles_1h]
+            ema20_1h = self.calculate_ema(closes_1h, 20)[-1]
+            last_1h = closes_1h[-1]
+            if ema20_1h is not None:
+                if long_score >= target_min_score and last_1h < ema20_1h:
+                    return None, (
+                        f"📌 <strong>Mevcut Durum:</strong> 1 Saatlik Makro Trend Satıcılı (Fiyat {last_1h} < 1h EMA20 {ema20_1h:.4f}).<br>"
+                        f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Üst zaman diliminde (1h) düşüş trendi varken 15m'de LONG açmak testere tuzağına çeker.<br>"
+                        f"🎯 <strong>Beklenen Şart:</strong> 1 Saatlik mumun EMA20 üzerine çıkarak makro boğa teyidi vermesi."
+                    )
+                if short_score >= target_min_score and last_1h > ema20_1h:
+                    return None, (
+                        f"📌 <strong>Mevcut Durum:</strong> 1 Saatlik Makro Trend Alıcılı (Fiyat {last_1h} > 1h EMA20 {ema20_1h:.4f}).<br>"
+                        f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Üst zaman diliminde (1h) yükseliş trendi varken 15m'de SHORT açmak ralliye karşı durmaktır.<br>"
+                        f"🎯 <strong>Beklenen Şart:</strong> 1 Saatlik mumun EMA20 altına inerek makro ayı teyidi vermesi."
+                    )
+
         # --- EŞİK DEĞERLERİ & İŞLEM KARARI (Otonom Kalibre Edilmiş Baraj: target_min_score) ---
         # LONG KONTROLÜ
         if long_score >= target_min_score and long_score > short_score:
