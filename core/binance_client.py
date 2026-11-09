@@ -203,12 +203,14 @@ class BinanceFuturesClient:
 
             # 3. Boğa Piyasası: Fiyat EMA20 üzerinde
             if current_btc >= ema20:
+                block_shorts = (change_3h_pct >= 1.2)
                 return {
                     "status": "BULLISH",
                     "btc_price": current_btc,
                     "change_3h_pct": round(change_3h_pct, 2),
                     "block_longs": False,
-                    "summary": f"🟢 BTC sağlıklı yükseliş trendinde ({current_btc:.1f}$). Altcoin LONG fırsatları için zemin uygun."
+                    "block_shorts": block_shorts,
+                    "summary": f"🟢 BTC yükseliş trendinde ({current_btc:.1f}$). {'Altcoin SHORT işlemleri donduruldu (BTC Rallisi).' if block_shorts else 'Altcoin LONG fırsatları için zemin uygun.'}"
                 }
 
             return {
