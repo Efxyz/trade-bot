@@ -594,7 +594,10 @@ def get_current_equity() -> float:
 
 def generate_daily_summary_report() -> Dict:
     """Son 24 saat içinde gerçekleşen tüm işlemleri, net kâr/zararı ve gün sonu özetini derler."""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
+    tr_tz = timezone(timedelta(hours=3))
+    now_tr = datetime.now(timezone.utc).astimezone(tr_tz)
+
     cutoff = datetime.now() - timedelta(hours=24)
     cutoff_str = cutoff.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -637,8 +640,8 @@ def generate_daily_summary_report() -> Dict:
     win_rate = (len(wins) / total_count * 100.0) if total_count > 0 else 0.0
 
     return {
-        "date_str": datetime.now().strftime("%d.%m.%Y"),
-        "time_str": datetime.now().strftime("%H:%M"),
+        "date_str": now_tr.strftime("%d.%m.%Y"),
+        "time_str": now_tr.strftime("%H:%M"),
         "total_trades": total_count,
         "win_count": len(wins),
         "loss_count": len(losses),
