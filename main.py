@@ -46,7 +46,7 @@ class TradingBotOrchestrator:
         self.tracker = CounterfactualTrackerAgent(self.client)
         self.cmd_agent = TelegramCommandAgent(self)
         self.ai_analyst = AIAnalystAgent()
-        self.quant_sim = QuantSimulationAgent(default_simulations=5000, win_threshold_pct=60.0)
+        self.quant_sim = QuantSimulationAgent(default_simulations=10000, win_threshold_pct=70.0)
 
         # Canlı WebSocket Veri Boru Hattını Başlat
         try:
@@ -156,28 +156,30 @@ class TradingBotOrchestrator:
                 book_ticker = self.client.get_book_ticker(symbol)
                 news_analysis = self.news_agent.analyze_catalyst(symbol, ta_setup["direction"], funding_data)
 
-                # Ajan 3: Risk Şefi (Dinamik 10x/20x, BTC Kalkanı, Slippage ve Fonlama denetimi)
-                from core.database import get_active_and_pending_signals
+                # Ajan 3: Risk Şefi (Dinamik Bileşik Kasa, 10x/20x, BTC Kalkanı, Slippage ve Fonlama denetimi)
+                from core.database import get_active_and_pending_signals, get_current_equity
                 active_sigs = get_active_and_pending_signals() or []
+                current_equity = get_current_equity()
                 is_approved, risk_report = self.risk_officer.evaluate(
                     ta_setup, news_analysis, ticker, btc_regime,
                     funding_data=funding_data,
                     book_ticker=book_ticker,
-                    active_signals=active_sigs
+                    active_signals=active_sigs,
+                    current_equity=current_equity
                 )
                 if not is_approved:
                     add_scanner_log(symbol, "REJECTED", risk_report.get("reason", "Risk kurallarına uymadı"))
                     continue
 
-                # Ajan 3.2: Kuant & Monte Carlo Fiyat Yolu Simülasyon Ajanı (5,000 Bağımsız Yol)
-                quant_sim = self.quant_sim.simulate_setup(symbol, ta_setup, candles_15m, num_simulations=5000)
+                # Ajan 3.2: Kuant & Monte Carlo Fiyat Yolu Simülasyon Ajanı (10,000 Bağımsız Yol)
+                quant_sim = self.quant_sim.simulate_setup(symbol, ta_setup, candles_15m, num_simulations=10000)
                 win_pct = quant_sim.get("win_probability_pct", 0.0)
 
                 if not quant_sim.get("is_approved", False):
                     add_scanner_log(
                         symbol,
                         "REJECTED",
-                        f"Kuant Simülasyon Veto Etti (5,000 Yol: TP İhtimali %{win_pct:.1f} < %60.0)",
+                        f"Kuant Simülasyon Veto Etti (10,000 Yol: TP İhtimali %{win_pct:.1f} < %70.0)",
                         f"Stop Loss Riski: %{quant_sim.get('loss_probability_pct', 0.0):.1f}"
                     )
                     continue
