@@ -32,11 +32,12 @@ class RiskOfficerAgent:
         btc_regime: Optional[Dict] = None,
         funding_data: Optional[Dict] = None,
         book_ticker: Optional[Dict] = None,
-        active_signals: Optional[List[Dict]] = None
+        active_signals: Optional[List[Dict]] = None,
+        current_equity: Optional[float] = None
     ) -> Tuple[bool, Dict]:
         """
         Setup'ı dinamik kaldıraç (10x veya 20x), komisyon hesabı, slippage (spread),
-        fonlama oranı ve sabit risk kurallarına göre denetler.
+        fonlama oranı, dinamik bileşik kasa (exponential compounding) ve sabit %2 risk kurallarına göre denetler.
         """
         leverage = ta_setup.get("leverage", 10)
         direction = ta_setup["direction"]
@@ -144,14 +145,17 @@ class RiskOfficerAgent:
         gross_tp2_margin_pct = round(tp2_pct * leverage, 1)
         net_tp2_margin_pct = round(gross_tp2_margin_pct - fee_drag_pct, 1)
 
-        # 5. DİNAMİK POZİSYON BOYUTLANDIRMA (SABİT %2 KASA RİSK KURALI)
-        # Portföy $1,000 ise, %2 risk = $20.0 maksimum kayıp
-        target_risk_usd = round(PORTFOLIO_EQUITY_USDT * (RISK_PER_TRADE_PCT / 100.0), 2)
+        # 5. DİNAMİK BİLEŞİK KASA VE POZİSYON BOYUTLANDIRMA (EXPONENTIAL COMPOUNDING & %2 RİSK KURALI)
+        # Kasa arttıkça pozisyon büyüklüğü eşzamanlı katlanır (bileşik faiz); düşüşte ise kayıp frenlenir.
+        active_equity = float(current_equity) if current_equity and current_equity > 50.0 else PORTFOLIO_EQUITY_USDT
+        target_risk_usd = round(active_equity * (RISK_PER_TRADE_PCT / 100.0), 2)
         total_sl_loss_fraction = (sl_pct * leverage + fee_drag_pct) / 100.0
         
-        calculated_margin = target_risk_usd / total_sl_loss_fraction if total_sl_loss_fraction > 0 else 100.0
-        # Sermaye sınırları: Minimum $30 USDT, Maksimum $250 USDT ($1000 / 4)
-        allocated_margin = round(max(30.0, min(MAX_ALLOCATED_MARGIN_PER_TRADE, calculated_margin)), 1)
+        calculated_margin = target_risk_usd / total_sl_loss_fraction if total_sl_loss_fraction > 0 else (active_equity * 0.15)
+        
+        # Dinamik marjin tavanı: Kasanın en fazla %35'i tek bir işleme ayrılabilir (Fon koruma kalkanı)
+        dynamic_max_margin = round(active_equity * 0.35, 1)
+        allocated_margin = round(max(30.0, min(dynamic_max_margin, calculated_margin)), 1)
         actual_risk_usd = round(allocated_margin * total_sl_loss_fraction, 2)
 
         # 6. RİSK SINIFLANDIRMASI (GRADE A+, A, B, C)
@@ -177,6 +181,7 @@ class RiskOfficerAgent:
             "leverage": leverage,
             "risk_grade": risk_grade,
             "risk_desc": risk_desc,
+            "portfolio_equity_usdt": active_equity,
             "allocated_margin_usdt": allocated_margin,
             "risk_usd": actual_risk_usd,
             "fee_drag_pct": fee_drag_pct,
