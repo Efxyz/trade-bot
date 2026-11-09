@@ -144,6 +144,15 @@ class NotifierAgent:
         except Exception as e:
             print(f"[Notifier] Telegram mesaj hatası: {e}")
 
+    def send_daily_summary_report(self) -> Dict:
+        """Gün sonu 24 saatlik işlem ve kâr/zarar raporunu derler ve Telegram'a iletir."""
+        from core.database import generate_daily_summary_report, format_daily_telegram_message
+        report = generate_daily_summary_report()
+        msg_text = format_daily_telegram_message(report)
+        self.send_text_message(msg_text)
+        print("🏆 [Gün Sonu Raporu] 24 saatlik işlem ve kâr/zarar raporu Telegram'a iletildi.")
+        return report
+
     def _send_telegram_photo(self, photo_path: str, caption: str):
         """Telegram bot API'sine fotoğraf ve metin yükler."""
         if not os.path.exists(photo_path):
