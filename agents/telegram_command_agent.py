@@ -111,9 +111,17 @@ class TelegramCommandAgent:
                 )
             self.orchestrator.notifier.send_text_message("\n".join(text_lines))
 
+        elif cmd in ("/rapor", "/gunsonu", "/daily", "/24s"):
+            self.orchestrator.notifier.send_text_message("⏳ *Son 24 Saatlik Gün Sonu Raporu Derleniyor...*")
+            try:
+                self.orchestrator.notifier.send_daily_summary_report()
+            except Exception as e:
+                self.orchestrator.notifier.send_text_message(f"⚠️ Rapor oluşturma hatası: {e}")
+
         elif cmd in ("/yardim", "/help", "/start"):
             msg = (
                 "🤖 *TRADE BOT KOMUT REHBERİ*\n\n"
+                "🔹 `/rapor` : Son 24 saatlik gün sonu kâr/zarar ve işlem özetini atar.\n"
                 "🔹 `/tara` : Binance vadeli piyasayı anında tarar.\n"
                 "🔹 `/durum` : 'Girseydim ne olurdu?' PnL raporunu getirir.\n"
                 "🔹 `/aktif` : Açıkta bekleyen sanal pozisyonları listeler.\n"
