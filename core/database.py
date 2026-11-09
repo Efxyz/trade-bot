@@ -411,6 +411,27 @@ def get_today_trades_count() -> int:
         row = cursor.fetchone()
         return row[0] if row else 0
 
+def get_today_net_dollar_loss() -> float:
+    """Bugün (Türkiye Saati ile 00:00'dan itibaren) kapanan işlemlerin net dolar bazlı toplam kaybını kontrol eder (Circuit Breaker)."""
+    from datetime import datetime, timezone, timedelta
+    tr_tz = timezone(timedelta(hours=3))
+    today_start = datetime.now(timezone.utc).astimezone(tr_tz).strftime("%Y-%m-%d 00:00:00")
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 
+                SUM(COALESCE(allocated_margin_usdt, 150.0) * (simulated_pnl_pct / 100.0)) as net_dollar
+            FROM signals
+            WHERE status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER')
+              AND closed_at >= ?
+              AND simulated_pnl_pct IS NOT NULL
+        """, (today_start,))
+        row = cursor.fetchone()
+        net_dollar = (row["net_dollar"] if row and row["net_dollar"] is not None else 0.0)
+        if net_dollar < 0:
+            return abs(round(net_dollar, 2))
+        return 0.0
+
 def get_active_and_pending_signals() -> List[Dict]:
     """Halen takip edilmesi gereken aktif veya giriş bekleyen sinyalleri getirir."""
     with get_db_connection() as conn:
@@ -521,6 +542,83 @@ def get_performance_stats() -> Dict:
         row["portfolio_balance"] = round(1000.0 + net_dollar_gain, 2)
 
         return row
+
+def close_single_signal_db(symbol: str, client=None) -> Optional[Dict]:
+    """Belirtilen paritedeki açık pozisyonu anlık piyasa fiyatıyla manuel olarak kapatır."""
+    clean_sym = symbol.upper().strip()
+    if not clean_sym.endswith("USDT") and not clean_sym.endswith("USDT.P"):
+        clean_sym = f"{clean_sym}USDT"
+
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM signals 
+            WHERE symbol = ? AND status IN ('ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'PENDING_ENTRY')
+            ORDER BY id DESC LIMIT 1
+        """, (clean_sym,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        sig = dict(row)
+
+    sig_id = sig["id"]
+    direction = sig["direction"]
+    leverage = sig.get("leverage") or 10
+    entry_price = sig.get("actual_entry_price") or sig["entry_min"]
+    exit_price = entry_price
+
+    if client:
+        try:
+            tickers = client.get_24hr_tickers()
+            if clean_sym in tickers:
+                exit_price = tickers[clean_sym].get("lastPrice", entry_price)
+        except Exception:
+            pass
+
+    raw_change = ((exit_price - entry_price) / entry_price) if direction == "LONG" else ((entry_price - exit_price) / entry_price)
+    gross_pnl_pct = round(raw_change * leverage * 100, 2)
+    fee_pct = round(0.10 * leverage, 2)
+    net_pnl_pct = round(gross_pnl_pct - fee_pct, 2)
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE signals SET
+                status = 'MANUAL_CLOSE',
+                closed_at = ?,
+                exit_price = ?,
+                simulated_pnl_pct = ?,
+                gross_pnl_pct = ?,
+                fee_pct = ?
+            WHERE id = ?
+        """, (now_str, exit_price, net_pnl_pct, gross_pnl_pct, fee_pct, sig_id))
+        conn.commit()
+
+    sig["status"] = "MANUAL_CLOSE"
+    sig["closed_at"] = now_str
+    sig["exit_price"] = exit_price
+    sig["simulated_pnl_pct"] = net_pnl_pct
+    sig["gross_pnl_pct"] = gross_pnl_pct
+    sig["fee_pct"] = fee_pct
+
+    # Tauric Reflection kaydı
+    try:
+        from core.reflection import ReflectorEngine
+        ReflectorEngine.reflect_on_trade({
+            "signal_id": sig_id,
+            "symbol": clean_sym,
+            "direction": direction,
+            "status": "MANUAL_CLOSE",
+            "pnl_pct": net_pnl_pct,
+            "gross_pnl_pct": gross_pnl_pct,
+            "fee_pct": fee_pct,
+            "leverage": leverage
+        })
+    except Exception:
+        pass
+
+    return sig
 
 def close_all_active_signals_db(client=None) -> int:
     """Açık olan tüm aktif pozisyonları anlık piyasa fiyatıyla kapatır ve PnL defterine kaydeder."""
