@@ -156,14 +156,16 @@ class TradingBotOrchestrator:
                 continue  # Zaten açık veya yakın zamanda denenmişse tekrar girme
 
             try:
-                # Sadece 15 dakikalık (15m) scalping mumlarını çek (1 saatlik grafik filtresi kaldırıldı)
+                # 15 Dakikalık (15m) scalping ve 1 Saatlik (1h) Makro Trend Mumlarını Çek
                 candles_15m = self.client.get_klines(symbol, interval=PRIMARY_TIMEFRAME, limit=60)
                 if len(candles_15m) < 40:
                     add_scanner_log(symbol, "REJECTED", "Yetersiz 15m mum verisi")
                     continue
 
-                # Ajan 1: Teknik Analist incelemesi (Tamamen 15m Hızlı Scalp & Anlık Momentum)
-                ta_setup, ta_reason = self.ta_agent.analyze_setup(symbol, candles_15m)
+                candles_1h = self.client.get_klines(symbol, interval=MACRO_TIMEFRAME, limit=35)
+
+                # Ajan 1: Teknik Analist incelemesi (15m Scalp + 1h Makro Trend Kalkanı)
+                ta_setup, ta_reason = self.ta_agent.analyze_setup(symbol, candles_15m, candles_1h)
                 if not ta_setup:
                     add_scanner_log(symbol, "REJECTED", ta_reason)
                     continue
