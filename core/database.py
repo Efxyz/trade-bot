@@ -167,6 +167,21 @@ def init_db():
             )
         """)
 
+        # Günlük Bilanço ve PnL Arşiv Tablosu (23:59 Kapanış Mührü)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS daily_pnl_archive (
+                date_str TEXT PRIMARY KEY,
+                total_trades INTEGER,
+                win_count INTEGER,
+                loss_count INTEGER,
+                win_rate REAL,
+                net_dollar_gain REAL,
+                net_pnl_pct REAL,
+                closing_balance REAL,
+                recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         conn.commit()
 
 def add_scanner_log_db(symbol: str, status: str, reason: str, details: str = ""):
@@ -603,7 +618,104 @@ def get_performance_stats() -> Dict:
         row["net_dollar_gain"] = round(net_dollar_gain, 2)
         row["portfolio_balance"] = round(1000.0 + net_dollar_gain, 2)
 
+        # ========================================================
+        # BUGÜNKÜ NET PnL (TÜRKİYE SAATİ 00:00 - 23:59 ARASI)
+        # 23:59:59'da otomatik sıfırlanır ve arka planda arşivlenir
+        # ========================================================
+        from datetime import datetime, timezone, timedelta
+        tr_tz = timezone(timedelta(hours=3))
+        now_tr = datetime.now(timezone.utc).astimezone(tr_tz)
+        today_start = now_tr.strftime("%Y-%m-%d 00:00:00")
+        today_date_str = now_tr.strftime("%Y-%m-%d")
+
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as today_trades,
+                SUM(CASE WHEN simulated_pnl_pct > 0 THEN 1 ELSE 0 END) as today_wins,
+                SUM(CASE WHEN simulated_pnl_pct < 0 THEN 1 ELSE 0 END) as today_losses,
+                SUM(simulated_pnl_pct) as today_net_pnl_pct,
+                SUM(COALESCE(allocated_margin_usdt, 200.0) * (simulated_pnl_pct / 100.0)) as today_dollar_gain
+            FROM signals
+            WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER')
+              AND closed_at >= ?
+              AND simulated_pnl_pct IS NOT NULL
+        """, (today_start,))
+        t_row = dict(cursor.fetchone() or {})
+        t_trades = t_row.get("today_trades") or 0
+        t_wins = t_row.get("today_wins") or 0
+        t_losses = t_row.get("today_losses") or 0
+        t_dollar = round(t_row.get("today_dollar_gain") or 0.0, 2)
+        t_pct = round(t_row.get("today_net_pnl_pct") or 0.0, 2)
+        t_wr = round((t_wins / t_trades * 100.0), 1) if t_trades > 0 else 0.0
+
+        row["today_trades"] = t_trades
+        row["today_wins"] = t_wins
+        row["today_losses"] = t_losses
+        row["today_win_rate"] = t_wr
+        row["today_dollar_gain"] = t_dollar
+        row["today_net_pnl_pct"] = t_pct
+        row["today_date_str"] = today_date_str
+
+        # Arka Planda Günlük Bilanço Arşivini Güncelle / Mühürle
+        try:
+            check_and_auto_archive_daily_pnl()
+        except Exception:
+            pass
+
         return row
+
+def check_and_auto_archive_daily_pnl():
+    """
+    Geçmiş ve bugünkü günlerin kapanış bilançolarını kontrol eder.
+    Her günün net PnL'ini daily_pnl_archive tablosuna kalıcı olarak mühürler.
+    """
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT DISTINCT substr(closed_at, 1, 10) as c_date
+            FROM signals
+            WHERE closed_at IS NOT NULL
+              AND status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER')
+        """)
+        distinct_dates = [r["c_date"] for r in cursor.fetchall() if r["c_date"]]
+
+        for d_str in distinct_dates:
+            d_start = f"{d_str} 00:00:00"
+            d_end = f"{d_str} 23:59:59"
+            cursor.execute("""
+                SELECT 
+                    COUNT(*) as t_count,
+                    SUM(CASE WHEN simulated_pnl_pct > 0 THEN 1 ELSE 0 END) as w_count,
+                    SUM(CASE WHEN simulated_pnl_pct < 0 THEN 1 ELSE 0 END) as l_count,
+                    SUM(simulated_pnl_pct) as net_pct,
+                    SUM(COALESCE(allocated_margin_usdt, 200.0) * (simulated_pnl_pct / 100.0)) as net_dollar
+                FROM signals
+                WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER')
+                  AND closed_at >= ? AND closed_at <= ?
+                  AND simulated_pnl_pct IS NOT NULL
+            """, (d_start, d_end))
+            r = cursor.fetchone()
+            if r and (r["t_count"] or 0) > 0:
+                t_cnt = r["t_count"] or 0
+                w_cnt = r["w_count"] or 0
+                l_cnt = r["l_count"] or 0
+                net_p = round(r["net_pct"] or 0.0, 2)
+                net_d = round(r["net_dollar"] or 0.0, 2)
+                wr = round((w_cnt / t_cnt * 100.0), 1) if t_cnt > 0 else 0.0
+
+                cursor.execute("""
+                    INSERT OR REPLACE INTO daily_pnl_archive 
+                    (date_str, total_trades, win_count, loss_count, win_rate, net_dollar_gain, net_pnl_pct, recorded_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, (d_str, t_cnt, w_cnt, l_cnt, wr, net_d, net_p))
+        conn.commit()
+
+def get_daily_pnl_archive_db(limit: int = 30) -> List[Dict]:
+    """Kalıcı olarak arşivlenen günlük PnL kayıtlarını döner."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM daily_pnl_archive ORDER BY date_str DESC LIMIT ?", (limit,))
+        return [dict(r) for r in cursor.fetchall()]
 
 def close_single_signal_db(symbol: str, client=None) -> Optional[Dict]:
     """Belirtilen paritedeki açık pozisyonu anlık piyasa fiyatıyla manuel olarak kapatır."""
