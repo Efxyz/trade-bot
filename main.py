@@ -92,17 +92,21 @@ class TradingBotOrchestrator:
             add_scanner_log("KASA KALKANI", "PROTECTED", msg, "Yeni Fırsat Arama Kilitlendi")
             return
 
-        # 1.6 KESKİN NİŞANCI GÜNLÜK KOTA KONTROLÜ (Aşırı İşlem & Borsa Komisyonu Kalkanı)
-        from config import DAILY_MAX_NEW_TRADES, DAILY_MAX_DRAWDOWN_USDT
-        from core.database import get_today_trades_count, get_today_net_dollar_loss
-        today_trades_count = get_today_trades_count()
-        if today_trades_count >= DAILY_MAX_NEW_TRADES:
-            msg = f"Günlük azami {DAILY_MAX_NEW_TRADES} seçkin Grade A+ işlem kotası doldu ({today_trades_count}/{DAILY_MAX_NEW_TRADES}). Komisyon koruma kalkanı devrede."
-            print(f"🛡️ [Keskin Nişancı Kalkanı] {msg} Bugün yeni işlem aranmayacak (Borsaya Komisyon Yok).")
-            add_scanner_log("GÜNLÜK KOTA", "PROTECTED", msg, "Komisyon Koruma Kilidi")
-            return
+        # 1.6 GÜNLÜK AZAMİ KAYIP SİGORTASI (Daily Drawdown Circuit Breaker)
+        from config import (
+            DAILY_BASE_MAX_TRADES,
+            PROFIT_STEP_FOR_BONUS_TRADES,
+            BONUS_TRADES_PER_STEP,
+            DAILY_MAX_DRAWDOWN_USDT,
+            DAILY_TRAILING_PROFIT_LOCK_ENABLED
+        )
+        from core.database import (
+            get_today_trades_count,
+            get_today_net_dollar_loss,
+            get_today_net_dollar_pnl,
+            get_and_update_today_peak_profit
+        )
 
-        # 1.7 GÜNLÜK AZAMİ KAYIP SİGORTASI (Daily Drawdown Circuit Breaker)
         today_loss = get_today_net_dollar_loss()
         if today_loss >= DAILY_MAX_DRAWDOWN_USDT:
             msg = (
@@ -112,6 +116,38 @@ class TradingBotOrchestrator:
             )
             print(f"🛑 [Acil Durum Sigortası / Circuit Breaker] {msg}")
             add_scanner_log("CIRCUIT BREAKER", "PROTECTED", msg, "Acil Durum Sermaye Sigortası")
+            return
+
+        today_pnl = get_today_net_dollar_pnl()
+
+        # 1.7 GÜNLÜK ZİRVE KÂR KİLİDİ (Trailing Daily High-Water Mark Shield)
+        if DAILY_TRAILING_PROFIT_LOCK_ENABLED:
+            peak_profit, profit_floor, is_locked = get_and_update_today_peak_profit(today_pnl)
+            if is_locked:
+                msg = (
+                    f"🏆 Günlük Zirve Kâr Kilidi Aktif! Bugün en yüksek +${peak_profit:.2f} kâr görüldü. "
+                    f"Piyasa geri çekilmesinde günün taban kârı (+${profit_floor:.2f}) korumaya alındı "
+                    f"(Anlık Net Kâr: +${today_pnl:.2f}). Kârın geri verilmemesi için tarama gün sonuna kadar kilitlendi."
+                )
+                print(f"🔒 [Zirve Kâr Kilidi / Trailing Profit Shield] {msg}")
+                add_scanner_log("KÂR KİLİDİ", "PROFIT_LOCKED", msg, "Gün Sonu Kâr Sigortası")
+                return
+
+        # 1.8 DİNAMİK İŞLEM KOTASI (Kârlı Günde Sınırsız Avlanma / House-Money Kotası)
+        today_trades_count = get_today_trades_count()
+        bonus_slots = 0
+        if today_pnl > 0 and PROFIT_STEP_FOR_BONUS_TRADES > 0:
+            bonus_slots = int(today_pnl // PROFIT_STEP_FOR_BONUS_TRADES) * BONUS_TRADES_PER_STEP
+
+        effective_max_trades = DAILY_BASE_MAX_TRADES + bonus_slots
+        if today_trades_count >= effective_max_trades:
+            msg = (
+                f"Günlük işlem kotası doldu ({today_trades_count}/{effective_max_trades}). "
+                f"Taban Kota: {DAILY_BASE_MAX_TRADES} | Kâr Bonusu: +{bonus_slots} slot (Bugünkü Net Kâr: ${today_pnl:+.2f}). "
+                f"Komisyon ve sermaye koruma kalkanı devrede."
+            )
+            print(f"🛡️ [Keskin Nişancı Kotası] {msg} Bugün yeni işlem aranmayacak.")
+            add_scanner_log("GÜNLÜK KOTA", "PROTECTED", msg, "Komisyon Koruma Kilidi")
             return
 
         slots_left = MAX_CONCURRENT_TRADES - active_count
