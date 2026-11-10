@@ -8,7 +8,7 @@ from collections import deque
 from datetime import datetime
 import time
 from core.binance_client import BinanceFuturesClient
-from config import MIN_24H_VOLUME_USDT
+from config import MIN_24H_VOLUME_USDT, EXCLUDED_SYMBOLS_BLACKLIST
 
 # Shared live activity logs for the Trading Office Terminal
 SCANNER_ACTIVITY_LOGS = deque(maxlen=50)
@@ -102,6 +102,7 @@ class MarketScannerAgent:
             if t["quoteVolume"] >= self.min_volume 
             and t["symbol"] not in exclude_symbols
             and t["symbol"] not in SYNTHETIC_STOCK_BLACKLIST
+            and t["symbol"] not in EXCLUDED_SYMBOLS_BLACKLIST
             and not any(t["symbol"].startswith(s) for s in ["DELL", "MSTR", "IREN", "NVDA", "TSLA", "SQQQ", "SOXL", "SOXS", "AAPL", "AMZN", "MSFT", "GOOGL", "SKHYNIX", "SNDK"])
         ]
 
