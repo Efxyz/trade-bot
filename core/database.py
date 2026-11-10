@@ -158,6 +158,15 @@ def init_db():
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tuning_id ON self_tuning_logs(id DESC)")
 
+        # Günlük Durum ve Zirve Kâr Takip Tablosu (High-Water Mark State)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS system_state (
+                key TEXT PRIMARY KEY,
+                value TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         conn.commit()
 
 def add_scanner_log_db(symbol: str, status: str, reason: str, details: str = ""):
@@ -431,6 +440,59 @@ def get_today_net_dollar_loss() -> float:
         if net_dollar < 0:
             return abs(round(net_dollar, 2))
         return 0.0
+
+def get_today_net_dollar_pnl() -> float:
+    """Bugün (Türkiye Saati ile 00:00'dan itibaren) kapanan işlemlerin net dolar bazlı kâr/zararını döner (+ veya -)."""
+    from datetime import datetime, timezone, timedelta
+    tr_tz = timezone(timedelta(hours=3))
+    today_start = datetime.now(timezone.utc).astimezone(tr_tz).strftime("%Y-%m-%d 00:00:00")
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 
+                SUM(COALESCE(allocated_margin_usdt, 150.0) * (simulated_pnl_pct / 100.0)) as net_dollar
+            FROM signals
+            WHERE status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER')
+              AND closed_at >= ?
+              AND simulated_pnl_pct IS NOT NULL
+        """, (today_start,))
+        row = cursor.fetchone()
+        net_dollar = (row["net_dollar"] if row and row["net_dollar"] is not None else 0.0)
+        return round(net_dollar, 2)
+
+def get_and_update_today_peak_profit(current_pnl: float):
+    """
+    Günün en yüksek net kârını (Daily High-Water Mark) takip eder.
+    Döner: (peak_profit, profit_floor, is_locked)
+    - Zirve kâr güncellenir.
+    - Eğer zirve >= 30$ ve anlık kâr taban kârın (floor) altına indiyse is_locked = True döner.
+    """
+    from datetime import datetime, timezone, timedelta
+    tr_tz = timezone(timedelta(hours=3))
+    today_key = "peak_pnl_" + datetime.now(timezone.utc).astimezone(tr_tz).strftime("%Y_%m_%d")
+
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("CREATE TABLE IF NOT EXISTS system_state (key TEXT PRIMARY KEY, value TEXT, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        cursor.execute("SELECT value FROM system_state WHERE key = ?", (today_key,))
+        row = cursor.fetchone()
+        prev_peak = float(row["value"]) if row else 0.0
+
+        peak = max(prev_peak, current_pnl)
+        if peak != prev_peak or not row:
+            cursor.execute("INSERT OR REPLACE INTO system_state (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)", (today_key, str(peak)))
+            conn.commit()
+
+    floor = 0.0
+    if peak >= 75.0:
+        floor = 55.0
+    elif peak >= 50.0:
+        floor = 35.0
+    elif peak >= 30.0:
+        floor = 15.0
+
+    is_locked = (peak >= 30.0 and current_pnl <= floor)
+    return round(peak, 2), round(floor, 2), is_locked
 
 def get_active_and_pending_signals() -> List[Dict]:
     """Halen takip edilmesi gereken aktif veya giriş bekleyen sinyalleri getirir."""
