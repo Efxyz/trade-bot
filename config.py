@@ -80,8 +80,14 @@ MAX_SL_PCT_10X = 1.15           # 10x için max SL %1.15 (Marjin büyüklüğü 
 MAX_SL_PCT_20X = 1.00           # 20x Sniper için max SL %1.00 (Elit 85+ puanlı dar stoplu kurulumlar)
 MIN_RR_RATIO = 1.8              # Minimum 1:1.8 Risk/Ödül oranı (Eski 1.4 barajı asimetrik getiri için yükseltildi)
 MAX_HOLD_MINUTES = 90           # Hareketsiz pozisyonlara 90 dakika (6 mum) nefes payı tanı (Erken çıkış zararını önler)
-DAILY_MAX_NEW_TRADES = 4        # Keskin Nişancı Kotası: Günde en fazla 4 seçkin Grade A+ işlem (Borsa komisyon katili)
-DAILY_MAX_DRAWDOWN_USDT = 50.0  # Günlük Acil Durum Sigortası (Circuit Breaker): -$50 kayıpta taramayı 24s dondur
+
+# Dinamik Günlük Kota & Zirve Kâr Koruma Kalkanı (House-Money & Trailing Profit Lock)
+DAILY_BASE_MAX_TRADES = 4              # Taban Keskin Nişancı Kotası: Zor/testere piyasada günde en fazla 4 işlem
+PROFIT_STEP_FOR_BONUS_TRADES = 15.0     # Her +$15 net kârda kota genişlemesi
+BONUS_TRADES_PER_STEP = 2              # Her +$15 kârda +2 ekstra işlem hakkı (Kârlı günde sınırsız avlanma)
+DAILY_MAX_NEW_TRADES = 4               # Geriye dönük uyumluluk için alias
+DAILY_MAX_DRAWDOWN_USDT = 50.0         # Günlük Acil Durum Sigortası (Circuit Breaker): -$50 kayıpta taramayı 24s dondur
+DAILY_TRAILING_PROFIT_LOCK_ENABLED = True # Günlük Zirve Kâr Kilidi (Kazanılan kârı asla geri vermeme kalkanı)
 
 # SMC & Confluence Kalite Eşiği (Sadece Kusursuz Grade A+ Kurulumlar - Keskin Nişancı Modu)
 MIN_CONFLUENCE_SCORE = 82       # 82 altı ortalama sinyaller kesinlikle elenir (Eski: 76)
