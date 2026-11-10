@@ -16,6 +16,8 @@ ENV/
 
 # Local tools & downloads
 data/tools/
+data/simulations/
+scratch/
 *.log
 
 # OS & IDE
