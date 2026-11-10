@@ -658,6 +658,17 @@ class TechnicalAnalysisAgent:
 
         # SHORT KONTROLÜ (Short Asimetrisi Kalkanı: Baraj 84)
         elif short_score >= short_min_score and short_score > long_score:
+            # 0. FREQTRADE SIDE-SPECIFIC STOPLOSS GUARD (SHORT KİLİDİ)
+            try:
+                from core.database import check_side_stoploss_guard
+                from config import SIDE_STOPLOSS_GUARD_ENABLED, SIDE_STOPLOSS_MAX_CONSECUTIVE_LOSSES, SIDE_STOPLOSS_COOLDOWN_MINUTES
+                if SIDE_STOPLOSS_GUARD_ENABLED:
+                    is_locked, lock_desc = check_side_stoploss_guard("SHORT", SIDE_STOPLOSS_MAX_CONSECUTIVE_LOSSES, SIDE_STOPLOSS_COOLDOWN_MINUTES)
+                    if is_locked:
+                        return None, f"📌 {lock_desc}"
+            except Exception:
+                pass
+
             # 1. SMC Premium Kalkanı: Dipten Satışı Kesinlikle Engelle
             # Fiyat dalganın alt %45'inde (İndirimli/Discount bölgede) ise ve aktif FVG/OB direnci test edilmiyorsa elenir!
             if SMC_PREMIUM_DISCOUNT_FILTER and zone_pct < 45.0 and fvg["current_in_fvg"] != "BEARISH_TEST" and ob["current_at_ob"] != "BEARISH_OB_RETEST":
