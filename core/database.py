@@ -4,7 +4,7 @@ Tracks real performance if the trade had been taken, without risking real funds.
 """
 import sqlite3
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from config import DB_PATH
 
 def get_db_connection():
