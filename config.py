@@ -81,10 +81,12 @@ MAX_SL_PCT_20X = 1.20           # 20x Sniper için max SL %1.20 (15m ATR dalgala
 MIN_RR_RATIO = 1.8              # Minimum 1:1.8 Risk/Ödül oranı (Eski 1.4 barajı asimetrik getiri için yükseltildi)
 MAX_HOLD_MINUTES = 90           # Hareketsiz pozisyonlara 90 dakika (6 mum) nefes payı tanı (Erken çıkış zararını önler)
 
-# Erken Zarar Kes Kalkanı (Early Invalidation Shield)
-EARLY_INVALIDATION_ENABLED = True      # 40 dakikada toparlanamayan pozisyonları -$20 beklemeden erken kes
-EARLY_INVALIDATION_MINUTES = 40        # Kontrol süresi (dakika)
-EARLY_INVALIDATION_LOSS_PCT = 0.40     # Fiyat %-0.40 altındaysa erken çıkış tetiklenir
+# Erken Zarar Kes Kalkanı (Early Invalidation Shield - Hızlı Zarar Freni)
+EARLY_INVALIDATION_ENABLED = True      # Toparlanamayan negatif pozisyonları -$20 beklemeden erken kes
+EARLY_INVALIDATION_MINUTES = 22        # Hızlı kontrol süresi (dakika) - 22 dk (15m + 5m teyit mumu)
+EARLY_INVALIDATION_LOSS_PCT = 0.40     # Fiyat %-0.40 altındaysa erken çıkış tetiklenir (Kaybı -$7-$9'da kilitler)
+MAX_VWAP_DISTANCE_PCT = 1.30           # 15m VWAP'tan %1.30'dan fazla uzaktaki fiyatlarda aşırı uzama filtresi (Mean-Reversion Kalkanı)
+SMC_PREMIUM_DISCOUNT_FILTER = True     # SMC Premium/Discount Kalkanı (Dipten Short / Tepeden Long Engeli)
 
 # Dinamik Günlük Kota & Zirve Kâr Koruma Kalkanı (House-Money & Trailing Profit Lock)
 DAILY_BASE_MAX_TRADES = 4              # Taban Keskin Nişancı Kotası: Zor/testere piyasada günde en fazla 4 işlem
