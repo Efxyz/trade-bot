@@ -185,37 +185,8 @@ class CounterfactualTrackerAgent:
                     current_sl = protect_sl
                     update_signal_status(sig_id, {"stop_loss": current_sl, "ladder_name": "⏱️ 30dk Kâr Kilidi"})
 
-            if minutes_open >= MAX_HOLD_MINUTES:
-                raw_change = ((current_price - entry_price) / entry_price) if is_long else ((entry_price - current_price) / entry_price)
-                # Eğer pozisyon kârda ise hemen kârı kilitleyip çık:
-                if raw_change > 0.001:
-                    is_closed = True
-                    final_status = "TIMEOUT_PROFIT_EXIT"
-                    exit_price = current_price
-                    print(f"⏱️ [{symbol}] {MAX_HOLD_MINUTES} dk doldu: Pozisyon kârda ({raw_change*100:+.2f}%) kapatıldı.")
-                # Eğer pozisyon hafif ekside ancak Stop mesafesine çok uzaksa (<%0.4) ve 120 dk dolmadıysa gereksiz komisyon ödememek için ek nefes payı tanı:
-                elif minutes_open < 120 and abs(raw_change) < 0.004:
-                    pass
-                else:
-                    is_closed = True
-                    final_status = "TIMEOUT_EXIT"
-                    exit_price = current_price
-                    print(f"⏱️ [{symbol}] {minutes_open:.0f} dakika doldu! Hareketsiz pozisyon {current_price} seviyesinden kapatıldı.")
-
-            # 4b. ERKEN ZARAR KES KALKANI (EARLY INVALIDATION SHIELD)
-            # Eğer pozisyon 40 dakikayı geçmişse, henüz hiçbir kâr basamağı yakalayamadıysa (ladder_step == 0)
-            # ve fiyat %-0.40'ın altına sarkarak desteği kırdıysa: -$20'ye kadar beklemeden hemen zararı küçükken kes!
-            if not is_closed and EARLY_INVALIDATION_ENABLED and current_ladder_step == 0 and minutes_open >= EARLY_INVALIDATION_MINUTES:
-                raw_c = ((current_price - entry_price) / entry_price) if is_long else ((entry_price - current_price) / entry_price)
-                if raw_c <= -(EARLY_INVALIDATION_LOSS_PCT / 100.0):
-                    is_closed = True
-                    final_status = "EARLY_INVALIDATION_EXIT"
-                    exit_price = current_price
-                    raw_change = raw_c
-                    print(f"🛡️ [{symbol}] Erken Zarar Kes Kalkanı devrede! ({minutes_open:.0f} dk, ham: {raw_c*100:.2f}%). Pozisyon büyük stop (-$20) beklenmeden küçük zararla kapatıldı.")
-
-            # 5. HEDEF (TP) VE MERDİVEN STOP KONTROLLERİ
-            elif not is_closed:
+            # 4. HEDEF (TP) VE MERDİVEN STOP KONTROLLERİ (BİRİNCİL ÖNCELİK)
+            if not is_closed:
                 # Hedefe (TP) ulaştı mı?
                 if (is_long and current_price >= tp) or (not is_long and current_price <= tp):
                     is_closed = True
@@ -235,6 +206,36 @@ class CounterfactualTrackerAgent:
                         final_status = "CLOSED_BE"
                     else:
                         final_status = "HIT_SL"
+
+            # 5. ERKEN ZARAR KES KALKANI (EARLY INVALIDATION SHIELD - 22 DK HIZLI FREN)
+            # Eğer henüz SL'e çarpmamışsa, pozisyon 22 dakikayı geçmişse, henüz hiçbir kâr basamağı yakalayamadıysa (ladder_step == 0)
+            # ve fiyat %-0.40'ın altına sarkmışsa: -$20 tam stop beklenmeden erken zararla (-$7-$9) kesilir!
+            if not is_closed and EARLY_INVALIDATION_ENABLED and current_ladder_step == 0 and minutes_open >= EARLY_INVALIDATION_MINUTES:
+                raw_c = ((current_price - entry_price) / entry_price) if is_long else ((entry_price - current_price) / entry_price)
+                if raw_c <= -(EARLY_INVALIDATION_LOSS_PCT / 100.0):
+                    is_closed = True
+                    final_status = "EARLY_INVALIDATION_EXIT"
+                    exit_price = current_price
+                    raw_change = raw_c
+                    print(f"🛡️ [{symbol}] Erken Zarar Kes Kalkanı devrede! ({minutes_open:.0f} dk, ham: {raw_c*100:.2f}%). Pozisyon büyük stop beklenmeden küçük zararla kapatıldı.")
+
+            # 6. ZAMAN AŞIMI (TIMEOUT / 90 DAKİKA HAREKETSİZLİK ÇIKIŞI)
+            if not is_closed and minutes_open >= MAX_HOLD_MINUTES:
+                raw_change = ((current_price - entry_price) / entry_price) if is_long else ((entry_price - current_price) / entry_price)
+                # Eğer pozisyon kârda ise hemen kârı kilitleyip çık:
+                if raw_change > 0.001:
+                    is_closed = True
+                    final_status = "TIMEOUT_PROFIT_EXIT"
+                    exit_price = current_price
+                    print(f"⏱️ [{symbol}] {MAX_HOLD_MINUTES} dk doldu: Pozisyon kârda ({raw_change*100:+.2f}%) kapatıldı.")
+                # Eğer pozisyon hafif ekside ancak Stop mesafesine çok uzaksa (<%0.4) ve 120 dk dolmadıysa gereksiz komisyon ödememek için ek nefes payı tanı:
+                elif minutes_open < 120 and abs(raw_change) < 0.004:
+                    pass
+                else:
+                    is_closed = True
+                    final_status = "TIMEOUT_EXIT"
+                    exit_price = current_price
+                    print(f"⏱️ [{symbol}] {minutes_open:.0f} dakika doldu! Hareketsiz pozisyon {current_price} seviyesinden kapatıldı.")
 
             # 6. İŞLEM KAPANDIYSA NET MARJİN PnL'İ HESAPLA VE VERİTABANINA YAZ
             if is_closed:
