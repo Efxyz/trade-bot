@@ -24,6 +24,7 @@ from config import (
     MAX_RSI_SHORT,
     MIN_4BAR_RANGE_PCT,
     MIN_CONFLUENCE_SCORE,
+    MIN_CONFLUENCE_SCORE_SHORT,
     MAX_VWAP_DISTANCE_PCT,
     SMC_PREMIUM_DISCOUNT_FILTER
 )
@@ -282,6 +283,47 @@ class TechnicalAnalysisAgent:
         }
 
     @staticmethod
+    def detect_rsi_divergence(candles_15m: List[Dict], rsi_values: List[Optional[float]], direction: str) -> Tuple[bool, str]:
+        """
+        15m mumlarında ve RSI değerlerinde uyumsuzluk (Divergence) tespiti yapar.
+        - SHORT için: Fiyat Lower Low yaparken RSI Higher Low yapıyorsa (Bullish Div -> SHORT VETO)
+        - LONG için: Fiyat Higher High yaparken RSI Lower High yapıyorsa (Bearish Div -> LONG VETO)
+        """
+        if len(candles_15m) < 15 or len(rsi_values) < 15:
+            return False, ""
+
+        curr_candles = candles_15m[-4:]
+        prev_candles = candles_15m[-12:-4]
+
+        valid_rsi_curr = [r for r in rsi_values[-4:] if r is not None]
+        valid_rsi_prev = [r for r in rsi_values[-12:-4] if r is not None]
+
+        if not valid_rsi_curr or not valid_rsi_prev:
+            return False, ""
+
+        if direction == "SHORT":
+            curr_low = min(c["low"] for c in curr_candles)
+            prev_low = min(c["low"] for c in prev_candles)
+            curr_rsi_min = min(valid_rsi_curr)
+            prev_rsi_min = min(valid_rsi_prev)
+
+            # Fiyat daha düşük dip yaptı ama RSI 3+ puan daha yüksekte kaldıysa (Pozitif Uyumsuzluk / V-dip tuzağı)
+            if curr_low < prev_low and curr_rsi_min > (prev_rsi_min + 3.0):
+                return True, f"Pozitif RSI Uyumsuzluğu (Fiyat Dip: {curr_low:.4f} < {prev_low:.4f}, RSI Dip: {curr_rsi_min:.1f} > {prev_rsi_min:.1f})"
+
+        elif direction == "LONG":
+            curr_high = max(c["high"] for c in curr_candles)
+            prev_high = max(c["high"] for c in prev_candles)
+            curr_rsi_max = max(valid_rsi_curr)
+            prev_rsi_max = max(valid_rsi_prev)
+
+            # Fiyat daha yüksek tepe yaptı ama RSI 3+ puan daha aşağıda kaldıysa (Negatif Uyumsuzluk / Tepe alımı)
+            if curr_high > prev_high and curr_rsi_max < (prev_rsi_max - 3.0):
+                return True, f"Negatif RSI Uyumsuzluğu (Fiyat Tepe: {curr_high:.4f} > {prev_high:.4f}, RSI Tepe: {curr_rsi_max:.1f} < {prev_rsi_max:.1f})"
+
+        return False, ""
+
+    @staticmethod
     def check_volume_burst(candles: List[Dict]) -> bool:
         """
         Hareketsiz coinleri eler:
@@ -521,6 +563,9 @@ class TechnicalAnalysisAgent:
         # VWAP Aşırı Uzaklaşma Oranı
         vwap_dist_pct = round(((current_price - curr_vwap) / curr_vwap * 100.0), 2) if curr_vwap > 0 else 0.0
 
+        # Short Asimetrisi Kalkanı: Tarihsel kayıpların %100'ü short kaynaklı olduğundan SHORT için baraj 84'tür
+        short_min_score = max(target_min_score, MIN_CONFLUENCE_SCORE_SHORT)
+
         # --- EŞİK DEĞERLERİ & İŞLEM KARARI (Otonom Kalibre Edilmiş Baraj: target_min_score) ---
         # LONG KONTROLÜ
         if long_score >= target_min_score and long_score > short_score:
@@ -539,6 +584,15 @@ class TechnicalAnalysisAgent:
                     f"📌 <strong>Mevcut Durum:</strong> Fiyat VWAP'ın +%{vwap_dist_pct:.2f} Üzerinde Aşırı Uzamış.<br>"
                     f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Ortalamadan aşırı sapan fiyatlarda elastik kar satışı (mean-reversion) riski çok yüksektir.<br>"
                     f"🎯 <strong>Beklenen Şart:</strong> Fiyatın VWAP/EMA20 desteğine geri çekilip güç toplaması."
+                )
+
+            # 3. RSI Uyumsuzluk Kalkanı (Bearish Divergence / Tepe Alımı Koruması)
+            has_bear_div, div_desc = self.detect_rsi_divergence(candles_15m, rsi, "LONG")
+            if has_bear_div:
+                return None, (
+                    f"📌 <strong>Mevcut Durum:</strong> {div_desc}.<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Fiyat yeni tepe yaparken RSI'ın zayıflaması tepe alımı ve kâr satışı düzeltmesi riskini gösterir.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> Negatif uyumsuzluğun kâr satışı ile dengelenip desteğin test edilmesi."
                 )
 
             # RSI Sınır Kontrolü (Tepeden Alımı Kesinlikle Engelle)
@@ -602,8 +656,8 @@ class TechnicalAnalysisAgent:
             }
             return setup, f"SMC LONG Onayı ({long_score}/100 Puan) | {factors_str}"
 
-        # SHORT KONTROLÜ
-        elif short_score >= target_min_score and short_score > long_score:
+        # SHORT KONTROLÜ (Short Asimetrisi Kalkanı: Baraj 84)
+        elif short_score >= short_min_score and short_score > long_score:
             # 1. SMC Premium Kalkanı: Dipten Satışı Kesinlikle Engelle
             # Fiyat dalganın alt %45'inde (İndirimli/Discount bölgede) ise ve aktif FVG/OB direnci test edilmiyorsa elenir!
             if SMC_PREMIUM_DISCOUNT_FILTER and zone_pct < 45.0 and fvg["current_in_fvg"] != "BEARISH_TEST" and ob["current_at_ob"] != "BEARISH_OB_RETEST":
@@ -619,6 +673,15 @@ class TechnicalAnalysisAgent:
                     f"📌 <strong>Mevcut Durum:</strong> Fiyat VWAP'ın %{abs(vwap_dist_pct):.2f} Altında Aşırı Uzamış.<br>"
                     f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Ortalamadan aşırı sapan fiyatta elastik tepki sıçraması (V-dip) riski %75+ üzerindedir.<br>"
                     f"🎯 <strong>Beklenen Şart:</strong> Fiyatın yukarı tepki verip VWAP veya direnç seviyesinden dönüş teyidi vermesi."
+                )
+
+            # 3. RSI Uyumsuzluk Kalkanı (Bullish Divergence / V-Dip Koruması)
+            has_bull_div, div_desc = self.detect_rsi_divergence(candles_15m, rsi, "SHORT")
+            if has_bull_div:
+                return None, (
+                    f"📌 <strong>Mevcut Durum:</strong> {div_desc}.<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Fiyat yeni dip yaparken RSI'ın güçlenmesi akıllı para birikimini ve V-dip tepki sıçramasını işaret eder.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> Pozitif uyumsuzluğun sonlanıp satış baskısının RSI ile teyit edilmesi."
                 )
 
             # RSI Sınır Kontrolü (Dipten Satışı Kesinlikle Engelle)
@@ -683,6 +746,13 @@ class TechnicalAnalysisAgent:
             return setup, f"SMC SHORT Onayı ({short_score}/100 Puan) | {factors_str}"
 
         # REDDEDİLME GEREKÇESİ (Detaylı Kurumsal Açıklama)
+        if short_score > long_score and short_score >= target_min_score and short_score < short_min_score:
+            return None, (
+                f"📌 <strong>Mevcut Durum:</strong> SHORT SMC skoru {short_score}/100 (Genel Baraj: {target_min_score}, Short Barajı: {short_min_score}).<br>"
+                f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Short Asimetrisi Kalkanı: Tarihsel kayıpların %100'ü short kaynaklı olduğundan SHORT için en az {short_min_score} puan aranır.<br>"
+                f"🎯 <strong>Beklenen Şart:</strong> Ek FVG kırılımı veya Order Block teyidi ile skorun {short_min_score}+ üzerine çıkması."
+            )
+
         max_score = max(long_score, short_score)
         direction_hint = "LONG" if long_score >= short_score else "SHORT"
         dominant_factors = long_factors if long_score >= short_score else short_factors
