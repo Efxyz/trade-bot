@@ -23,7 +23,9 @@ from config import (
     MIN_RSI_SHORT,
     MAX_RSI_SHORT,
     MIN_4BAR_RANGE_PCT,
-    MIN_CONFLUENCE_SCORE
+    MIN_CONFLUENCE_SCORE,
+    MAX_VWAP_DISTANCE_PCT,
+    SMC_PREMIUM_DISCOUNT_FILTER
 )
 
 class TechnicalAnalysisAgent:
@@ -403,19 +405,35 @@ class TechnicalAnalysisAgent:
         short_factors = []
 
         # --- A. SMC Kriterleri (35 Puan) ---
-        if fvg["current_in_fvg"] == "BULLISH_TEST" or (fvg["bullish_fvg"] and current_price >= fvg["bullish_fvg"]["bottom"]):
+        # 1. Fair Value Gap (FVG / İmbalance): Sadece aktif retest veya çok yakın (<%0.35) ise puan ver
+        if fvg["current_in_fvg"] == "BULLISH_TEST":
             long_score += 15
-            long_factors.append("Bullish FVG Desteği")
-        if fvg["current_in_fvg"] == "BEARISH_TEST" or (fvg["bearish_fvg"] and current_price <= fvg["bearish_fvg"]["top"]):
-            short_score += 15
-            short_factors.append("Bearish FVG Direnci")
+            long_factors.append("Bullish FVG Test Desteği")
+        elif fvg["bullish_fvg"] and abs(current_price - fvg["bullish_fvg"]["top"]) / current_price <= 0.0035:
+            long_score += 8
+            long_factors.append("Bullish FVG Yakınlığı")
 
-        if ob["current_at_ob"] == "BULLISH_OB_RETEST" or ob["bullish_ob"]:
+        if fvg["current_in_fvg"] == "BEARISH_TEST":
+            short_score += 15
+            short_factors.append("Bearish FVG Test Direnci")
+        elif fvg["bearish_fvg"] and abs(current_price - fvg["bearish_fvg"]["bottom"]) / current_price <= 0.0035:
+            short_score += 8
+            short_factors.append("Bearish FVG Yakınlığı")
+
+        # 2. Kurumsal Order Block (OB): Sadece aktif retest veya çok yakın (<%0.35) ise puan ver
+        if ob["current_at_ob"] == "BULLISH_OB_RETEST":
             long_score += 12
-            long_factors.append("Kurumsal Order Block (Alıcı)")
-        if ob["current_at_ob"] == "BEARISH_OB_RETEST" or ob["bearish_ob"]:
+            long_factors.append("Kurumsal Order Block Retest (Alıcı)")
+        elif ob["bullish_ob"] and abs(current_price - ob["bullish_ob"]["high"]) / current_price <= 0.0035:
+            long_score += 6
+            long_factors.append("Kurumsal Order Block Yakınlığı")
+
+        if ob["current_at_ob"] == "BEARISH_OB_RETEST":
             short_score += 12
-            short_factors.append("Kurumsal Order Block (Satıcı)")
+            short_factors.append("Kurumsal Order Block Retest (Satıcı)")
+        elif ob["bearish_ob"] and abs(current_price - ob["bearish_ob"]["low"]) / current_price <= 0.0035:
+            short_score += 6
+            short_factors.append("Kurumsal Order Block Yakınlığı")
 
         if sweeps["bullish_sweep"]:
             long_score += 8
@@ -493,9 +511,36 @@ class TechnicalAnalysisAgent:
                         f"🎯 <strong>Beklenen Şart:</strong> 1 Saatlik mumun EMA20 altına inerek makro ayı teyidi vermesi."
                     )
 
+        # --- SMC PREMIUM / DISCOUNT & DALGA ANALİZİ (Son 20 Mum) ---
+        lookback_candles = candles_15m[-20:] if len(candles_15m) >= 20 else candles_15m
+        swing_high = max(c["high"] for c in lookback_candles)
+        swing_low = min(c["low"] for c in lookback_candles)
+        swing_range = swing_high - swing_low
+        zone_pct = round(((current_price - swing_low) / swing_range * 100.0), 1) if swing_range > 0 else 50.0
+
+        # VWAP Aşırı Uzaklaşma Oranı
+        vwap_dist_pct = round(((current_price - curr_vwap) / curr_vwap * 100.0), 2) if curr_vwap > 0 else 0.0
+
         # --- EŞİK DEĞERLERİ & İŞLEM KARARI (Otonom Kalibre Edilmiş Baraj: target_min_score) ---
         # LONG KONTROLÜ
         if long_score >= target_min_score and long_score > short_score:
+            # 1. SMC Discount Kalkanı: Tepeden Alımı Kesinlikle Engelle
+            # Fiyat dalganın üst %55'inde (Primli/Premium bölgede) ise ve aktif FVG/OB desteği test edilmiyorsa elenir!
+            if SMC_PREMIUM_DISCOUNT_FILTER and zone_pct > 55.0 and fvg["current_in_fvg"] != "BULLISH_TEST" and ob["current_at_ob"] != "BULLISH_OB_RETEST":
+                return None, (
+                    f"📌 <strong>Mevcut Durum:</strong> Fiyat Primli / Premium Bölgede (%{zone_pct:.1f} / Denge: %50.0).<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Yükseliş dalgasının tepesinde alım (long) açmak kurumsal kar realizasyonu tuzağına çeker.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> Fiyatın İndirimli (Discount < %50) bölgeye veya Bullish FVG/OB desteğine geri çekilmesi (pullback)."
+                )
+
+            # 2. VWAP Aşırı Uzaklaşma (Lastik Bandı Kalkanı)
+            if curr_vwap > 0 and vwap_dist_pct > MAX_VWAP_DISTANCE_PCT:
+                return None, (
+                    f"📌 <strong>Mevcut Durum:</strong> Fiyat VWAP'ın +%{vwap_dist_pct:.2f} Üzerinde Aşırı Uzamış.<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Ortalamadan aşırı sapan fiyatlarda elastik kar satışı (mean-reversion) riski çok yüksektir.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> Fiyatın VWAP/EMA20 desteğine geri çekilip güç toplaması."
+                )
+
             # RSI Sınır Kontrolü (Tepeden Alımı Kesinlikle Engelle)
             if curr_rsi > MAX_RSI_LONG:
                 return None, (
@@ -540,7 +585,7 @@ class TechnicalAnalysisAgent:
                 "tp2_pct": tp_pct,
                 "ta_reasons": (
                     f"[{setup_type} | Skor: {long_score}/100] {factors_str}. "
-                    f"RSI={curr_rsi:.1f}, VWAP={curr_vwap:.4f}. Hedef: +%{tp_pct} ({leverage}x ile +%{round(tp_pct*leverage, 1)} kar)."
+                    f"RSI={curr_rsi:.1f}, VWAP={curr_vwap:.4f}, Bölge=%{zone_pct:.0f} (Discount/Destek). Hedef: +%{tp_pct} ({leverage}x ile +%{round(tp_pct*leverage, 1)} kar)."
                 ),
                 "indicators": {
                     "ema20": ema20,
@@ -559,6 +604,23 @@ class TechnicalAnalysisAgent:
 
         # SHORT KONTROLÜ
         elif short_score >= target_min_score and short_score > long_score:
+            # 1. SMC Premium Kalkanı: Dipten Satışı Kesinlikle Engelle
+            # Fiyat dalganın alt %45'inde (İndirimli/Discount bölgede) ise ve aktif FVG/OB direnci test edilmiyorsa elenir!
+            if SMC_PREMIUM_DISCOUNT_FILTER and zone_pct < 45.0 and fvg["current_in_fvg"] != "BEARISH_TEST" and ob["current_at_ob"] != "BEARISH_OB_RETEST":
+                return None, (
+                    f"📌 <strong>Mevcut Durum:</strong> Fiyat İndirimli / Discount Bölgede (%{zone_pct:.1f} / Denge: %50.0).<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Düşüş dalgasının dip seviyesinde satış (short) açmak kurumsal dip avı (V-dip) tuzağına çeker.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> Fiyatın Primli (Premium > %50) bölgeye veya Bearish FVG/OB direncine retest yapması."
+                )
+
+            # 2. VWAP Aşırı Uzaklaşma (Lastik Bandı Kalkanı)
+            if curr_vwap > 0 and vwap_dist_pct < -MAX_VWAP_DISTANCE_PCT:
+                return None, (
+                    f"📌 <strong>Mevcut Durum:</strong> Fiyat VWAP'ın %{abs(vwap_dist_pct):.2f} Altında Aşırı Uzamış.<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Ortalamadan aşırı sapan fiyatta elastik tepki sıçraması (V-dip) riski %75+ üzerindedir.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> Fiyatın yukarı tepki verip VWAP veya direnç seviyesinden dönüş teyidi vermesi."
+                )
+
             # RSI Sınır Kontrolü (Dipten Satışı Kesinlikle Engelle)
             if curr_rsi < MIN_RSI_SHORT:
                 return None, (
@@ -603,7 +665,7 @@ class TechnicalAnalysisAgent:
                 "tp2_pct": tp_pct,
                 "ta_reasons": (
                     f"[{setup_type} | Skor: {short_score}/100] {factors_str}. "
-                    f"RSI={curr_rsi:.1f}, VWAP={curr_vwap:.4f}. Hedef: %{tp_pct} düşüş ({leverage}x ile +%{round(tp_pct*leverage, 1)} kar)."
+                    f"RSI={curr_rsi:.1f}, VWAP={curr_vwap:.4f}, Bölge=%{zone_pct:.0f} (Premium/Direnç). Hedef: %{tp_pct} düşüş ({leverage}x ile +%{round(tp_pct*leverage, 1)} kar)."
                 ),
                 "indicators": {
                     "ema20": ema20,
