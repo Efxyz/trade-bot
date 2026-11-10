@@ -46,17 +46,21 @@ ESTIMATED_SLIPPAGE_PCT = 0.02          # %0.02 Tahmini kayma payı
 ENABLE_LADDER_PROFIT = True
 
 LADDER_STEPS = [
-    # Basamak 1: Komisyon Korumalı Sağlıklı Kâr Kilidi (BE+ %0.40)
+    # Basamak 1: Mikro Kâr Kalkanı (BE+ Komisyon Korumalı Erken Kilit)
+    # Fiyat +%0.50 kâra ulaştığında stop'u +%0.15'e çek (10x'te net +%0.5 kâr cepte, komisyonu çıkarır ve ASLA eksiye düşürmez)
+    {"step": 1, "trigger_raw_pct": 0.50, "lock_raw_pct": 0.15, "name": "🛡️ Basamak 1 (BE+ %0.15 Sigorta)"},
+
+    # Basamak 2: Komisyon Korumalı Sağlıklı Kâr Kilidi (%0.40 Kilit)
     # Fiyat +%0.85 kâra ulaştığında stop'u +%0.40'a çek (10x'te net +%2.8-$5.5 marjin cepte, erken boğulmayı önler)
-    {"step": 1, "trigger_raw_pct": 0.85, "lock_raw_pct": 0.40, "name": "🪜 Basamak 1 (BE+ %0.40 Kilit)"},
-    
-    # Basamak 2: Çeyrek Kâr Kilidi
+    {"step": 2, "trigger_raw_pct": 0.85, "lock_raw_pct": 0.40, "name": "🪜 Basamak 2 (%0.40 Kilit)"},
+
+    # Basamak 3: Çeyrek Kâr Kilidi
     # Fiyat +%1.35 kâra ulaştığında stop'u +%0.85 kâra çek (10x'te net +%7.3 marjin cepte, +$11-$14)
-    {"step": 2, "trigger_raw_pct": 1.35, "lock_raw_pct": 0.85, "name": "🪜 Basamak 2 (%0.85 Kilit)"},
-    
-    # Basamak 3: Hedefe Yakın Koruma
+    {"step": 3, "trigger_raw_pct": 1.35, "lock_raw_pct": 0.85, "name": "🪜 Basamak 3 (%0.85 Kilit)"},
+
+    # Basamak 4: Hedefe Yakın Koruma
     # Fiyat +%1.80 kâra ulaştığında stop'u +%1.40 kâra çek (10x'te net +%12.8 marjin cepte, +$18-$22)
-    {"step": 3, "trigger_raw_pct": 1.80, "lock_raw_pct": 1.40, "name": "🪜 Basamak 3 (%1.40 Kilit)"},
+    {"step": 4, "trigger_raw_pct": 1.80, "lock_raw_pct": 1.40, "name": "🪜 Basamak 4 (%1.40 Kilit)"},
 ]
 
 # Dinamik Kanal (Runner / Trailing Channel): Zirvenin %0.30 gerisinden iz sürme mesafesi
@@ -97,7 +101,8 @@ DAILY_MAX_DRAWDOWN_USDT = 50.0         # Günlük Acil Durum Sigortası (Circuit
 DAILY_TRAILING_PROFIT_LOCK_ENABLED = True # Günlük Zirve Kâr Kilidi (Kazanılan kârı asla geri vermeme kalkanı)
 
 # SMC & Confluence Kalite Eşiği (Sadece Kusursuz Grade A+ Kurulumlar - Keskin Nişancı Modu)
-MIN_CONFLUENCE_SCORE = 82       # 82 altı ortalama sinyaller kesinlikle elenir (Eski: 76)
+MIN_CONFLUENCE_SCORE = 82            # 82 altı ortalama sinyaller kesinlikle elenir (Eski: 76)
+MIN_CONFLUENCE_SCORE_SHORT = 84      # Short Asimetrisi Kalkanı: Short için en az 84 puan (Tüm geçmiş kayıpları engelleme filtresi)
 
 # Likidite ve Slippage / Spread Koruması (Jesse & Hummingbot Standartları)
 MAX_ORDERBOOK_SPREAD_PCT = 0.12     # En iyi alış/satış makası %0.12'den genişse likidite tuzağı kabul edilir
