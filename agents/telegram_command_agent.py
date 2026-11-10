@@ -79,17 +79,33 @@ class TelegramCommandAgent:
             losses = stats.get("loss_count", 0)
             rate = stats.get("win_rate", 0.0)
             tot_pnl = round(stats.get("total_pnl_pct") or 0.0, 2)
-            avg_pnl = round(stats.get("avg_pnl_pct") or 0.0, 2)
+            net_dollar = round(stats.get("net_dollar_gain") or 0.0, 2)
+            equity = stats.get("portfolio_balance", 1000.0)
+
+            # Günlük PnL (Türkiye Saati 00:00 - 23:59)
+            today_trades = stats.get("today_trades", 0)
+            today_wins = stats.get("today_wins", 0)
+            today_losses = stats.get("today_losses", 0)
+            today_dollar = stats.get("today_dollar_gain", 0.0)
+            today_pct = stats.get("today_net_pnl_pct", 0.0)
+            today_sign = "+" if today_dollar >= 0 else ""
+            today_icon = "🟢" if today_dollar >= 0 else ("🔴" if today_dollar < 0 else "⚪")
+            tot_sign = "+" if net_dollar >= 0 else ""
+            tot_icon = "🟢" if net_dollar >= 0 else "🔴"
 
             msg = (
-                f"📊 *'GİRSEYDİM NE OLURDU?' PERFORMANS RAPORU*\n"
+                f"📊 *FON KASASI VE PERFORMANS RAPORU*\n"
                 f"━━━━━━━━━━━━━━━━━━━\n"
-                f"🎯 *Toplam İşlem:* {total}\n"
-                f"✅ *Kazanan (Win):* {wins}\n"
-                f"🛑 *Kaybeden (Loss):* {losses}\n"
-                f"📈 *Kazanma Oranı (Win Rate):* %{rate}\n"
-                f"💰 *Kümülatif Toplam PnL:* *%{tot_pnl}*\n"
-                f"⚖️ *Ortalama İşlem Getirisi:* %{avg_pnl}\n"
+                f"💼 *Güncel Fon Kasası:* `${equity:,.2f} USDT`\n\n"
+                f"{tot_icon} *GENEL TOPLAM KÂR (Kümülatif):*\n"
+                f"  ↳ Net Kâr: *{tot_sign}${net_dollar:.2f}* ({tot_sign}%{tot_pnl:.2f})\n"
+                f"  ↳ İşlem Sayısı: `{total}` ({wins}W / {losses}L - %{rate} Win)\n\n"
+                f"{today_icon} *BUGÜNKÜ NET PnL (TRT):*\n"
+                f"  ↳ Günlük Net: *{today_sign}${today_dollar:.2f}* ({today_sign}%{today_pct:.2f})\n"
+                f"  ↳ Bugünkü İşlemler: `{today_trades}` adet ({today_wins}W / {today_losses}L)\n"
+                f"  ↳ Sıfırlanma: `23:59:59 TRT (Otomatik Arşivlenir)`\n"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"🤖 _Bileşik Kasa & Zirve Kâr Koruma Kalkanı aktiftir._"
             )
             self.orchestrator.notifier.send_text_message(msg)
 
