@@ -15,6 +15,8 @@ from config import (
     TARGET_PROFIT_PCT,
     MAX_SCALP_SL_PCT,
     MIN_SCALP_SL_PCT,
+    MAX_SL_PCT_20X,
+    EXCLUDED_SYMBOLS_BLACKLIST,
     MIN_RR_RATIO,
     MAX_RSI_LONG,
     MIN_RSI_LONG,
@@ -324,6 +326,9 @@ class TechnicalAnalysisAgent:
         FVG, Order Block, Liquidity Sweep, TTM Squeeze, VWAP ve EMA/RSI birleşimiyle
         0-100 arası Güven Skoru üretir.
         """
+        if symbol in EXCLUDED_SYMBOLS_BLACKLIST:
+            return None, f"📌 {symbol} Zehirli Parite Kara Listesinde (Kronik testere/zarar geçmişi nedeniyle elendi)."
+
         if len(candles_15m) < 35:
             return None, "Yetersiz 15m mum verisi (en az 35 mum gerekli)"
 
@@ -505,8 +510,8 @@ class TechnicalAnalysisAgent:
                     f"🎯 <strong>Beklenen Şart:</strong> RSI'ın {MIN_RSI_LONG}+ üzerine çıkıp alıcıların güçlenmesi."
                 )
 
-            # 20x Sniper Tetikleyici: Skor 85+ (Kusursuz SMC Onayı) ve Dar Stop (%1.00 altı)
-            is_sniper_20x = (long_score >= 85 and sl_pct <= 1.00)
+            # 20x Sniper Tetikleyici: Skor 85+ (Kusursuz SMC Onayı) ve Dar Stop (%1.20 altı)
+            is_sniper_20x = (long_score >= 85 and sl_pct <= MAX_SL_PCT_20X)
             leverage = 20 if is_sniper_20x else 10
             grade = "Grade A+ (20x Sniper)" if is_sniper_20x else "Grade A"
             setup_type = f"15m {leverage}x SMC SNIPER" if is_sniper_20x else f"15m {leverage}x SMC SCALP"
@@ -568,8 +573,8 @@ class TechnicalAnalysisAgent:
                     f"🎯 <strong>Beklenen Şart:</strong> Boğa momentumunun zayıflayıp 55 altına inmesi."
                 )
 
-            # 20x Sniper Tetikleyici: Skor 85+ (Kusursuz SMC Onayı) ve Dar Stop (%1.00 altı)
-            is_sniper_20x = (short_score >= 85 and sl_pct <= 1.00)
+            # 20x Sniper Tetikleyici: Skor 85+ (Kusursuz SMC Onayı) ve Dar Stop (%1.20 altı)
+            is_sniper_20x = (short_score >= 85 and sl_pct <= MAX_SL_PCT_20X)
             leverage = 20 if is_sniper_20x else 10
             grade = "Grade A+ (20x Sniper)" if is_sniper_20x else "Grade A"
             setup_type = f"15m {leverage}x SMC SNIPER" if is_sniper_20x else f"15m {leverage}x SMC SCALP"
