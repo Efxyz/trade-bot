@@ -1070,8 +1070,12 @@ HTML_OFFICE_TEMPLATE = """
                 <span class="val" id="topEquity" style="color: #38bdf8;">$1,000.00</span>
             </div>
             <div class="top-stat">
-                <span class="lbl">Net Kasa Kârı:</span>
+                <span class="lbl">Genel Kâr:</span>
                 <span class="val" id="topRealized" style="color: var(--green);">+0.0%</span>
+            </div>
+            <div class="top-stat" style="border: 1px solid rgba(16, 185, 129, 0.35); background: rgba(16, 185, 129, 0.08); border-radius: 6px; padding: 2px 8px;">
+                <span class="lbl" title="Türkiye Saati (TRT 00:00 - 23:59 arası). 23:59:59'da otomatik sıfırlanır ve arşivlenir.">Bugünkü PnL:</span>
+                <span class="val" id="topTodayPnl" style="color: var(--green); font-weight: 700;">+$0.00 (%0.0)</span>
             </div>
             <div class="top-stat">
                 <span class="lbl">Canlı PnL:</span>
@@ -1775,6 +1779,17 @@ HTML_OFFICE_TEMPLATE = """
                 const totTxt = `${dollarSign}${Math.abs(dollarVal).toFixed(2)} (${totPnl >= 0 ? '+' : ''}${totPnl}%)`;
                 if (realEl && realEl.innerText !== totTxt) realEl.innerText = totTxt;
                 if (realEl) realEl.style.color = dollarVal >= 0 ? 'var(--green)' : 'var(--red)';
+            }
+
+            // Bugünkü Net PnL ($ ve %) (TRT 23:59 Sıfırlanan)
+            const todayPnlEl = document.getElementById('topTodayPnl');
+            if (todayPnlEl && stats.today_dollar_gain !== undefined) {
+                const tDollar = Number(stats.today_dollar_gain);
+                const tPct = Number(stats.today_net_pnl_pct || 0);
+                const tSign = tDollar >= 0 ? '+$' : '-$';
+                const tTxt = `${tSign}${Math.abs(tDollar).toFixed(2)} (${tPct >= 0 ? '+' : ''}${tPct.toFixed(1)}%)`;
+                if (todayPnlEl.innerText !== tTxt) todayPnlEl.innerText = tTxt;
+                todayPnlEl.style.color = tDollar >= 0 ? 'var(--green)' : 'var(--red)';
             }
 
             // Ödenen Toplam Komisyon
