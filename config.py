@@ -42,29 +42,29 @@ ESTIMATED_SLIPPAGE_PCT = 0.02          # %0.02 Tahmini kayma payı
 # ========================================================
 # Binance Futures Taker Komisyonu (%0.05 Giriş + %0.05 Çıkış = %0.10 raw price)
 # Merdiven basamakları: Fiyat kâra geçtikçe stop kademeli olarak kâra çekilir
-# Kalibre Edilmiş Güvenli Aralıklar: Fiyata nefes payı tanır, mikro fitillerle erken boğulmayı önler.
+# Kalibre Edilmiş Geniş Aralıklar: Kazançları erken boğmaz, mikro fitillerde en az +$5-$12 net kârı kilitler.
 ENABLE_LADDER_PROFIT = True
 
 LADDER_STEPS = [
-    # Basamak 1: Komisyon Korumalı Güvenli Kâr Kilidi (BE+)
-    # Fiyat +%0.65 kâra ulaştığında stop'u +%0.25'e çek (10x'te net +%1.5 marjin cepte, %0.40 fitil payı)
-    {"step": 1, "trigger_raw_pct": 0.65, "lock_raw_pct": 0.25, "name": "🪜 Basamak 1 (BE+ %0.25 Kilit)"},
+    # Basamak 1: Komisyon Korumalı Sağlıklı Kâr Kilidi (BE+ %0.40)
+    # Fiyat +%0.85 kâra ulaştığında stop'u +%0.40'a çek (10x'te net +%2.8-$5.5 marjin cepte, erken boğulmayı önler)
+    {"step": 1, "trigger_raw_pct": 0.85, "lock_raw_pct": 0.40, "name": "🪜 Basamak 1 (BE+ %0.40 Kilit)"},
     
     # Basamak 2: Çeyrek Kâr Kilidi
-    # Fiyat +%1.00 kâra ulaştığında stop'u +%0.60 kâra çek (10x'te net +%5.0 marjin cepte)
-    {"step": 2, "trigger_raw_pct": 1.00, "lock_raw_pct": 0.60, "name": "🪜 Basamak 2 (%0.60 Kilit)"},
+    # Fiyat +%1.35 kâra ulaştığında stop'u +%0.85 kâra çek (10x'te net +%7.3 marjin cepte, +$11-$14)
+    {"step": 2, "trigger_raw_pct": 1.35, "lock_raw_pct": 0.85, "name": "🪜 Basamak 2 (%0.85 Kilit)"},
     
-    # Basamak 3: Yarım Kâr Kilidi
-    # Fiyat +%1.45 kâra ulaştığında stop'u +%1.00 kâra çek (10x'te net +%9.0 marjin cepte)
-    {"step": 3, "trigger_raw_pct": 1.45, "lock_raw_pct": 1.00, "name": "🪜 Basamak 3 (%1.00 Kilit)"},
-    
-    # Basamak 4: Hedefe Yakın Koruma
-    # Fiyat +%1.85 kâra ulaştığında stop'u +%1.45 kâra çek (10x'te net +%13.5 marjin cepte)
-    {"step": 4, "trigger_raw_pct": 1.85, "lock_raw_pct": 1.45, "name": "🪜 Basamak 4 (%1.45 Kilit)"},
+    # Basamak 3: Hedefe Yakın Koruma
+    # Fiyat +%1.80 kâra ulaştığında stop'u +%1.40 kâra çek (10x'te net +%12.8 marjin cepte, +$18-$22)
+    {"step": 3, "trigger_raw_pct": 1.80, "lock_raw_pct": 1.40, "name": "🪜 Basamak 3 (%1.40 Kilit)"},
 ]
 
 # Dinamik Kanal (Runner / Trailing Channel): Zirvenin %0.30 gerisinden iz sürme mesafesi
 LADDER_DYNAMIC_CHANNEL_PCT = 0.30
+
+# Zehirli Parite Kara Listesi (Toxic Asset Quarantine)
+# Geçmiş 30 ve 90 günlük testlerde kasayı en çok eriten, kronik stop-hunt ve testere pariteleri
+EXCLUDED_SYMBOLS_BLACKLIST = ["LINKUSDT", "ARBUSDT", "INJUSDT", "APTUSDT"]
 
 # Dinamik Kaldıraç (10x ve 20x)
 LEVERAGE_STANDARD = 10  # 10x ile %1 fiyat hareketi = +%10 marjin karı
@@ -77,9 +77,14 @@ TARGET_PROFIT_PCT = 2.00        # Fiyatta ortalama %2.00 kâr hedefi (10x'te +%2
 MAX_SCALP_SL_PCT = 1.15         # Fiyatta maksimum %1.15 stop payı (Kayıp frenleme kalkanı)
 MIN_SCALP_SL_PCT = 0.85         # Minimum %0.85 stop (Gürültüye ezilmeme garantisi)
 MAX_SL_PCT_10X = 1.15           # 10x için max SL %1.15 (Marjin büyüklüğü küçültülerek risk $20'de sabitlenir)
-MAX_SL_PCT_20X = 1.00           # 20x Sniper için max SL %1.00 (Elit 85+ puanlı dar stoplu kurulumlar)
+MAX_SL_PCT_20X = 1.20           # 20x Sniper için max SL %1.20 (15m ATR dalgalanmasına uygun elit 85+ puanlı kurulumlar)
 MIN_RR_RATIO = 1.8              # Minimum 1:1.8 Risk/Ödül oranı (Eski 1.4 barajı asimetrik getiri için yükseltildi)
 MAX_HOLD_MINUTES = 90           # Hareketsiz pozisyonlara 90 dakika (6 mum) nefes payı tanı (Erken çıkış zararını önler)
+
+# Erken Zarar Kes Kalkanı (Early Invalidation Shield)
+EARLY_INVALIDATION_ENABLED = True      # 40 dakikada toparlanamayan pozisyonları -$20 beklemeden erken kes
+EARLY_INVALIDATION_MINUTES = 40        # Kontrol süresi (dakika)
+EARLY_INVALIDATION_LOSS_PCT = 0.40     # Fiyat %-0.40 altındaysa erken çıkış tetiklenir
 
 # Dinamik Günlük Kota & Zirve Kâr Koruma Kalkanı (House-Money & Trailing Profit Lock)
 DAILY_BASE_MAX_TRADES = 4              # Taban Keskin Nişancı Kotası: Zor/testere piyasada günde en fazla 4 işlem
