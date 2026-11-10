@@ -428,7 +428,9 @@ def get_today_trades_count() -> int:
     """Bugün (Türkiye Saati ile 00:00'dan itibaren) açılan toplam işlem sayısını döner (Aşırı İşlem / Komisyon Kalkanı)."""
     from datetime import datetime, timezone, timedelta
     tr_tz = timezone(timedelta(hours=3))
-    today_start = datetime.now(timezone.utc).astimezone(tr_tz).strftime("%Y-%m-%d 00:00:00")
+    now_tr = datetime.now(timezone.utc).astimezone(tr_tz)
+    today_start_tr = now_tr.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = today_start_tr.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM signals WHERE created_at >= ?", (today_start,))
@@ -439,7 +441,9 @@ def get_today_net_dollar_loss() -> float:
     """Bugün (Türkiye Saati ile 00:00'dan itibaren) kapanan işlemlerin net dolar bazlı toplam kaybını kontrol eder (Circuit Breaker)."""
     from datetime import datetime, timezone, timedelta
     tr_tz = timezone(timedelta(hours=3))
-    today_start = datetime.now(timezone.utc).astimezone(tr_tz).strftime("%Y-%m-%d 00:00:00")
+    now_tr = datetime.now(timezone.utc).astimezone(tr_tz)
+    today_start_tr = now_tr.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = today_start_tr.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -460,7 +464,9 @@ def get_today_net_dollar_pnl() -> float:
     """Bugün (Türkiye Saati ile 00:00'dan itibaren) kapanan işlemlerin net dolar bazlı kâr/zararını döner (+ veya -)."""
     from datetime import datetime, timezone, timedelta
     tr_tz = timezone(timedelta(hours=3))
-    today_start = datetime.now(timezone.utc).astimezone(tr_tz).strftime("%Y-%m-%d 00:00:00")
+    now_tr = datetime.now(timezone.utc).astimezone(tr_tz)
+    today_start_tr = now_tr.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = today_start_tr.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -625,7 +631,8 @@ def get_performance_stats() -> Dict:
         from datetime import datetime, timezone, timedelta
         tr_tz = timezone(timedelta(hours=3))
         now_tr = datetime.now(timezone.utc).astimezone(tr_tz)
-        today_start = now_tr.strftime("%Y-%m-%d 00:00:00")
+        today_start_tr = now_tr.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start = today_start_tr.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         today_date_str = now_tr.strftime("%Y-%m-%d")
 
         cursor.execute("""
