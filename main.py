@@ -215,7 +215,7 @@ class TradingBotOrchestrator:
 
             try:
                 # 15 Dakikalık (15m) scalping ve 1 Saatlik (1h) Makro Trend Mumlarını Çek
-                candles_15m = self.client.get_klines(symbol, interval=PRIMARY_TIMEFRAME, limit=60)
+                candles_15m = self.client.get_klines(symbol, interval=PRIMARY_TIMEFRAME, limit=120)
                 if len(candles_15m) < 40:
                     add_scanner_log(symbol, "REJECTED", "Yetersiz 15m mum verisi")
                     continue
