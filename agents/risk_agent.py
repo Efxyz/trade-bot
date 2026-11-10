@@ -18,7 +18,10 @@ from config import (
     MIN_RR_RATIO,
     MAX_ORDERBOOK_SPREAD_PCT,
     MAX_ALLOWED_FUNDING_RATE,
-    MAX_POSITIONS_PER_DIRECTION
+    MAX_POSITIONS_PER_DIRECTION,
+    SIDE_STOPLOSS_GUARD_ENABLED,
+    SIDE_STOPLOSS_MAX_CONSECUTIVE_LOSSES,
+    SIDE_STOPLOSS_COOLDOWN_MINUTES
 )
 
 class RiskOfficerAgent:
@@ -68,6 +71,28 @@ class RiskOfficerAgent:
                     f"🎯 <strong>Beklenen Şart:</strong> Rallinin durulması veya sağlıklı düzeltme vermesi."
                 )
             }
+
+        # 1.1 FREQTRADE YÖN BAZLI STOPLOSS GUARD (SIDE-SPECIFIC SERİ ZARAR KALKANI)
+        if SIDE_STOPLOSS_GUARD_ENABLED:
+            try:
+                from core.database import check_side_stoploss_guard
+                is_side_locked, lock_reason = check_side_stoploss_guard(
+                    direction=direction,
+                    max_consecutive_losses=SIDE_STOPLOSS_MAX_CONSECUTIVE_LOSSES,
+                    cooldown_minutes=SIDE_STOPLOSS_COOLDOWN_MINUTES
+                )
+                if is_side_locked:
+                    opp_side = "LONG" if direction == "SHORT" else "SHORT"
+                    return False, {
+                        "decision": "REJECT",
+                        "reason": (
+                            f"📌 <strong>Mevcut Durum:</strong> {direction} Yönünde Seri Kayıp Koruması Devrede.<br>"
+                            f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> {lock_reason}<br>"
+                            f"🎯 <strong>Beklenen Şart:</strong> Soğuma süresinin tamamlanması veya kârlı yönde ({opp_side}) işlem aranması."
+                        )
+                    }
+            except Exception as e:
+                pass
 
         # 1.5 LİKİDİTE & SLIPPAGE (ORDER BOOK SPREAD) KALKANI
         if book_ticker:
