@@ -46,21 +46,21 @@ ESTIMATED_SLIPPAGE_PCT = 0.02          # %0.02 Tahmini kayma payı
 ENABLE_LADDER_PROFIT = True
 
 LADDER_STEPS = [
-    # Basamak 1: Mikro Kâr Kalkanı (BE+ Komisyon Korumalı Erken Kilit)
-    # Fiyat +%0.50 kâra ulaştığında stop'u +%0.15'e çek (10x'te net +%0.5 kâr cepte, komisyonu çıkarır ve ASLA eksiye düşürmez)
-    {"step": 1, "trigger_raw_pct": 0.50, "lock_raw_pct": 0.15, "name": "🛡️ Basamak 1 (BE+ %0.15 Sigorta)"},
+    # Basamak 1: Freqtrade Dual-Tier Mikro BE+ Kalkanı (+%0.35 Ham / +%3.5 Marjin)
+    # Fiyat +%0.35 kâra ulaştığında stop'u +%0.10'a çek (komisyonu çıkarır ve ASLA eksiye düşürmez)
+    {"step": 1, "trigger_raw_pct": 0.35, "lock_raw_pct": 0.10, "name": "🛡️ Basamak 1 (BE+ %0.10 Sigorta)"},
 
-    # Basamak 2: Komisyon Korumalı Sağlıklı Kâr Kilidi (%0.40 Kilit)
-    # Fiyat +%0.85 kâra ulaştığında stop'u +%0.40'a çek (10x'te net +%2.8-$5.5 marjin cepte, erken boğulmayı önler)
-    {"step": 2, "trigger_raw_pct": 0.85, "lock_raw_pct": 0.40, "name": "🪜 Basamak 2 (%0.40 Kilit)"},
+    # Basamak 2: Komisyon Korumalı Sağlıklı Kâr Kilidi (%0.30 Kilit)
+    # Fiyat +%0.65 kâra ulaştığında stop'u +%0.30'a çek (10x'te net +%3.0 marjin cepte, erken boğulmayı önler)
+    {"step": 2, "trigger_raw_pct": 0.65, "lock_raw_pct": 0.30, "name": "🪜 Basamak 2 (%0.30 Kilit)"},
 
     # Basamak 3: Çeyrek Kâr Kilidi
-    # Fiyat +%1.35 kâra ulaştığında stop'u +%0.85 kâra çek (10x'te net +%7.3 marjin cepte, +$11-$14)
-    {"step": 3, "trigger_raw_pct": 1.35, "lock_raw_pct": 0.85, "name": "🪜 Basamak 3 (%0.85 Kilit)"},
+    # Fiyat +%1.10 kâra ulaştığında stop'u +%0.70 kâra çek (10x'te net +%7.0 marjin cepte, +$11-$14)
+    {"step": 3, "trigger_raw_pct": 1.10, "lock_raw_pct": 0.70, "name": "🪜 Basamak 3 (%0.70 Kilit)"},
 
     # Basamak 4: Hedefe Yakın Koruma
-    # Fiyat +%1.80 kâra ulaştığında stop'u +%1.40 kâra çek (10x'te net +%12.8 marjin cepte, +$18-$22)
-    {"step": 4, "trigger_raw_pct": 1.80, "lock_raw_pct": 1.40, "name": "🪜 Basamak 4 (%1.40 Kilit)"},
+    # Fiyat +%1.60 kâra ulaştığında stop'u +%1.25 kâra çek (10x'te net +%12.5 marjin cepte, +$18-$22)
+    {"step": 4, "trigger_raw_pct": 1.60, "lock_raw_pct": 1.25, "name": "🪜 Basamak 4 (%1.25 Kilit)"},
 ]
 
 # Dinamik Kanal (Runner / Trailing Channel): Zirvenin %0.30 gerisinden iz sürme mesafesi
@@ -87,10 +87,16 @@ MAX_HOLD_MINUTES = 90           # Hareketsiz pozisyonlara 90 dakika (6 mum) nefe
 
 # Erken Zarar Kes Kalkanı (Early Invalidation Shield - Hızlı Zarar Freni)
 EARLY_INVALIDATION_ENABLED = True      # Toparlanamayan negatif pozisyonları -$20 beklemeden erken kes
-EARLY_INVALIDATION_MINUTES = 22        # Hızlı kontrol süresi (dakika) - 22 dk (15m + 5m teyit mumu)
-EARLY_INVALIDATION_LOSS_PCT = 0.40     # Fiyat %-0.40 altındaysa erken çıkış tetiklenir (Kaybı -$7-$9'da kilitler)
+EARLY_INVALIDATION_MINUTES = 20        # Hızlı kontrol süresi (dakika) - 20 dk (15m mum kapanışı + 5m teyit)
+EARLY_INVALIDATION_LOSS_PCT = 0.35     # Fiyat %-0.35 altındaysa erken çıkış tetiklenir (Kaybı -$5-$7'de keser)
 MAX_VWAP_DISTANCE_PCT = 1.30           # 15m VWAP'tan %1.30'dan fazla uzaktaki fiyatlarda aşırı uzama filtresi (Mean-Reversion Kalkanı)
 SMC_PREMIUM_DISCOUNT_FILTER = True     # SMC Premium/Discount Kalkanı (Dipten Short / Tepeden Long Engeli)
+
+# Freqtrade Side-Specific Stoploss Guard (Yön Bazlı Seri Zarar Kalkanı)
+# Bir yönde (özellikle SHORT) peş peşe zarar geldiğinde o yönü dondurur, diğer yön (LONG) kesintisiz devam eder
+SIDE_STOPLOSS_GUARD_ENABLED = True
+SIDE_STOPLOSS_MAX_CONSECUTIVE_LOSSES = 2   # Peş peşe 2 zarar eden yön kilitlenir
+SIDE_STOPLOSS_COOLDOWN_MINUTES = 120       # Kilitlenen yön 120 dakika boyunca yeni işleme kapatılır
 
 # Dinamik Günlük Kota & Zirve Kâr Koruma Kalkanı (House-Money & Trailing Profit Lock)
 DAILY_BASE_MAX_TRADES = 4              # Taban Keskin Nişancı Kotası: Zor/testere piyasada günde en fazla 4 işlem
