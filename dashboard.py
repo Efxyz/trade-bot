@@ -5278,8 +5278,16 @@ def start_dashboard(orchestrator=None, port=5000, auto_open=True):
         _updater_started = True
 
     url = f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}"
-    # Yerel ortamda port kullanımını denetle (Bulut ortamında kontrolü atla)
-    if os.environ.get("RAILWAY_ENVIRONMENT") is None and os.environ.get("RENDER") is None and is_port_in_use(port):
+    # Yerel ortamda port kullanımını denetle (Bulut ortamında kontrolü her zaman atla)
+    is_cloud = bool(
+        os.environ.get("RAILWAY_ENVIRONMENT_NAME") or
+        os.environ.get("RAILWAY_SERVICE_ID") or
+        os.environ.get("RAILWAY_PROJECT_ID") or
+        os.environ.get("RAILWAY_ENVIRONMENT") or
+        os.environ.get("RENDER") or
+        os.environ.get("PORT")
+    )
+    if not is_cloud and is_port_in_use(port):
         print(f"\n🌐 [Canlı Ofis Terminali Zaten Aktif]: {url}")
         if auto_open:
             try:
@@ -5292,7 +5300,10 @@ def start_dashboard(orchestrator=None, port=5000, auto_open=True):
         import logging
         log = logging.getLogger('werkzeug')
         log.setLevel(logging.ERROR)
-        app.run(host=host, port=port, debug=False, use_reloader=False)
+        try:
+            app.run(host=host, port=port, debug=False, use_reloader=False)
+        except Exception as e:
+            print(f"❌ [DashboardServer Hata] Port: {port}, Host: {host} -> {e}")
 
     server_thread = threading.Thread(target=run_app, daemon=True, name="DashboardServer")
     server_thread.start()
