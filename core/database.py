@@ -1008,4 +1008,65 @@ def format_daily_telegram_message(report: Dict) -> str:
     return "\n".join(lines)
 
 
+def check_side_stoploss_guard(
+    direction: str,
+    max_consecutive_losses: int = 2,
+    cooldown_minutes: int = 120
+) -> Tuple[bool, str]:
+    """
+    Freqtrade Esinli 'Side-Specific Stoploss Guard' (Yön Bazlı Seri Zarar Kalkanı).
+    Belirli bir yönde (örn. SHORT) son işlemleri denetler.
+    Eğer son `max_consecutive_losses` işlem ardışık zarar ile kapanmışsa ve son zarardan bu yana
+    `cooldown_minutes` dolmamışsa, o yönü kilitler (True, kilit_nedeni).
+    LONG tarafı veya kârlı yön asla engellenmez.
+    """
+    from datetime import datetime, timezone, timedelta
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, symbol, direction, status, simulated_pnl_pct, closed_at
+                FROM signals
+                WHERE direction = ?
+                  AND status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER')
+                  AND closed_at IS NOT NULL
+                ORDER BY closed_at DESC, id DESC
+                LIMIT 10
+            """, (direction,))
+            rows = cursor.fetchall()
+            if not rows:
+                return False, ""
+
+            consecutive_losses = 0
+            last_loss_closed_at = None
+
+            for r in rows:
+                pnl = float(r["simulated_pnl_pct"] or 0.0)
+                if pnl < 0:
+                    consecutive_losses += 1
+                    if last_loss_closed_at is None:
+                        last_loss_closed_at = r["closed_at"]
+                else:
+                    # Kârlı veya başa-baş bir işlem görüldüğü an seri kırılır
+                    break
+
+            if consecutive_losses >= max_consecutive_losses and last_loss_closed_at:
+                loss_dt = datetime.strptime(str(last_loss_closed_at)[:19], "%Y-%m-%d %H:%M:%S")
+                now = datetime.utcnow()
+                elapsed_min = (now - loss_dt).total_seconds() / 60.0
+                if elapsed_min < cooldown_minutes:
+                    remaining_min = int(cooldown_minutes - elapsed_min)
+                    reason = (
+                        f"🛡️ FREQTRADE SIDE GUARD: {direction} yönünde peş peşe {consecutive_losses} zarar kaydedildi. "
+                        f"Son kayıptan bu yana {elapsed_min:.0f} dk geçti. Sermaye koruması devrede: "
+                        f"{direction} işlemleri {remaining_min} dakika daha donduruldu (LONG serbest)."
+                    )
+                    return True, reason
+    except Exception as e:
+        pass
+
+    return False, ""
+
+
+
 
