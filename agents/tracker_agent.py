@@ -31,7 +31,10 @@ from config import (
     BINANCE_ROUNDTRIP_FEE_PCT,
     ENABLE_LADDER_PROFIT,
     LADDER_STEPS,
-    LADDER_DYNAMIC_CHANNEL_PCT
+    LADDER_DYNAMIC_CHANNEL_PCT,
+    EARLY_INVALIDATION_ENABLED,
+    EARLY_INVALIDATION_MINUTES,
+    EARLY_INVALIDATION_LOSS_PCT
 )
 
 class CounterfactualTrackerAgent:
@@ -198,6 +201,18 @@ class CounterfactualTrackerAgent:
                     final_status = "TIMEOUT_EXIT"
                     exit_price = current_price
                     print(f"⏱️ [{symbol}] {minutes_open:.0f} dakika doldu! Hareketsiz pozisyon {current_price} seviyesinden kapatıldı.")
+
+            # 4b. ERKEN ZARAR KES KALKANI (EARLY INVALIDATION SHIELD)
+            # Eğer pozisyon 40 dakikayı geçmişse, henüz hiçbir kâr basamağı yakalayamadıysa (ladder_step == 0)
+            # ve fiyat %-0.40'ın altına sarkarak desteği kırdıysa: -$20'ye kadar beklemeden hemen zararı küçükken kes!
+            if not is_closed and EARLY_INVALIDATION_ENABLED and current_ladder_step == 0 and minutes_open >= EARLY_INVALIDATION_MINUTES:
+                raw_c = ((current_price - entry_price) / entry_price) if is_long else ((entry_price - current_price) / entry_price)
+                if raw_c <= -(EARLY_INVALIDATION_LOSS_PCT / 100.0):
+                    is_closed = True
+                    final_status = "EARLY_INVALIDATION_EXIT"
+                    exit_price = current_price
+                    raw_change = raw_c
+                    print(f"🛡️ [{symbol}] Erken Zarar Kes Kalkanı devrede! ({minutes_open:.0f} dk, ham: {raw_c*100:.2f}%). Pozisyon büyük stop (-$20) beklenmeden küçük zararla kapatıldı.")
 
             # 5. HEDEF (TP) VE MERDİVEN STOP KONTROLLERİ
             elif not is_closed:
