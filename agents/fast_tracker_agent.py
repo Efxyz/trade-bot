@@ -17,19 +17,28 @@ from fast_config import (
 )
 from core.database import (
     get_fast_active_and_pending_signals,
-    update_fast_signal_status
+    update_fast_signal_status,
+    add_fast_scanner_log_db
 )
-from core.binance_streamer import get_live_price
+from core.binance_streamer import get_live_price, add_stream_symbol
 
 class FastCounterfactualTrackerAgent:
-    def __init__(self, client):
+    def __init__(self, client, notifier=None):
         self.client = client
+        self.notifier = notifier
 
     def update_open_trades(self) -> List[Dict]:
         """Açık FAST işlemlerin fiyatlarını kontrol eder, merdiven kârlarını kilitler ve kapanışları yönetir."""
         active_signals = get_fast_active_and_pending_signals()
         if not active_signals:
             return []
+
+        # Tüm vadeli çiftlerin fiyatlarını tek seferde güvenle çek (REST Fallback)
+        cached_tickers = {}
+        try:
+            cached_tickers = self.client.get_24hr_tickers() or {}
+        except Exception:
+            pass
 
         resolved_signals = []
         now = datetime.now()
@@ -44,17 +53,27 @@ class FastCounterfactualTrackerAgent:
             leverage = int(sig.get("leverage") or 10)
             allocated_margin = float(sig.get("allocated_margin_usdt") or 75.0)
 
-            # Anlık Fiyat (Önce WebSocket, yoksa REST API)
-            live_price = get_live_price(symbol)
-            if not live_price:
+            # 1. Anlık Fiyat (Önce WebSocket, yoksa 24hr ticker, yoksa tekil REST API)
+            live_price = None
+            try:
+                add_stream_symbol(symbol)
+                live_price = get_live_price(symbol)
+            except Exception:
+                live_price = None
+
+            if not live_price or live_price <= 0:
+                ticker_data = cached_tickers.get(symbol, {})
+                live_price = ticker_data.get("lastPrice")
+
+            if not live_price or live_price <= 0:
                 try:
                     price_info = self.client.get_ticker_price(symbol)
                     if price_info and "price" in price_info:
                         live_price = float(price_info["price"])
                 except Exception:
-                    continue
+                    pass
 
-            if not live_price:
+            if not live_price or live_price <= 0:
                 continue
 
             highest_price = max(float(sig.get("highest_price") or entry_price), live_price)
@@ -183,14 +202,40 @@ class FastCounterfactualTrackerAgent:
                     "ladder_step": ladder_step,
                     "ladder_name": ladder_name
                 })
+                dollar_pnl = round(allocated_margin * (net_margin / 100.0), 2)
                 resolved_signals.append({
                     "id": sig_id,
                     "symbol": symbol,
                     "direction": direction,
                     "exit_status": exit_status,
                     "net_pnl_pct": round(net_margin, 2),
-                    "dollar_gain": round(allocated_margin * (net_margin / 100.0), 2)
+                    "dollar_gain": dollar_pnl
                 })
+
+                # FAST Günlüğüne ve Telegram'a anında bildir
+                pnl_sign = "+" if net_margin >= 0 else ""
+                pnl_emoji = "🟢" if net_margin > 0 else ("🔴" if net_margin < 0 else "⚪")
+                add_fast_scanner_log_db(
+                    symbol,
+                    "CLOSED",
+                    f"{pnl_emoji} {symbol} {direction} {exit_status}! Net: {pnl_sign}%{net_margin:.2f} ({pnl_sign}${dollar_pnl:.2f})",
+                    f"Giriş: {entry_price} ➔ Çıkış: {exit_price}"
+                )
+
+                if self.notifier and getattr(self.notifier, "has_telegram", False):
+                    msg = (
+                        f"{pnl_emoji} *FAST SCALP KAPANDI*\n"
+                        f"━━━━━━━━━━━━━━━━━━━\n"
+                        f"🪙 *Parite:* `{symbol}` ({direction} {leverage}x)\n"
+                        f"📌 *Çıkış Türü:* `{exit_status}`\n"
+                        f"💵 *Giriş:* `{entry_price}` ➔ *Çıkış:* `{exit_price}`\n"
+                        f"📊 *Net PnL:* *{pnl_sign}%{net_margin:.2f}* ({pnl_sign}${dollar_pnl:.2f})\n"
+                        f"⚡ _FAST Scalper (1m) Motoru_"
+                    )
+                    try:
+                        self.notifier.send_text_message(msg)
+                    except Exception:
+                        pass
             else:
                 # Canlı fiyat ve trailing stop seviyesini güncelle
                 update_fast_signal_status(sig_id, {
