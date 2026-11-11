@@ -10,29 +10,35 @@ from typing import List, Dict, Optional
 from config import BINANCE_FUTURES_BASE_URL
 
 class BinanceFuturesClient:
+    # Tüm bot örneklerinin (Dashboard, Standart, FAST, SÜPER FAST) ortak kullandığı merkezi hafıza
+    _cache: Dict[str, any] = {}
+    _cache_lock = threading.Lock()
+    _rate_limited_until: float = 0.0
+
     def __init__(self, base_url: str = BINANCE_FUTURES_BASE_URL):
         self.base_url = base_url
         self.session = requests.Session()
         self.session.headers.update({
             "User-Agent": "TradeBot/1.0 (BinanceFuturesAnalyzer)"
         })
-        self._cache = {}
-        self._cache_lock = threading.Lock()
-        self._rate_limited_until = 0.0
+
+    @classmethod
+    def is_rate_limited(cls) -> bool:
+        return time.time() < cls._rate_limited_until
 
     def _is_rate_limited(self) -> bool:
-        return time.time() < self._rate_limited_until
+        return time.time() < BinanceFuturesClient._rate_limited_until
 
     def _handle_response(self, resp: requests.Response) -> bool:
         """Rate limit denetimi (429/418 yakalama ve ağırlık kontrolü)."""
         if resp.status_code in (429, 418):
-            retry_after = 15
+            retry_after = 20
             try:
-                retry_after = int(resp.headers.get("Retry-After", 15))
+                retry_after = int(resp.headers.get("Retry-After", 20))
             except Exception:
                 pass
-            self._rate_limited_until = time.time() + max(retry_after, 12)
-            print(f"⚠️ [Binance Rate Limit {resp.status_code}] {max(retry_after, 12)} saniye koruma/soğuma moduna geçildi.")
+            BinanceFuturesClient._rate_limited_until = time.time() + max(retry_after, 15)
+            print(f"⚠️ [Binance Rate Limit {resp.status_code}] {max(retry_after, 15)} saniye merkezi koruma/soğuma moduna geçildi.")
             return False
 
         # Binance 1m ağırlık takibi (Max 1200)
@@ -49,22 +55,22 @@ class BinanceFuturesClient:
         """Binance Futures'taki tüm USDT-M Perpetual (USDT.P) çiftlerini getirir (15 dk Cache)."""
         cache_key = "exchange_info"
         now = time.time()
-        with self._cache_lock:
-            if cache_key in self._cache:
-                data, exp = self._cache[cache_key]
+        with BinanceFuturesClient._cache_lock:
+            if cache_key in BinanceFuturesClient._cache:
+                data, exp = BinanceFuturesClient._cache[cache_key]
                 if now < exp:
                     return data
 
         if self._is_rate_limited():
-            with self._cache_lock:
-                return self._cache.get(cache_key, ([], 0))[0]
+            with BinanceFuturesClient._cache_lock:
+                return BinanceFuturesClient._cache.get(cache_key, ([], 0))[0]
 
         url = f"{self.base_url}/fapi/v1/exchangeInfo"
         try:
             resp = self.session.get(url, timeout=10)
             if not self._handle_response(resp):
-                with self._cache_lock:
-                    return self._cache.get(cache_key, ([], 0))[0]
+                with BinanceFuturesClient._cache_lock:
+                    return BinanceFuturesClient._cache.get(cache_key, ([], 0))[0]
             resp.raise_for_status()
             data = resp.json()
             
@@ -74,33 +80,34 @@ class BinanceFuturesClient:
                 and s.get("quoteAsset") == "USDT"
                 and s.get("status") == "TRADING"
             ]
-            with self._cache_lock:
-                self._cache[cache_key] = (perpetuals, now + 900.0)
+            with BinanceFuturesClient._cache_lock:
+                BinanceFuturesClient._cache[cache_key] = (perpetuals, now + 900.0)
             return perpetuals
-        except Exception:
-            with self._cache_lock:
-                return self._cache.get(cache_key, ([], 0))[0]
+        except Exception as e:
+            print(f"⚠️ [Binance get_exchange_info Hata]: {e}")
+            with BinanceFuturesClient._cache_lock:
+                return BinanceFuturesClient._cache.get(cache_key, ([], 0))[0]
 
     def get_24hr_tickers(self) -> Dict[str, Dict]:
         """Tüm vadeli çiftlerin 24 saatlik hacim, fiyat değişimi ve tepe/dip verilerini getirir (8s Cache)."""
         cache_key = "24hr_tickers"
         now = time.time()
-        with self._cache_lock:
-            if cache_key in self._cache:
-                data, exp = self._cache[cache_key]
+        with BinanceFuturesClient._cache_lock:
+            if cache_key in BinanceFuturesClient._cache:
+                data, exp = BinanceFuturesClient._cache[cache_key]
                 if now < exp:
                     return data
 
         if self._is_rate_limited():
-            with self._cache_lock:
-                return self._cache.get(cache_key, ({}, 0))[0]
+            with BinanceFuturesClient._cache_lock:
+                return BinanceFuturesClient._cache.get(cache_key, ({}, 0))[0]
 
         url = f"{self.base_url}/fapi/v1/ticker/24hr"
         try:
             resp = self.session.get(url, timeout=12)
             if not self._handle_response(resp):
-                with self._cache_lock:
-                    return self._cache.get(cache_key, ({}, 0))[0]
+                with BinanceFuturesClient._cache_lock:
+                    return BinanceFuturesClient._cache.get(cache_key, ({}, 0))[0]
             resp.raise_for_status()
             tickers = resp.json()
             
@@ -117,12 +124,13 @@ class BinanceFuturesClient:
                         "lowPrice": float(t.get("lowPrice", 0.0)),
                         "count": int(t.get("count", 0))
                     }
-            with self._cache_lock:
-                self._cache[cache_key] = (results, now + 8.0)
+            with BinanceFuturesClient._cache_lock:
+                BinanceFuturesClient._cache[cache_key] = (results, now + 8.0)
             return results
-        except Exception:
-            with self._cache_lock:
-                return self._cache.get(cache_key, ({}, 0))[0]
+        except Exception as e:
+            print(f"⚠️ [Binance get_24hr_tickers Hata]: {e}")
+            with BinanceFuturesClient._cache_lock:
+                return BinanceFuturesClient._cache.get(cache_key, ({}, 0))[0]
 
     def get_klines(self, symbol: str, interval: str = "1h", limit: int = 100) -> List[Dict]:
         """
@@ -131,15 +139,15 @@ class BinanceFuturesClient:
         """
         cache_key = f"klines_{symbol}_{interval}_{limit}"
         now = time.time()
-        with self._cache_lock:
-            if cache_key in self._cache:
-                data, exp = self._cache[cache_key]
+        with BinanceFuturesClient._cache_lock:
+            if cache_key in BinanceFuturesClient._cache:
+                data, exp = BinanceFuturesClient._cache[cache_key]
                 if now < exp:
                     return data
 
         if self._is_rate_limited():
-            with self._cache_lock:
-                return self._cache.get(cache_key, ([], 0))[0]
+            with BinanceFuturesClient._cache_lock:
+                return BinanceFuturesClient._cache.get(cache_key, ([], 0))[0]
 
         url = f"{self.base_url}/fapi/v1/klines"
         params = {
@@ -150,8 +158,8 @@ class BinanceFuturesClient:
         try:
             resp = self.session.get(url, params=params, timeout=8)
             if not self._handle_response(resp):
-                with self._cache_lock:
-                    return self._cache.get(cache_key, ([], 0))[0]
+                with BinanceFuturesClient._cache_lock:
+                    return BinanceFuturesClient._cache.get(cache_key, ([], 0))[0]
             resp.raise_for_status()
             raw = resp.json()
 
@@ -169,34 +177,35 @@ class BinanceFuturesClient:
             
             # Dinamik TTL: 1m için 8s, 5m için 20s, 15m/1h için 45s
             ttl = 8.0 if interval == "1m" else (20.0 if interval == "5m" else 45.0)
-            with self._cache_lock:
-                self._cache[cache_key] = (candles, now + ttl)
+            with BinanceFuturesClient._cache_lock:
+                BinanceFuturesClient._cache[cache_key] = (candles, now + ttl)
             return candles
-        except Exception:
-            with self._cache_lock:
-                return self._cache.get(cache_key, ([], 0))[0]
+        except Exception as e:
+            print(f"⚠️ [Binance get_klines Hata] {symbol} {interval}: {e}")
+            with BinanceFuturesClient._cache_lock:
+                return BinanceFuturesClient._cache.get(cache_key, ([], 0))[0]
 
     def get_funding_rate(self, symbol: str) -> Optional[Dict]:
         """Sembolün anlık fonlama oranını (Funding Rate) getirir (60s Cache)."""
         cache_key = f"funding_{symbol}"
         now = time.time()
-        with self._cache_lock:
-            if cache_key in self._cache:
-                data, exp = self._cache[cache_key]
+        with BinanceFuturesClient._cache_lock:
+            if cache_key in BinanceFuturesClient._cache:
+                data, exp = BinanceFuturesClient._cache[cache_key]
                 if now < exp:
                     return data
 
         if self._is_rate_limited():
-            with self._cache_lock:
-                return self._cache.get(cache_key, (None, 0))[0]
+            with BinanceFuturesClient._cache_lock:
+                return BinanceFuturesClient._cache.get(cache_key, (None, 0))[0]
 
         url = f"{self.base_url}/fapi/v1/premiumIndex"
         params = {"symbol": symbol}
         try:
             resp = self.session.get(url, params=params, timeout=5)
             if not self._handle_response(resp):
-                with self._cache_lock:
-                    return self._cache.get(cache_key, (None, 0))[0]
+                with BinanceFuturesClient._cache_lock:
+                    return BinanceFuturesClient._cache.get(cache_key, (None, 0))[0]
             if resp.status_code == 200:
                 data = resp.json()
                 res = {
@@ -204,13 +213,13 @@ class BinanceFuturesClient:
                     "markPrice": float(data.get("markPrice", 0.0)),
                     "indexPrice": float(data.get("indexPrice", 0.0))
                 }
-                with self._cache_lock:
-                    self._cache[cache_key] = (res, now + 60.0)
+                with BinanceFuturesClient._cache_lock:
+                    BinanceFuturesClient._cache[cache_key] = (res, now + 60.0)
                 return res
         except Exception:
             pass
-        with self._cache_lock:
-            return self._cache.get(cache_key, (None, 0))[0]
+        with BinanceFuturesClient._cache_lock:
+            return BinanceFuturesClient._cache.get(cache_key, (None, 0))[0]
 
     def get_book_ticker(self, symbol: str) -> Optional[Dict]:
         """
@@ -218,23 +227,23 @@ class BinanceFuturesClient:
         """
         cache_key = f"book_{symbol}"
         now = time.time()
-        with self._cache_lock:
-            if cache_key in self._cache:
-                data, exp = self._cache[cache_key]
+        with BinanceFuturesClient._cache_lock:
+            if cache_key in BinanceFuturesClient._cache:
+                data, exp = BinanceFuturesClient._cache[cache_key]
                 if now < exp:
                     return data
 
         if self._is_rate_limited():
-            with self._cache_lock:
-                return self._cache.get(cache_key, (None, 0))[0]
+            with BinanceFuturesClient._cache_lock:
+                return BinanceFuturesClient._cache.get(cache_key, (None, 0))[0]
 
         url = f"{self.base_url}/fapi/v1/ticker/bookTicker"
         params = {"symbol": symbol}
         try:
             resp = self.session.get(url, params=params, timeout=4)
             if not self._handle_response(resp):
-                with self._cache_lock:
-                    return self._cache.get(cache_key, (None, 0))[0]
+                with BinanceFuturesClient._cache_lock:
+                    return BinanceFuturesClient._cache.get(cache_key, (None, 0))[0]
             if resp.status_code == 200:
                 data = resp.json()
                 bid = float(data.get("bidPrice", 0.0))
@@ -247,48 +256,48 @@ class BinanceFuturesClient:
                     "askQty": float(data.get("askQty", 0.0)),
                     "spread_pct": round(spread_pct, 4)
                 }
-                with self._cache_lock:
-                    self._cache[cache_key] = (res, now + 3.0)
+                with BinanceFuturesClient._cache_lock:
+                    BinanceFuturesClient._cache[cache_key] = (res, now + 3.0)
                 return res
         except Exception:
             pass
-        with self._cache_lock:
-            return self._cache.get(cache_key, (None, 0))[0]
+        with BinanceFuturesClient._cache_lock:
+            return BinanceFuturesClient._cache.get(cache_key, (None, 0))[0]
 
     def get_ticker_price(self, symbol: str) -> Optional[Dict]:
         """Sembolün anlık son fiyatını getirir (2s Cache)."""
         cache_key = f"price_{symbol}"
         now = time.time()
-        with self._cache_lock:
-            if cache_key in self._cache:
-                data, exp = self._cache[cache_key]
+        with BinanceFuturesClient._cache_lock:
+            if cache_key in BinanceFuturesClient._cache:
+                data, exp = BinanceFuturesClient._cache[cache_key]
                 if now < exp:
                     return data
 
         if self._is_rate_limited():
-            with self._cache_lock:
-                return self._cache.get(cache_key, (None, 0))[0]
+            with BinanceFuturesClient._cache_lock:
+                return BinanceFuturesClient._cache.get(cache_key, (None, 0))[0]
 
         url = f"{self.base_url}/fapi/v1/ticker/price"
         params = {"symbol": symbol}
         try:
             resp = self.session.get(url, params=params, timeout=4)
             if not self._handle_response(resp):
-                with self._cache_lock:
-                    return self._cache.get(cache_key, (None, 0))[0]
+                with BinanceFuturesClient._cache_lock:
+                    return BinanceFuturesClient._cache.get(cache_key, (None, 0))[0]
             if resp.status_code == 200:
                 data = resp.json()
                 res = {
                     "symbol": data.get("symbol"),
                     "price": float(data.get("price", 0.0))
                 }
-                with self._cache_lock:
-                    self._cache[cache_key] = (res, now + 2.0)
+                with BinanceFuturesClient._cache_lock:
+                    BinanceFuturesClient._cache[cache_key] = (res, now + 2.0)
                 return res
         except Exception:
             pass
-        with self._cache_lock:
-            return self._cache.get(cache_key, (None, 0))[0]
+        with BinanceFuturesClient._cache_lock:
+            return BinanceFuturesClient._cache.get(cache_key, (None, 0))[0]
 
     def get_btc_regime(self) -> Dict:
         """
