@@ -152,6 +152,8 @@ class FastTradingBotOrchestrator:
 
             except Exception as e:
                 add_fast_scanner_log_db(symbol, "ERROR", f"Tarama Hatası: {str(e)[:50]}")
+            finally:
+                time.sleep(0.04)
 
     def run_forever(self):
         """FAST Botun 7/24 Kesintisiz Arka Plan Motoru (2sn Takip + 20sn Tarama)."""
