@@ -181,10 +181,18 @@ class TelegramCommandAgent:
             except Exception as e:
                 self.orchestrator.notifier.send_text_message(f"⚠️ Rapor oluşturma hatası: {e}")
 
+        elif base_cmd in ("/fast", "/fast_rapor", "/fast_durum", "/saatlik"):
+            self.orchestrator.notifier.send_text_message("⚡ *FAST Scalper (1m) Saatlik Raporu Derleniyor...*")
+            try:
+                self.orchestrator.notifier.send_fast_hourly_report()
+            except Exception as e:
+                self.orchestrator.notifier.send_text_message(f"⚠️ FAST rapor hatası: {e}")
+
         elif base_cmd in ("/yardim", "/help", "/start"):
             msg = (
                 "🤖 *TRADE BOT KOMUT REHBERİ*\n\n"
-                "🔹 `/rapor` : Son 24 saatlik gün sonu kâr/zarar ve işlem özetini atar.\n"
+                "🔹 `/fast` : FAST Scalper (1m) saatlik işlem, PnL ve kasa raporunu anında getirir.\n"
+                "🔹 `/rapor` : Standart bot 24 saatlik gün sonu kâr/zarar ve işlem özetini atar.\n"
                 "🔹 `/tara` : Binance vadeli piyasayı anında tarar.\n"
                 "🔹 `/durum` : 'Girseydim ne olurdu?' PnL raporunu getirir.\n"
                 "🔹 `/aktif` : Açıkta bekleyen sanal pozisyonları listeler.\n"
