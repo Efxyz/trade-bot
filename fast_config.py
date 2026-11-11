@@ -20,8 +20,8 @@ DB_PATH = DATA_DIR / "trading_bot.db"
 # FAST BOT FON YÖNETİMİ & KASA KALKANI (BAĞIMSIZ KASA)
 # ========================================================
 FAST_PORTFOLIO_EQUITY_USDT = 1000.0     # FAST Bot Başlangıç Kasası ($1000 USDT Bağımsız)
-FAST_MAX_CONCURRENT_TRADES = 4          # Maksimum 4 eşzamanlı hızlı scalping pozisyonu
-FAST_MAX_POSITIONS_PER_DIRECTION = 2    # Tek yöne max 2 LONG veya 2 SHORT
+FAST_MAX_CONCURRENT_TRADES = 10         # Maksimum 10 eşzamanlı hızlı scalping pozisyonu
+FAST_MAX_POSITIONS_PER_DIRECTION = 6    # Tek yöne max 6 LONG veya 6 SHORT (Toplam limit 10)
 FAST_LEVERAGE = 10                      # Standart 10x Dinamik Kaldıraç
 FAST_RISK_PER_TRADE_USDT = 15.0         # İşlem başına riske edilen miktar ($15 sabit risk)
 FAST_ALLOCATED_MARGIN_PER_TRADE = 75.0  # Hızlı işlem başına marjin payı ($75)
