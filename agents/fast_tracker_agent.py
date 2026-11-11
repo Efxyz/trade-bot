@@ -212,7 +212,7 @@ class FastCounterfactualTrackerAgent:
                     "dollar_gain": dollar_pnl
                 })
 
-                # FAST Günlüğüne ve Telegram'a anında bildir
+                # FAST Günlüğüne işle (Panelde görünür, Telegram'a tekil mesaj atılmaz)
                 pnl_sign = "+" if net_margin >= 0 else ""
                 pnl_emoji = "🟢" if net_margin > 0 else ("🔴" if net_margin < 0 else "⚪")
                 add_fast_scanner_log_db(
@@ -221,21 +221,6 @@ class FastCounterfactualTrackerAgent:
                     f"{pnl_emoji} {symbol} {direction} {exit_status}! Net: {pnl_sign}%{net_margin:.2f} ({pnl_sign}${dollar_pnl:.2f})",
                     f"Giriş: {entry_price} ➔ Çıkış: {exit_price}"
                 )
-
-                if self.notifier and getattr(self.notifier, "has_telegram", False):
-                    msg = (
-                        f"{pnl_emoji} *FAST SCALP KAPANDI*\n"
-                        f"━━━━━━━━━━━━━━━━━━━\n"
-                        f"🪙 *Parite:* `{symbol}` ({direction} {leverage}x)\n"
-                        f"📌 *Çıkış Türü:* `{exit_status}`\n"
-                        f"💵 *Giriş:* `{entry_price}` ➔ *Çıkış:* `{exit_price}`\n"
-                        f"📊 *Net PnL:* *{pnl_sign}%{net_margin:.2f}* ({pnl_sign}${dollar_pnl:.2f})\n"
-                        f"⚡ _FAST Scalper (1m) Motoru_"
-                    )
-                    try:
-                        self.notifier.send_text_message(msg)
-                    except Exception:
-                        pass
             else:
                 # Canlı fiyat ve trailing stop seviyesini güncelle
                 update_fast_signal_status(sig_id, {
