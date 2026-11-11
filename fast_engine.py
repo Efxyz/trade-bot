@@ -42,8 +42,8 @@ class FastTradingBotOrchestrator:
         print("⚡ [FAST Motoru Başlatılıyor] 1-Dakikalık Hızlı Scalping Çoklu-Ajan Sistemi ($1000 Bağımsız Kasa)...")
         self.client = BinanceFuturesClient()
         self.ta_agent = FastTechnicalAnalysisAgent()
-        self.tracker = FastCounterfactualTrackerAgent(self.client)
         self.notifier = NotifierAgent()
+        self.tracker = FastCounterfactualTrackerAgent(self.client, notifier=self.notifier)
         self.cooldown_until: Dict[str, float] = {}
         self.last_reported_hour: Optional[str] = None
         self.is_running = False
