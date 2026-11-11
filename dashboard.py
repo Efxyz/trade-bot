@@ -1809,7 +1809,7 @@ HTML_OFFICE_TEMPLATE = """
             const historyList = isFast ? (data.fast_trade_history || []) : (data.trade_history || []);
             const logsList = isFast ? (data.fast_scanner_logs || []) : (data.scanner_logs || []);
             const unPnlVal = isFast ? (data.fast_total_unrealized_pnl !== undefined ? data.fast_total_unrealized_pnl : 0.0) : (data.total_unrealized_pnl !== undefined ? data.total_unrealized_pnl : 0.0);
-            const maxTrades = isFast ? (data.fast_max_concurrent_trades || 4) : (data.max_concurrent_trades || 5);
+            const maxTrades = isFast ? (data.fast_max_concurrent_trades || 10) : (data.max_concurrent_trades || 5);
 
             // 1. Topbar
             const wsBadge = document.getElementById('wsBadge');
@@ -5392,7 +5392,7 @@ def update_terminal_cache_loop():
                     "tuning_info": _terminal_cache.get("tuning_info", {}),
                     # FAST Scalper (1m) Bağımsız Alanı
                     "fast_stats": fast_stats,
-                    "fast_max_concurrent_trades": 4,
+                    "fast_max_concurrent_trades": FAST_MAX_CONCURRENT_TRADES,
                     "fast_total_unrealized_pnl": round(fast_total_unrealized_pnl, 2),
                     "fast_active_positions": fast_active_positions,
                     "fast_trade_history": fast_history if fast_history else _terminal_cache.get("fast_trade_history", []),
@@ -5480,7 +5480,7 @@ def api_fast_data():
             "ws_connected": _terminal_cache.get("ws_connected", False),
             "btc_regime": _terminal_cache.get("btc_regime", {}),
             "stats": _terminal_cache.get("fast_stats", {}),
-            "max_concurrent_trades": _terminal_cache.get("fast_max_concurrent_trades", 4),
+            "max_concurrent_trades": _terminal_cache.get("fast_max_concurrent_trades", 10),
             "total_unrealized_pnl": _terminal_cache.get("fast_total_unrealized_pnl", 0.0),
             "active_positions": _terminal_cache.get("fast_active_positions", []),
             "scanner_logs": _terminal_cache.get("fast_scanner_logs", []),
