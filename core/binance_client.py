@@ -3,6 +3,8 @@ Binance Futures (USDT-M Perpetual / USDT.P) Client
 Provides fast, direct REST access to Binance Futures.
 Uses native Python structures for maximum speed and zero native DLL issues.
 """
+import time
+import threading
 import requests
 from typing import List, Dict, Optional
 from config import BINANCE_FUTURES_BASE_URL
@@ -14,130 +16,279 @@ class BinanceFuturesClient:
         self.session.headers.update({
             "User-Agent": "TradeBot/1.0 (BinanceFuturesAnalyzer)"
         })
+        self._cache = {}
+        self._cache_lock = threading.Lock()
+        self._rate_limited_until = 0.0
+
+    def _is_rate_limited(self) -> bool:
+        return time.time() < self._rate_limited_until
+
+    def _handle_response(self, resp: requests.Response) -> bool:
+        """Rate limit denetimi (429/418 yakalama ve ağırlık kontrolü)."""
+        if resp.status_code in (429, 418):
+            retry_after = 15
+            try:
+                retry_after = int(resp.headers.get("Retry-After", 15))
+            except Exception:
+                pass
+            self._rate_limited_until = time.time() + max(retry_after, 12)
+            print(f"⚠️ [Binance Rate Limit {resp.status_code}] {max(retry_after, 12)} saniye koruma/soğuma moduna geçildi.")
+            return False
+
+        # Binance 1m ağırlık takibi (Max 1200)
+        used_weight = resp.headers.get("x-mbx-used-weight-1m")
+        if used_weight:
+            try:
+                if int(used_weight) >= 1050:
+                    time.sleep(0.35)
+            except Exception:
+                pass
+        return True
 
     def get_exchange_info(self) -> List[Dict]:
-        """Binance Futures'taki tüm USDT-M Perpetual (USDT.P) çiftlerini getirir."""
+        """Binance Futures'taki tüm USDT-M Perpetual (USDT.P) çiftlerini getirir (15 dk Cache)."""
+        cache_key = "exchange_info"
+        now = time.time()
+        with self._cache_lock:
+            if cache_key in self._cache:
+                data, exp = self._cache[cache_key]
+                if now < exp:
+                    return data
+
+        if self._is_rate_limited():
+            with self._cache_lock:
+                return self._cache.get(cache_key, ([], 0))[0]
+
         url = f"{self.base_url}/fapi/v1/exchangeInfo"
-        resp = self.session.get(url, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-        
-        # Sadece aktif işlem gören USDT sürekli sözleşmeleri (USDT Perpetual) filtrele
-        perpetuals = [
-            s for s in data.get("symbols", [])
-            if s.get("contractType") == "PERPETUAL" 
-            and s.get("quoteAsset") == "USDT"
-            and s.get("status") == "TRADING"
-        ]
-        return perpetuals
+        try:
+            resp = self.session.get(url, timeout=10)
+            if not self._handle_response(resp):
+                with self._cache_lock:
+                    return self._cache.get(cache_key, ([], 0))[0]
+            resp.raise_for_status()
+            data = resp.json()
+            
+            perpetuals = [
+                s for s in data.get("symbols", [])
+                if s.get("contractType") == "PERPETUAL" 
+                and s.get("quoteAsset") == "USDT"
+                and s.get("status") == "TRADING"
+            ]
+            with self._cache_lock:
+                self._cache[cache_key] = (perpetuals, now + 900.0)
+            return perpetuals
+        except Exception:
+            with self._cache_lock:
+                return self._cache.get(cache_key, ([], 0))[0]
 
     def get_24hr_tickers(self) -> Dict[str, Dict]:
-        """Tüm vadeli çiftlerin 24 saatlik hacim, fiyat değişimi ve tepe/dip verilerini getirir."""
+        """Tüm vadeli çiftlerin 24 saatlik hacim, fiyat değişimi ve tepe/dip verilerini getirir (8s Cache)."""
+        cache_key = "24hr_tickers"
+        now = time.time()
+        with self._cache_lock:
+            if cache_key in self._cache:
+                data, exp = self._cache[cache_key]
+                if now < exp:
+                    return data
+
+        if self._is_rate_limited():
+            with self._cache_lock:
+                return self._cache.get(cache_key, ({}, 0))[0]
+
         url = f"{self.base_url}/fapi/v1/ticker/24hr"
-        resp = self.session.get(url, timeout=15)
-        resp.raise_for_status()
-        tickers = resp.json()
-        
-        results = {}
-        for t in tickers:
-            symbol = t.get("symbol", "")
-            if symbol.endswith("USDT"):
-                results[symbol] = {
-                    "symbol": symbol,
-                    "lastPrice": float(t.get("lastPrice", 0.0)),
-                    "priceChangePercent": float(t.get("priceChangePercent", 0.0)),
-                    "quoteVolume": float(t.get("quoteVolume", 0.0)),  # 24h USDT Hacmi
-                    "highPrice": float(t.get("highPrice", 0.0)),
-                    "lowPrice": float(t.get("lowPrice", 0.0)),
-                    "count": int(t.get("count", 0))
-                }
-        return results
+        try:
+            resp = self.session.get(url, timeout=12)
+            if not self._handle_response(resp):
+                with self._cache_lock:
+                    return self._cache.get(cache_key, ({}, 0))[0]
+            resp.raise_for_status()
+            tickers = resp.json()
+            
+            results = {}
+            for t in tickers:
+                symbol = t.get("symbol", "")
+                if symbol.endswith("USDT"):
+                    results[symbol] = {
+                        "symbol": symbol,
+                        "lastPrice": float(t.get("lastPrice", 0.0)),
+                        "priceChangePercent": float(t.get("priceChangePercent", 0.0)),
+                        "quoteVolume": float(t.get("quoteVolume", 0.0)),
+                        "highPrice": float(t.get("highPrice", 0.0)),
+                        "lowPrice": float(t.get("lowPrice", 0.0)),
+                        "count": int(t.get("count", 0))
+                    }
+            with self._cache_lock:
+                self._cache[cache_key] = (results, now + 8.0)
+            return results
+        except Exception:
+            with self._cache_lock:
+                return self._cache.get(cache_key, ({}, 0))[0]
 
     def get_klines(self, symbol: str, interval: str = "1h", limit: int = 100) -> List[Dict]:
         """
-        Belirtilen sembol için mum (OHLCV) verilerini çeker.
+        Belirtilen sembol için mum (OHLCV) verilerini çeker (Akıllı TTL Önbellekli).
         Dönen liste: [{'timestamp': ms, 'open': float, 'high': float, 'low': float, 'close': float, 'volume': float}, ...]
         """
+        cache_key = f"klines_{symbol}_{interval}_{limit}"
+        now = time.time()
+        with self._cache_lock:
+            if cache_key in self._cache:
+                data, exp = self._cache[cache_key]
+                if now < exp:
+                    return data
+
+        if self._is_rate_limited():
+            with self._cache_lock:
+                return self._cache.get(cache_key, ([], 0))[0]
+
         url = f"{self.base_url}/fapi/v1/klines"
         params = {
             "symbol": symbol,
             "interval": interval,
             "limit": limit
         }
-        resp = self.session.get(url, params=params, timeout=10)
-        resp.raise_for_status()
-        raw = resp.json()
+        try:
+            resp = self.session.get(url, params=params, timeout=8)
+            if not self._handle_response(resp):
+                with self._cache_lock:
+                    return self._cache.get(cache_key, ([], 0))[0]
+            resp.raise_for_status()
+            raw = resp.json()
 
-        candles = []
-        for item in raw:
-            candles.append({
-                "timestamp": int(item[0]),
-                "open": float(item[1]),
-                "high": float(item[2]),
-                "low": float(item[3]),
-                "close": float(item[4]),
-                "volume": float(item[5]),
-                "quote_volume": float(item[7])
-            })
-        return candles
+            candles = []
+            for item in raw:
+                candles.append({
+                    "timestamp": int(item[0]),
+                    "open": float(item[1]),
+                    "high": float(item[2]),
+                    "low": float(item[3]),
+                    "close": float(item[4]),
+                    "volume": float(item[5]),
+                    "quote_volume": float(item[7])
+                })
+            
+            # Dinamik TTL: 1m için 8s, 5m için 20s, 15m/1h için 45s
+            ttl = 8.0 if interval == "1m" else (20.0 if interval == "5m" else 45.0)
+            with self._cache_lock:
+                self._cache[cache_key] = (candles, now + ttl)
+            return candles
+        except Exception:
+            with self._cache_lock:
+                return self._cache.get(cache_key, ([], 0))[0]
 
     def get_funding_rate(self, symbol: str) -> Optional[Dict]:
-        """Sembolün anlık fonlama oranını (Funding Rate) getirir."""
+        """Sembolün anlık fonlama oranını (Funding Rate) getirir (60s Cache)."""
+        cache_key = f"funding_{symbol}"
+        now = time.time()
+        with self._cache_lock:
+            if cache_key in self._cache:
+                data, exp = self._cache[cache_key]
+                if now < exp:
+                    return data
+
+        if self._is_rate_limited():
+            with self._cache_lock:
+                return self._cache.get(cache_key, (None, 0))[0]
+
         url = f"{self.base_url}/fapi/v1/premiumIndex"
         params = {"symbol": symbol}
         try:
             resp = self.session.get(url, params=params, timeout=5)
+            if not self._handle_response(resp):
+                with self._cache_lock:
+                    return self._cache.get(cache_key, (None, 0))[0]
             if resp.status_code == 200:
                 data = resp.json()
-                return {
+                res = {
                     "lastFundingRate": float(data.get("lastFundingRate", 0.0)),
                     "markPrice": float(data.get("markPrice", 0.0)),
                     "indexPrice": float(data.get("indexPrice", 0.0))
                 }
+                with self._cache_lock:
+                    self._cache[cache_key] = (res, now + 60.0)
+                return res
         except Exception:
             pass
-        return None
+        with self._cache_lock:
+            return self._cache.get(cache_key, (None, 0))[0]
 
     def get_book_ticker(self, symbol: str) -> Optional[Dict]:
         """
-        Sembolün anlık en iyi alış (bid) ve en iyi satış (ask) fiyatlarını getirir (Order Book Spread).
-        Kayma (Slippage) ve likidite tuzağından korunmak için kullanılır.
+        Sembolün anlık en iyi alış (bid) ve en iyi satış (ask) fiyatlarını getirir (3s Cache).
         """
+        cache_key = f"book_{symbol}"
+        now = time.time()
+        with self._cache_lock:
+            if cache_key in self._cache:
+                data, exp = self._cache[cache_key]
+                if now < exp:
+                    return data
+
+        if self._is_rate_limited():
+            with self._cache_lock:
+                return self._cache.get(cache_key, (None, 0))[0]
+
         url = f"{self.base_url}/fapi/v1/ticker/bookTicker"
         params = {"symbol": symbol}
         try:
             resp = self.session.get(url, params=params, timeout=4)
+            if not self._handle_response(resp):
+                with self._cache_lock:
+                    return self._cache.get(cache_key, (None, 0))[0]
             if resp.status_code == 200:
                 data = resp.json()
                 bid = float(data.get("bidPrice", 0.0))
                 ask = float(data.get("askPrice", 0.0))
                 spread_pct = ((ask - bid) / bid * 100.0) if bid > 0 else 0.0
-                return {
+                res = {
                     "bidPrice": bid,
                     "askPrice": ask,
                     "bidQty": float(data.get("bidQty", 0.0)),
                     "askQty": float(data.get("askQty", 0.0)),
                     "spread_pct": round(spread_pct, 4)
                 }
+                with self._cache_lock:
+                    self._cache[cache_key] = (res, now + 3.0)
+                return res
         except Exception:
             pass
-        return None
+        with self._cache_lock:
+            return self._cache.get(cache_key, (None, 0))[0]
 
     def get_ticker_price(self, symbol: str) -> Optional[Dict]:
-        """Sembolün anlık son fiyatını getirir (Örn: {'price': 0.1579, 'symbol': 'WIFUSDT'})."""
+        """Sembolün anlık son fiyatını getirir (2s Cache)."""
+        cache_key = f"price_{symbol}"
+        now = time.time()
+        with self._cache_lock:
+            if cache_key in self._cache:
+                data, exp = self._cache[cache_key]
+                if now < exp:
+                    return data
+
+        if self._is_rate_limited():
+            with self._cache_lock:
+                return self._cache.get(cache_key, (None, 0))[0]
+
         url = f"{self.base_url}/fapi/v1/ticker/price"
         params = {"symbol": symbol}
         try:
             resp = self.session.get(url, params=params, timeout=4)
+            if not self._handle_response(resp):
+                with self._cache_lock:
+                    return self._cache.get(cache_key, (None, 0))[0]
             if resp.status_code == 200:
                 data = resp.json()
-                return {
+                res = {
                     "symbol": data.get("symbol"),
                     "price": float(data.get("price", 0.0))
                 }
+                with self._cache_lock:
+                    self._cache[cache_key] = (res, now + 2.0)
+                return res
         except Exception:
             pass
-        return None
+        with self._cache_lock:
+            return self._cache.get(cache_key, (None, 0))[0]
 
     def get_btc_regime(self) -> Dict:
         """
