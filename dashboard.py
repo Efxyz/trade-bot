@@ -5578,7 +5578,7 @@ def update_terminal_cache_loop():
         except Exception:
             pass
 
-        time.sleep(1.0)
+        time.sleep(1.2)
 
 @app.route("/api/data")
 def api_data():
