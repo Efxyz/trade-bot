@@ -3,6 +3,7 @@ Database Layer - SQLite for Signals & Counterfactual (What-If) Paper Trades
 Tracks real performance if the trade had been taken, without risking real funds.
 """
 import sqlite3
+import json
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 from config import DB_PATH
@@ -1780,7 +1781,7 @@ def get_super_fast_scanner_logs_db(limit: int = 50) -> List[Dict]:
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT time_str, symbol, status, reason, details
+            SELECT time_str as time, symbol, status, reason, details
             FROM super_fast_scanner_logs
             ORDER BY id DESC
             LIMIT ?
