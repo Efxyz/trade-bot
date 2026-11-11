@@ -83,6 +83,9 @@ class FastTradingBotOrchestrator:
                 # 1m Hızlı ve 5m Teyit Mumlarını Çek
                 candles_1m = self.client.get_klines(symbol, interval=FAST_PRIMARY_TIMEFRAME, limit=45)
                 if len(candles_1m) < 25:
+                    if self.client.is_rate_limited():
+                        add_fast_scanner_log_db("ALL", "PROTECTED", "Binance API Dinlenme Modu (Rate-Limit Koruması)")
+                        break
                     add_fast_scanner_log_db(symbol, "REJECTED", "Yetersiz 1m veri")
                     continue
 
