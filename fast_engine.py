@@ -35,6 +35,7 @@ from core.database import (
 )
 from agents.fast_ta_agent import FastTechnicalAnalysisAgent
 from agents.fast_tracker_agent import FastCounterfactualTrackerAgent
+from agents.notifier_agent import NotifierAgent
 
 class FastTradingBotOrchestrator:
     def __init__(self):
@@ -42,7 +43,9 @@ class FastTradingBotOrchestrator:
         self.client = BinanceFuturesClient()
         self.ta_agent = FastTechnicalAnalysisAgent()
         self.tracker = FastCounterfactualTrackerAgent(self.client)
+        self.notifier = NotifierAgent()
         self.cooldown_until: Dict[str, float] = {}
+        self.last_reported_hour: Optional[str] = None
         self.is_running = False
 
     def run_cycle(self):
@@ -169,6 +172,16 @@ class FastTradingBotOrchestrator:
                 if now - last_scan_time >= FAST_SCAN_INTERVAL_SECONDS:
                     self.run_cycle()
                     last_scan_time = now
+
+                # 3. Her Saat Başı Telegram Raporu (İşlemler, PnL, Toplam Sonuç)
+                now_dt = datetime.now(timezone(timedelta(hours=3)))
+                current_hour_key = now_dt.strftime("%Y-%m-%d %H")
+                if current_hour_key != self.last_reported_hour and now_dt.minute <= 2:
+                    try:
+                        self.notifier.send_fast_hourly_report()
+                        self.last_reported_hour = current_hour_key
+                    except Exception as rep_err:
+                        print(f"⚠️ [FAST Saatlik Rapor Hatası]: {rep_err}")
 
             except Exception as err:
                 print(f"⚠️ [FAST Bot Döngü Hatası]: {err}")
