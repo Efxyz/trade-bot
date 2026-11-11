@@ -5230,6 +5230,16 @@ def update_terminal_cache_loop():
                     debates = _terminal_cache.get("committee_debates", [])
                     reflections = _terminal_cache.get("trade_reflections", [])
 
+            # FAST Bot Pozisyon Takibi (TP / SL / Ladder / Timeout Anlık Denetimi)
+            try:
+                from agents.fast_tracker_agent import FastCounterfactualTrackerAgent
+                if not hasattr(update_terminal_cache_loop, "_fast_tracker_inst"):
+                    from agents.notifier_agent import NotifierAgent
+                    update_terminal_cache_loop._fast_tracker_inst = FastCounterfactualTrackerAgent(client, notifier=NotifierAgent())
+                update_terminal_cache_loop._fast_tracker_inst.update_open_trades()
+            except Exception:
+                pass
+
             # FAST Bot İstatistikleri & Veritabanı
             try:
                 from core.database import (
