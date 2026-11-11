@@ -123,6 +123,22 @@ class BinanceFuturesClient:
             pass
         return None
 
+    def get_ticker_price(self, symbol: str) -> Optional[Dict]:
+        """Sembolün anlık son fiyatını getirir (Örn: {'price': 0.1579, 'symbol': 'WIFUSDT'})."""
+        url = f"{self.base_url}/fapi/v1/ticker/price"
+        params = {"symbol": symbol}
+        try:
+            resp = self.session.get(url, params=params, timeout=4)
+            if resp.status_code == 200:
+                data = resp.json()
+                return {
+                    "symbol": data.get("symbol"),
+                    "price": float(data.get("price", 0.0))
+                }
+        except Exception:
+            pass
+        return None
+
     def get_btc_regime(self) -> Dict:
         """
         BTCUSDT piyasa durumunu ve çöküş riskini analiz eder (BTC Market Shield).
