@@ -162,6 +162,15 @@ class NotifierAgent:
         print("⚡ [FAST Saatlik Rapor] 1 saatlik işlem ve PnL raporu Telegram'a iletildi.")
         return report
 
+    def send_super_fast_hourly_report(self) -> Dict:
+        """Süper FAST 1-saatlik saniyelik işlem ve PnL raporunu derler ve Telegram'a iletir."""
+        from core.database import generate_super_fast_hourly_summary_report, format_super_fast_hourly_telegram_message
+        report = generate_super_fast_hourly_summary_report()
+        msg_text = format_super_fast_hourly_telegram_message(report)
+        self.send_text_message(msg_text)
+        print("⚡⚡ [Süper FAST Saatlik Rapor] 1 saatlik işlem ve PnL raporu Telegram'a iletildi.")
+        return report
+
     def _send_telegram_photo(self, photo_path: str, caption: str):
         """Telegram bot API'sine fotoğraf ve metin yükler."""
         if not os.path.exists(photo_path):
