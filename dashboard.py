@@ -1043,6 +1043,28 @@ HTML_OFFICE_TEMPLATE = """
                 padding: 4px 8px;
             }
         }
+        .bot-mode-btn {
+            background: transparent;
+            border: none;
+            color: #94a3b8;
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.15s;
+        }
+        .bot-mode-btn:hover { color: #fff; }
+        .bot-mode-btn.active {
+            background: #2563eb;
+            color: #fff;
+            box-shadow: 0 0 10px rgba(37,99,235,0.4);
+        }
+        .bot-mode-btn#btnModeFast.active {
+            background: linear-gradient(135deg, #f59e0b, #ea580c);
+            color: #fff;
+            box-shadow: 0 0 12px rgba(245,158,11,0.5);
+        }
     </style>
 </head>
 <body>
@@ -1054,6 +1076,12 @@ HTML_OFFICE_TEMPLATE = """
             <span>AI Ticaret Ofisi Terminali</span>
             <span style="font-size: 10px; background: rgba(16,185,129,0.15); color: #10b981; padding: 2px 7px; border-radius: 10px; font-weight: 600;">● OFİS CANLI</span>
             <span id="wsBadge" style="font-size: 10px; background: rgba(56,189,248,0.15); color: #38bdf8; padding: 2px 7px; border-radius: 10px; font-weight: 600;">⚡ WSS AKTİF</span>
+
+            <!-- Bot Modu Seçici (Standart vs FAST) -->
+            <div style="display: flex; gap: 4px; background: rgba(0,0,0,0.5); padding: 3px; border-radius: 20px; border: 1px solid var(--panel-border); margin-left: 14px;">
+                <button id="btnModeStandard" class="bot-mode-btn active" onclick="switchBotMode('standard')">🏛️ Standart SMC (15m)</button>
+                <button id="btnModeFast" class="bot-mode-btn" onclick="switchBotMode('fast')">⚡ FAST Scalper (1m)</button>
+            </div>
         </div>
 
         <div class="topbar-stats">
@@ -1099,6 +1127,19 @@ HTML_OFFICE_TEMPLATE = """
                 <button class="btn-scan" onclick="triggerScan()">⚡ Tara</button>
             </div>
         </div>
+    </div>
+
+    <!-- ⚡ FAST Modu Bilgilendirme ve Kasa Ayrım Şeridi -->
+    <div id="fastModeBanner" style="display: none; background: linear-gradient(90deg, rgba(245,158,11,0.18), rgba(234,88,12,0.12)); border-bottom: 1px solid rgba(245,158,11,0.35); padding: 5px 16px; font-size: 11px; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="background: #f59e0b; color: #000; font-weight: 800; font-size: 10px; padding: 2px 6px; border-radius: 4px;">⚡ FAST MODU</span>
+            <span style="color: #fde047; font-weight: 600;">1 Dakikalık Mumlar & Seri Scalp Motoru</span>
+            <span style="color: var(--text-muted);">|</span>
+            <span style="color: #94a3b8;">Bağımsız Kasa: <strong style="color: #38bdf8;">$1,000.00 USDT</strong></span>
+            <span style="color: var(--text-muted);">|</span>
+            <span style="color: #94a3b8;">Hedef: <strong style="color: var(--green);">+%0.65</strong> | Stop: <strong style="color: var(--red);">-%0.40</strong> | Max Süre: <strong style="color: var(--yellow);">15 dk</strong></span>
+        </div>
+        <div style="color: #f59e0b; font-weight: 600; font-size: 10px;">⚡ YÜKSEK FREKANSLI MİKRO İŞLEMLER (BOL İŞLEMLİ)</div>
     </div>
 
     <!-- Main Workspace -->
@@ -1381,6 +1422,45 @@ HTML_OFFICE_TEMPLATE = """
                 }
             } catch (e) {
                 console.error("Office init safeguard error:", e);
+            }
+        }
+
+        let currentBotMode = localStorage.getItem('botMode') || 'standard';
+
+        function switchBotMode(mode) {
+            currentBotMode = mode;
+            localStorage.setItem('botMode', mode);
+
+            const btnStd = document.getElementById('btnModeStandard');
+            const btnFast = document.getElementById('btnModeFast');
+            const banner = document.getElementById('fastModeBanner');
+            const brandBadge = document.querySelector('.brand-badge');
+
+            if (mode === 'fast') {
+                if (btnStd) btnStd.classList.remove('active');
+                if (btnFast) btnFast.classList.add('active');
+                if (banner) banner.style.display = 'flex';
+                if (brandBadge) {
+                    brandBadge.innerText = '⚡';
+                    brandBadge.style.background = 'linear-gradient(135deg, #f59e0b, #ea580c)';
+                }
+            } else {
+                if (btnStd) btnStd.classList.add('active');
+                if (btnFast) btnFast.classList.remove('active');
+                if (banner) banner.style.display = 'none';
+                if (brandBadge) {
+                    brandBadge.innerText = '🏛️';
+                    brandBadge.style.background = 'linear-gradient(135deg, #0284c7, #2563eb)';
+                }
+            }
+
+            prevProfitHtml = '';
+            prevLossHtml = '';
+            prevLogsHtml = '';
+            prevHistHtml = '';
+
+            if (window.lastTerminalData) {
+                renderAll(window.lastTerminalData);
             }
         }
 
@@ -1721,6 +1801,15 @@ HTML_OFFICE_TEMPLATE = """
 
         function renderAll(data) {
             if (!data) return;
+            window.lastTerminalData = data;
+
+            const isFast = (typeof currentBotMode !== 'undefined' && currentBotMode === 'fast');
+            const stats = isFast ? (data.fast_stats || {}) : (data.stats || {});
+            const activeList = isFast ? (data.fast_active_positions || []) : (data.active_positions || []);
+            const historyList = isFast ? (data.fast_trade_history || []) : (data.trade_history || []);
+            const logsList = isFast ? (data.fast_scanner_logs || []) : (data.scanner_logs || []);
+            const unPnlVal = isFast ? (data.fast_total_unrealized_pnl !== undefined ? data.fast_total_unrealized_pnl : 0.0) : (data.total_unrealized_pnl !== undefined ? data.total_unrealized_pnl : 0.0);
+            const maxTrades = isFast ? (data.fast_max_concurrent_trades || 4) : (data.max_concurrent_trades || 5);
 
             // 1. Topbar
             const wsBadge = document.getElementById('wsBadge');
@@ -1744,21 +1833,19 @@ HTML_OFFICE_TEMPLATE = """
                 if (btcEl) btcEl.style.color = btc.status === 'BULLISH' ? 'var(--green)' : (btc.status === 'DUMP_ALERT' ? 'var(--red)' : 'var(--yellow)');
             }
 
-            if (data.total_unrealized_pnl !== undefined) {
-                const unPnl = Number(data.total_unrealized_pnl).toFixed(1);
-                const unPnlEl = document.getElementById('topUnrealized');
+            const unPnlEl = document.getElementById('topUnrealized');
+            if (unPnlEl) {
+                const unPnl = Number(unPnlVal).toFixed(1);
                 const unTxt = (unPnl >= 0 ? '+' : '') + unPnl + '%';
-                if (unPnlEl && unPnlEl.innerText !== unTxt) {
+                if (unPnlEl.innerText !== unTxt) {
                     unPnlEl.innerText = unTxt;
                     unPnlEl.className = 'val ' + (unPnl >= 0 ? 'pnl-pos' : 'pnl-neg');
                 }
             }
 
-            const stats = data.stats || {};
             // Kasa Kalkanı Kotası
             const shieldEl = document.getElementById('topShieldQuota');
-            const maxTrades = data.max_concurrent_trades || 5;
-            const currentTrades = (data.active_positions || []).length;
+            const currentTrades = activeList.length;
             if (shieldEl) {
                 shieldEl.innerText = `${currentTrades}/${maxTrades} Pozisyon`;
                 shieldEl.style.color = currentTrades >= maxTrades ? 'var(--red)' : (currentTrades >= 2 ? 'var(--yellow)' : 'var(--green)');
@@ -1812,7 +1899,6 @@ HTML_OFFICE_TEMPLATE = """
             }
 
             // 2. Sol Sütun: İki Kısımlı Aktif Kartlar & Çizgi Grafiği (Kârdakiler vs Zarardakiler)
-            const activeList = data.active_positions;
             if (Array.isArray(activeList)) {
                 const totalCount = activeList.length;
                 const activeCountEl = document.getElementById('activeCount');
@@ -1962,8 +2048,8 @@ HTML_OFFICE_TEMPLATE = """
                 }
             }
 
-            // 3. Sağ Üst: 📡 15M Tarama & Saatlik Kontrol Sıklığı Günlüğü
-            const logs = data.scanner_logs;
+            // 3. Sağ Üst: 📡 Tarama Günlüğü (Standart / FAST)
+            const logs = logsList;
             if (Array.isArray(logs) && logs.length > 0) {
                 const logList = document.getElementById('logList');
                 let logHtml = '';
@@ -2211,10 +2297,12 @@ HTML_OFFICE_TEMPLATE = """
             }
 
             // 5. Alt Kısım: PnL Geçmiş Tablosu
-            const history = data.trade_history;
+            const history = historyList;
+            const historyBody = document.getElementById('historyBody');
+            const historyCountEl = document.getElementById('historyCount');
+            if (historyCountEl) historyCountEl.innerText = (Array.isArray(history) ? history.length : 0) + ' İşlem';
+
             if (Array.isArray(history) && history.length > 0) {
-                document.getElementById('historyCount').innerText = history.length + ' İşlem';
-                const historyBody = document.getElementById('historyBody');
                 let histHtml = '';
                 history.forEach(tr => {
                     const isLong = tr.direction === 'LONG';
@@ -2259,6 +2347,12 @@ HTML_OFFICE_TEMPLATE = """
                     historyBody.innerHTML = histHtml;
                     prevHistHtml = histHtml;
                 }
+            } else if (historyBody) {
+                const emptyMsg = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 25px; font-size: 11px;">Henüz tamamlanmış ${isFast ? 'FAST 1m' : 'standart'} işlem kaydı yok.</td></tr>`;
+                if (historyBody.innerHTML !== emptyMsg) {
+                    historyBody.innerHTML = emptyMsg;
+                    prevHistHtml = '';
+                }
             }
 
             // 7. 3D Sims Ofis Verilerini Canlı Güncelle
@@ -2269,34 +2363,41 @@ HTML_OFFICE_TEMPLATE = """
 
         async function triggerScan() {
             const btn = document.querySelector('.btn-scan');
-            btn.innerText = '⏳...';
+            if (btn) btn.innerText = '⏳...';
+            const url = (currentBotMode === 'fast') ? '/api/fast/scan' : '/api/scan';
             try {
-                await fetch('/api/scan', { method: 'POST' });
+                await fetch(url, { method: 'POST' });
                 await fetchTerminal();
             } catch(e) {}
-            btn.innerText = '⚡ Tara';
+            if (btn) btn.innerText = '⚡ Tara';
         }
 
         async function closeAllPositions() {
-            if (!confirm("Tüm açık pozisyonları anlık piyasa fiyatından kapatmak istediğinize emin misiniz?")) return;
+            const isFast = (currentBotMode === 'fast');
+            const msg = isFast ? "Tüm FAST 1m açık pozisyonlarını anlık piyasa fiyatından kapatmak istediğinize emin misiniz?" : "Tüm Standart açık pozisyonları anlık piyasa fiyatından kapatmak istediğinize emin misiniz?";
+            if (!confirm(msg)) return;
             const btn = document.querySelector('.btn-panic');
             if (btn) btn.innerText = '⏳ Kapatılıyor...';
+            const url = isFast ? '/api/fast/close-all-positions' : '/api/close-all-positions';
             try {
-                await fetch('/api/close-all-positions', { method: 'POST' });
+                await fetch(url, { method: 'POST' });
                 await fetchTerminal();
             } catch(e) {}
             if (btn) btn.innerText = '🚫 Tümünü Kapat';
         }
 
         async function clearTradeHistory() {
-            if (!confirm("Tamamlanan işlem defterini ve kasa istatistiklerini temizlemek istediğinize emin misiniz? (Aktif işlemler korunur)")) return;
+            const isFast = (currentBotMode === 'fast');
+            const msg = isFast ? "FAST işlem defterini temizlemek istediğinize emin misiniz? (Aktif işlemler korunur)" : "Standart işlem defterini ve kasa istatistiklerini temizlemek istediğinize emin misiniz? (Aktif işlemler korunur)";
+            if (!confirm(msg)) return;
             const btn = document.querySelector('.btn-clear');
             if (btn) btn.innerText = '⏳...';
+            const url = isFast ? '/api/fast/clear-history' : '/api/clear-history';
             try {
-                await fetch('/api/clear-history', { method: 'POST' });
+                await fetch(url, { method: 'POST' });
                 prevHistHtml = '';
                 const historyBody = document.getElementById('historyBody');
-                if (historyBody) historyBody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 20px;">Kapanan işlem kaydı yok.</td></tr>';
+                if (historyBody) historyBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 20px;">${isFast ? 'FAST' : 'Standart'} kapanan işlem kaydı yok.</td></tr>`;
                 const histCountEl = document.getElementById('historyCount');
                 if (histCountEl) histCountEl.innerText = '0 İşlem';
                 await fetchTerminal();
@@ -5053,9 +5154,12 @@ try:
     from core.database import (
         get_scanner_logs_db, get_news_feed_db, get_performance_stats,
         get_all_signals, get_active_and_pending_signals, get_latest_debates_db,
-        get_recent_reflections_db
+        get_recent_reflections_db,
+        get_fast_performance_stats, get_fast_active_and_pending_signals,
+        get_fast_all_signals, get_fast_scanner_logs_db
     )
     from core.self_tuning_engine import SelfTuningEngine
+    from fast_config import FAST_MAX_CONCURRENT_TRADES
     _terminal_cache["stats"] = get_performance_stats() or {}
     _terminal_cache["scanner_logs"] = get_scanner_logs_db(limit=40) or []
     _terminal_cache["news_feed"] = get_news_feed_db(limit=25) or []
@@ -5065,6 +5169,15 @@ try:
     _terminal_cache["committee_debates"] = get_latest_debates_db(limit=8) or []
     _terminal_cache["trade_reflections"] = get_recent_reflections_db(limit=15) or []
     _terminal_cache["tuning_info"] = SelfTuningEngine.run_calibration_cycle(min_trades_required=5) or {}
+
+    # FAST Bot Başlangıç Önbellek Verileri
+    _terminal_cache["fast_stats"] = get_fast_performance_stats() or {}
+    _terminal_cache["fast_scanner_logs"] = get_fast_scanner_logs_db(limit=40) or []
+    _all_fast_init = get_fast_all_signals(limit=40) or []
+    _terminal_cache["fast_trade_history"] = [s for s in _all_fast_init if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER")]
+    _terminal_cache["fast_active_positions"] = get_fast_active_and_pending_signals() or []
+    _terminal_cache["fast_total_unrealized_pnl"] = 0.0
+    _terminal_cache["fast_max_concurrent_trades"] = FAST_MAX_CONCURRENT_TRADES
 except Exception:
     pass
 _cache_lock = threading.Lock()
@@ -5075,6 +5188,7 @@ def update_terminal_cache_loop():
     global _terminal_cache
     cached_tickers = {}
     cached_klines = {}
+    cached_fast_klines = {}
 
     import time
     while True:
@@ -5116,7 +5230,26 @@ def update_terminal_cache_loop():
                     debates = _terminal_cache.get("committee_debates", [])
                     reflections = _terminal_cache.get("trade_reflections", [])
 
-            # 4. Aktif Pozisyonlar ve Çizgi Fiyatları
+            # FAST Bot İstatistikleri & Veritabanı
+            try:
+                from core.database import (
+                    get_fast_performance_stats, get_fast_active_and_pending_signals,
+                    get_fast_all_signals, get_fast_scanner_logs_db
+                )
+                from fast_config import FAST_MAX_CONCURRENT_TRADES
+                fast_stats = get_fast_performance_stats()
+                fast_active_signals = get_fast_active_and_pending_signals()
+                fast_all_sigs = get_fast_all_signals(limit=40)
+                fast_history = [s for s in fast_all_sigs if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER")]
+                fast_scanner_logs = get_fast_scanner_logs_db(limit=40)
+            except Exception:
+                with _cache_lock:
+                    fast_stats = _terminal_cache.get("fast_stats", {})
+                    fast_active_signals = []
+                    fast_history = _terminal_cache.get("fast_trade_history", [])
+                    fast_scanner_logs = _terminal_cache.get("fast_scanner_logs", [])
+
+            # 4. Standart Aktif Pozisyonlar ve Çizgi Fiyatları
             active_positions = []
             total_unrealized_pnl = 0.0
 
@@ -5180,6 +5313,68 @@ def update_terminal_cache_loop():
                 sig_dict["recent_candles"] = cached_klines.get(symbol, [])
                 active_positions.append(sig_dict)
 
+            # 5. FAST Scalper Aktif Pozisyonlar ve Çizgi Fiyatları (1m Mumlar)
+            fast_active_positions = []
+            fast_total_unrealized_pnl = 0.0
+
+            for fsig in fast_active_signals:
+                fsymbol = fsig["symbol"]
+                f_ws_price = get_live_price(fsymbol)
+                f_ticker = cached_tickers.get(fsymbol, {})
+                f_entry_price = fsig.get("actual_entry_price") or fsig["entry_min"]
+                f_live_price = f_ws_price if f_ws_price else f_ticker.get("lastPrice", f_entry_price)
+                f_leverage = fsig.get("leverage", 10)
+                f_direction = fsig["direction"]
+
+                f_gross_pnl_pct = 0.0
+                f_fee_pct = round(0.10 * f_leverage, 2)
+                f_net_pnl_pct = 0.0
+                if f_entry_price > 0:
+                    if f_direction == "LONG":
+                        f_raw_diff = (f_live_price - f_entry_price) / f_entry_price
+                    else:
+                        f_raw_diff = (f_entry_price - f_live_price) / f_entry_price
+                    f_gross_pnl_pct = round(f_raw_diff * f_leverage * 100, 2)
+                    f_net_pnl_pct = round(f_gross_pnl_pct - f_fee_pct, 2)
+                    fast_total_unrealized_pnl += f_net_pnl_pct
+
+                # 1m hızlı mum verisi çek
+                try:
+                    f_klines = client.get_klines(fsymbol, interval="1m", limit=16)
+                    if f_klines:
+                        cached_fast_klines[fsymbol] = f_klines
+                except Exception:
+                    pass
+
+                f_entered_str = fsig.get("entered_at") or fsig.get("created_at")
+                f_elapsed_str = "1 dk"
+                if f_entered_str:
+                    try:
+                        t_str = str(f_entered_str).replace('T', ' ').split('.')[0]
+                        dt = datetime.strptime(t_str, "%Y-%m-%d %H:%M:%S")
+                        diff_sec = max(0, int((datetime.now() - dt).total_seconds()))
+                        mins = diff_sec // 60
+                        secs = diff_sec % 60
+                        if mins == 0:
+                            f_elapsed_str = f"{secs} sn"
+                        elif mins < 60:
+                            f_elapsed_str = f"{mins} dk"
+                        else:
+                            f_elapsed_str = f"{mins // 60} sa {mins % 60} dk"
+                    except Exception:
+                        pass
+
+                fsig_dict = dict(fsig)
+                fsig_dict["elapsed_str"] = f_elapsed_str
+                fsig_dict["live_price"] = f_live_price
+                fsig_dict["unrealized_pnl_pct"] = f_net_pnl_pct
+                fsig_dict["gross_pnl_pct"] = f_gross_pnl_pct
+                fsig_dict["fee_pct"] = f_fee_pct
+                fsig_dict["ladder_step"] = fsig.get("ladder_step") or 0
+                fsig_dict["ladder_name"] = fsig.get("ladder_name") or ""
+                fsig_dict["recent_candles"] = cached_fast_klines.get(fsymbol, [])
+                fast_active_positions.append(fsig_dict)
+
             # Atomik Olarak Önbelleği Güncelle
             with _cache_lock:
                 _terminal_cache = {
@@ -5194,7 +5389,14 @@ def update_terminal_cache_loop():
                     "trade_history": history if history else _terminal_cache.get("trade_history", []),
                     "committee_debates": debates if debates else _terminal_cache.get("committee_debates", []),
                     "trade_reflections": reflections if reflections else _terminal_cache.get("trade_reflections", []),
-                    "tuning_info": _terminal_cache.get("tuning_info", {})
+                    "tuning_info": _terminal_cache.get("tuning_info", {}),
+                    # FAST Scalper (1m) Bağımsız Alanı
+                    "fast_stats": fast_stats,
+                    "fast_max_concurrent_trades": 4,
+                    "fast_total_unrealized_pnl": round(fast_total_unrealized_pnl, 2),
+                    "fast_active_positions": fast_active_positions,
+                    "fast_trade_history": fast_history if fast_history else _terminal_cache.get("fast_trade_history", []),
+                    "fast_scanner_logs": fast_scanner_logs if fast_scanner_logs else _terminal_cache.get("fast_scanner_logs", [])
                 }
 
         except Exception:
@@ -5259,6 +5461,60 @@ def api_clear_history():
         _terminal_cache["stats"] = get_performance_stats()
     return jsonify({"status": "cleared"})
 
+# ========================================================
+# FAST BOT ÖZEL API ENDPOINT'LERİ (BAĞIMSIZ KONTROL & 1m SCALPING)
+# ========================================================
+_fast_orchestrator = None
+
+def get_fast_orchestrator():
+    global _fast_orchestrator
+    if _fast_orchestrator is None:
+        from fast_engine import FastTradingBotOrchestrator
+        _fast_orchestrator = FastTradingBotOrchestrator()
+    return _fast_orchestrator
+
+@app.route("/api/fast/data")
+def api_fast_data():
+    with _cache_lock:
+        return jsonify({
+            "ws_connected": _terminal_cache.get("ws_connected", False),
+            "btc_regime": _terminal_cache.get("btc_regime", {}),
+            "stats": _terminal_cache.get("fast_stats", {}),
+            "max_concurrent_trades": _terminal_cache.get("fast_max_concurrent_trades", 4),
+            "total_unrealized_pnl": _terminal_cache.get("fast_total_unrealized_pnl", 0.0),
+            "active_positions": _terminal_cache.get("fast_active_positions", []),
+            "scanner_logs": _terminal_cache.get("fast_scanner_logs", []),
+            "trade_history": _terminal_cache.get("fast_trade_history", []),
+            "bot_mode": "fast"
+        })
+
+@app.route("/api/fast/scan", methods=["POST"])
+def api_fast_scan():
+    orch = get_fast_orchestrator()
+    threading.Thread(target=orch.run_cycle, daemon=True).start()
+    return jsonify({"status": "FAST 1m scan started in background"})
+
+@app.route("/api/fast/close-all-positions", methods=["POST"])
+def api_fast_close_all_positions():
+    from core.database import close_all_fast_positions_db, get_fast_performance_stats, get_fast_all_signals
+    count = close_all_fast_positions_db(client=client)
+    with _cache_lock:
+        _terminal_cache["fast_active_positions"] = []
+        _terminal_cache["fast_total_unrealized_pnl"] = 0.0
+        _terminal_cache["fast_stats"] = get_fast_performance_stats()
+        _all_fast = get_fast_all_signals(limit=40) or []
+        _terminal_cache["fast_trade_history"] = [s for s in _all_fast if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER")]
+    return jsonify({"status": "closed", "count": count})
+
+@app.route("/api/fast/clear-history", methods=["POST"])
+def api_fast_clear_history():
+    from core.database import clear_fast_closed_trades_db, get_fast_performance_stats
+    clear_fast_closed_trades_db()
+    with _cache_lock:
+        _terminal_cache["fast_trade_history"] = []
+        _terminal_cache["fast_stats"] = get_fast_performance_stats()
+    return jsonify({"status": "cleared"})
+
 import socket
 
 def is_port_in_use(port: int) -> bool:
@@ -5266,8 +5522,17 @@ def is_port_in_use(port: int) -> bool:
         return s.connect_ex(('127.0.0.1', port)) == 0
 
 def start_dashboard(orchestrator=None, port=5000, auto_open=True):
-    global _orchestrator, _updater_started
+    global _orchestrator, _fast_orchestrator, _updater_started
     _orchestrator = orchestrator
+
+    if _fast_orchestrator is None:
+        try:
+            from fast_engine import FastTradingBotOrchestrator
+            _fast_orchestrator = FastTradingBotOrchestrator()
+            threading.Thread(target=_fast_orchestrator.run_forever, daemon=True, name="FastBotThread").start()
+            print("⚡ [FAST Scalper 1m] Bağımsız Fon Kasalı Motor Arka Planda Başlatıldı (Kasa: $1000 USDT).")
+        except Exception as fast_err:
+            print(f"⚠️ FAST Scalper başlatılamadı: {fast_err}")
 
     # Bulut ve Yerel Ortam Dinamik Port ve Host Desteği (Railway, Render, VPS uyumlu)
     port = int(os.environ.get("PORT", port))
