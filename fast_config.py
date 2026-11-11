@@ -31,6 +31,10 @@ BINANCE_TAKER_FEE_PCT = 0.05
 BINANCE_ROUNDTRIP_FEE_PCT = 0.10
 ESTIMATED_SLIPPAGE_PCT = 0.02
 
+# Telegram Bildirim Modu (Spam Önleme)
+FAST_NOTIFY_INDIVIDUAL_TRADES = False       # Her işlem için tekil bildirim gönderme (Kapalı)
+FAST_NOTIFY_HOURLY_REPORT = True           # Sadece her saat başı toplu PnL ve işlem raporu gönder
+
 # ========================================================
 # HIZLI MERDİVEN KÂR SİSTEMİ (FAST STEP-LADDER)
 # ========================================================
