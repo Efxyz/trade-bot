@@ -1317,7 +1317,7 @@ HTML_OFFICE_TEMPLATE = """
             <!-- Üst: 📡 Analiz Masası (Neden Elendi / Uygun Bulundu & Kontrol Sıklığı) -->
             <div class="panel">
                 <div class="panel-header">
-                    <span>📡 15M TARAMA & SCALP MASASI (200+ PARİTE ROTASYONU)</span>
+                    <span id="scanPanelTitle">📡 15M TARAMA & SCALP MASASI (200+ PARİTE ROTASYONU)</span>
                     <span class="counter" id="logCount">Canlı Rotasyon</span>
                 </div>
                 <div class="log-list" id="logList">
@@ -1447,6 +1447,7 @@ HTML_OFFICE_TEMPLATE = """
             if (btnFast) btnFast.classList.toggle('active', mode === 'fast');
             if (btnSuper) btnSuper.classList.toggle('active', mode === 'superfast');
 
+            const scanTitle = document.getElementById('scanPanelTitle');
             if (mode === 'superfast') {
                 if (banner) {
                     banner.style.display = 'flex';
@@ -1457,6 +1458,9 @@ HTML_OFFICE_TEMPLATE = """
                 if (brandBadge) {
                     brandBadge.innerText = '⚡⚡';
                     brandBadge.style.background = 'linear-gradient(135deg, #ec4899, #8b5cf6)';
+                }
+                if (scanTitle) {
+                    scanTitle.innerHTML = '⚡⚡ SANİYELİK HFT TARAMA MASASI (50+ PARİTE ROTASYONU)';
                 }
             } else if (mode === 'fast') {
                 if (banner) {
@@ -1469,11 +1473,17 @@ HTML_OFFICE_TEMPLATE = """
                     brandBadge.innerText = '⚡';
                     brandBadge.style.background = 'linear-gradient(135deg, #f59e0b, #ea580c)';
                 }
+                if (scanTitle) {
+                    scanTitle.innerHTML = '⚡ 1M TARAMA & FAST SCALP MASASI (50+ PARİTE ROTASYONU)';
+                }
             } else {
                 if (banner) banner.style.display = 'none';
                 if (brandBadge) {
                     brandBadge.innerText = '🏛️';
                     brandBadge.style.background = 'linear-gradient(135deg, #0284c7, #2563eb)';
+                }
+                if (scanTitle) {
+                    scanTitle.innerHTML = '📡 15M TARAMA & SCALP MASASI (200+ PARİTE ROTASYONU)';
                 }
             }
 
@@ -5151,6 +5161,11 @@ window.initOffice3D = initOrResizeOffice3D;
             switchLeftView(currentLeftView);
         } catch (e) {
             console.error("Initial switchLeftView error:", e);
+        }
+        try {
+            switchBotMode(currentBotMode);
+        } catch (e) {
+            console.error("Initial switchBotMode error:", e);
         }
 
         // Canlı Polling Kesintisiz Başlatılır
