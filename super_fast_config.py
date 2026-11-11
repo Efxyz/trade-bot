@@ -59,7 +59,7 @@ SUPER_FAST_DYNAMIC_CHANNEL_PCT = 0.12
 # ========================================================
 SUPER_FAST_PRIMARY_TIMEFRAME = "1s"          # Saniyelik / Tick Akışı Ana İşlem Dilimi
 SUPER_FAST_CONFIRMATION_TIMEFRAME = "1m"     # 1 Dakikalık Mikro Trend Teyit Dilimi
-SUPER_FAST_SCAN_INTERVAL_SECONDS = 8         # 8 Saniyede Bir Ultra Hızlı Tarama Döngüsü (Binance Rate-Limit Korumalı)
+SUPER_FAST_SCAN_INTERVAL_SECONDS = 4         # 4 Saniyede Bir Ultra Hızlı Saniyelik HFT Tarama Döngüsü
 
 SUPER_FAST_TARGET_PROFIT_PCT = 0.35          # Hedef Kâr: Fiyatta +%0.35 (10x'te +%3.5 Marjin Kârı)
 SUPER_FAST_STOP_LOSS_PCT = 0.25              # Stop Loss: Fiyatta -%0.25 (10x'te -%2.5 Marjin Kaybı)
