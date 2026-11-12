@@ -186,7 +186,7 @@ class TradingBotOrchestrator:
         # Açık olan veya son 45 dk içinde açılıp kapanmış coinleri al (aynı coinleri tekrar denememek için)
         excluded_symbols = get_recently_traded_symbols(within_minutes=45)
 
-        candidates = self.scanner.scan_opportunities(limit=25, exclude_symbols=excluded_symbols)
+        candidates = self.scanner.scan_opportunities(limit=18, exclude_symbols=excluded_symbols)
 
         # Canlı WebSocket Balina & Sıcak Parite Akışı Kontrolü
         hot_items = pop_hot_symbols()
@@ -337,6 +337,8 @@ class TradingBotOrchestrator:
             except Exception as e:
                 print(f"⚠️ [{symbol}] Analiz hatası: {e}")
                 continue
+            finally:
+                time.sleep(0.10)
 
         if found_setups_count == 0:
             print("💤 Bu döngüde kurallara tam uyan A+ kurulum bulunamadı (Filtreler sermayeyi koruyor).")
