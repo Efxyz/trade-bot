@@ -73,8 +73,10 @@ SUPER_FAST_EARLY_INVALIDATION_MINUTES = 2    # 2 dakika içinde tersine -%0.16 g
 SUPER_FAST_EARLY_INVALIDATION_LOSS_PCT = 0.16
 
 # Güvenlik Kalkanı
+SUPER_FAST_CIRCUIT_BREAKER_ENABLED = False  # Patron Talimatı: Devre kesici kapatıldı (Bugün işlemler izleniyor)
 SUPER_FAST_DAILY_MAX_DRAWDOWN_USDT = 40.0    # Günlük $40 kümülatif zararda yeni mikro işlemleri durdur
 SUPER_FAST_POST_LOSS_COOLDOWN_MINUTES = 12   # Zararlı kapanan pariteye 12 dakika dinlenme (intikam işlemine son)
+SUPER_FAST_BLOCK_DEAD_CHOP = False           # Saniyelik scalping için piyasa dondurması kapalı (LONG koruması aktif kalır)
 SUPER_FAST_SIDE_GUARD_ENABLED = True
 SUPER_FAST_SIDE_MAX_CONSECUTIVE_LOSSES = 3   # Bir yönde 3 ardışık zararda o yönü 20 dakika dondur
 SUPER_FAST_SIDE_COOLDOWN_MINUTES = 20
