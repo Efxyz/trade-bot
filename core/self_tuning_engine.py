@@ -128,16 +128,16 @@ class SelfTuningEngine:
         tuned = dict(current)
         changes = []
 
-        # A) Confluence Barajı Kalibrasyonu (Keskin Nişancı Tabanı: En Az 80)
+        # A) Confluence Barajı Kalibrasyonu (Dengeli Kurumsal Taban: 70 - 78)
         if win_rate < 52.0 or expectancy < 0.0:
             # Kazanma oranı zayıfsa barajı yükselt (Sadece kusursuz sinyaller)
-            new_score = min(86, current.get("min_confluence_score", 82) + 2)
+            new_score = min(78, current.get("min_confluence_score", 72) + 2)
             if new_score != current.get("min_confluence_score"):
                 tuned["min_confluence_score"] = new_score
                 changes.append(f"Zayıf win-rate (%{win_rate:.1f}) nedeniyle SMC kalite barajı {new_score}/100 seviyesine yükseltildi.")
         elif win_rate >= 65.0 and expectancy > 1.5:
             # Çok yüksek başarı varsa kontrollü esnet
-            new_score = max(80, current.get("min_confluence_score", 82) - 1)
+            new_score = max(70, current.get("min_confluence_score", 72) - 1)
             if new_score != current.get("min_confluence_score"):
                 tuned["min_confluence_score"] = new_score
                 changes.append(f"Yüksek win-rate (%{win_rate:.1f}) ödülü: SMC barajı {new_score}/100 seviyesine optimize edildi.")
