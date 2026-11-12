@@ -103,6 +103,7 @@ DAILY_BASE_MAX_TRADES = 4              # Taban Keskin Nişancı Kotası: Zor/tes
 PROFIT_STEP_FOR_BONUS_TRADES = 15.0     # Her +$15 net kârda kota genişlemesi
 BONUS_TRADES_PER_STEP = 2              # Her +$15 kârda +2 ekstra işlem hakkı (Kârlı günde sınırsız avlanma)
 DAILY_MAX_NEW_TRADES = 4               # Geriye dönük uyumluluk için alias
+ENABLE_CIRCUIT_BREAKER = False          # Patron Talimatı: Devre kesici kapatıldı (Bugün işlemler izleniyor)
 DAILY_MAX_DRAWDOWN_USDT = 50.0         # Günlük Acil Durum Sigortası (Circuit Breaker): -$50 kayıpta taramayı 24s dondur
 DAILY_TRAILING_PROFIT_LOCK_ENABLED = True # Günlük Zirve Kâr Kilidi (Kazanılan kârı asla geri vermeme kalkanı)
 
