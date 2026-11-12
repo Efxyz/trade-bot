@@ -109,18 +109,26 @@ class MarketScannerAgent:
         if not liquid_tickers:
             return []
 
+        # 0. Havuz: Çekirdek Likit Majörler (Kurumsal SMC Kurulumları İçin Öncelikli)
+        CORE_MAJORS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "DOGEUSDT", "SUIUSDT", "AVAXUSDT", "NEARUSDT"]
+        pool_majors = [
+            t for t in liquid_tickers
+            if t["symbol"] in CORE_MAJORS and (now - _SCANNED_COOLDOWN.get(t["symbol"], 0)) >= COOLDOWN_HOT_SECONDS
+        ]
+        selected_symbols = {t["symbol"] for t in pool_majors}
+
         # 1. Havuz: Taze Volatilite / Hacim Liderleri (Son 90 sn taranmamışlar)
         fresh_movers = [
             t for t in liquid_tickers
-            if (now - _SCANNED_COOLDOWN.get(t["symbol"], 0)) >= COOLDOWN_HOT_SECONDS
+            if t["symbol"] not in selected_symbols and (now - _SCANNED_COOLDOWN.get(t["symbol"], 0)) >= COOLDOWN_HOT_SECONDS
         ]
         sorted_movers = sorted(
             fresh_movers,
             key=lambda x: abs(x["priceChangePercent"]),
             reverse=True
         )
-        pool_movers = sorted_movers[:10]
-        selected_symbols = {t["symbol"] for t in pool_movers}
+        pool_movers = sorted_movers[:6]
+        selected_symbols.update(t["symbol"] for t in pool_movers)
 
         # 2. Havuz: Tüm Piyasa Sıralı Rotasyonu (Kalan 200+ coini baştan sona hızla tarar)
         remaining_tickers = [
@@ -128,21 +136,21 @@ class MarketScannerAgent:
             if t["symbol"] not in selected_symbols and (now - _SCANNED_COOLDOWN.get(t["symbol"], 0)) >= COOLDOWN_ROTATION_SECONDS
         ]
         # Eğer soğuma süresi yüzünden coin kalmadıysa süresi en eski olanları al
-        if len(remaining_tickers) < 15:
+        if len(remaining_tickers) < 10:
             remaining_tickers = [t for t in liquid_tickers if t["symbol"] not in selected_symbols]
 
-        # Piyasa rotasyon penceresi (her döngü 15 parite ileri kayar)
+        # Piyasa rotasyon penceresi (her döngü 8 parite ileri kayar)
         n_rem = len(remaining_tickers)
         pool_rotation = []
         if n_rem > 0:
             start_idx = _ROTATION_INDEX % n_rem
-            _ROTATION_INDEX = (start_idx + 15) % n_rem
+            _ROTATION_INDEX = (start_idx + 8) % n_rem
             # Dairesel seçim
-            for i in range(min(15, n_rem)):
+            for i in range(min(8, n_rem)):
                 idx = (start_idx + i) % n_rem
                 pool_rotation.append(remaining_tickers[idx])
 
-        candidates = (pool_movers + pool_rotation)[:limit]
+        candidates = (pool_majors + pool_movers + pool_rotation)[:limit]
 
         # Seçilen coinleri soğuma zaman damgasıyla işaretle
         for c in candidates:
