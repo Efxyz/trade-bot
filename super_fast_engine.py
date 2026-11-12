@@ -18,8 +18,10 @@ from super_fast_config import (
     SUPER_FAST_ALLOCATED_MARGIN_PER_TRADE,
     SUPER_FAST_SCAN_INTERVAL_SECONDS,
     SUPER_FAST_COINS_UNIVERSE,
+    SUPER_FAST_CIRCUIT_BREAKER_ENABLED,
     SUPER_FAST_DAILY_MAX_DRAWDOWN_USDT,
     SUPER_FAST_POST_LOSS_COOLDOWN_MINUTES,
+    SUPER_FAST_BLOCK_DEAD_CHOP,
     SUPER_FAST_SIDE_GUARD_ENABLED,
     SUPER_FAST_SIDE_MAX_CONSECUTIVE_LOSSES,
     SUPER_FAST_SIDE_COOLDOWN_MINUTES
@@ -59,19 +61,20 @@ class SuperFastTradingBotOrchestrator:
             return
 
         # 2. Günlük Devre Kesici (Circuit Breaker) Kontrolü
-        stats = get_super_fast_performance_stats() or {}
-        today_dollar_gain = float(stats.get("today_dollar_gain") or 0.0)
-        if today_dollar_gain <= -SUPER_FAST_DAILY_MAX_DRAWDOWN_USDT:
-            add_super_fast_scanner_log_db(
-                "CIRCUIT_BREAKER",
-                "STOPPED",
-                f"Süper FAST Günlük Maksimum Zarar Sınırına (-${SUPER_FAST_DAILY_MAX_DRAWDOWN_USDT}) Ulaşıldı."
-            )
-            return
+        if SUPER_FAST_CIRCUIT_BREAKER_ENABLED:
+            stats = get_super_fast_performance_stats() or {}
+            today_dollar_gain = float(stats.get("today_dollar_gain") or 0.0)
+            if today_dollar_gain <= -SUPER_FAST_DAILY_MAX_DRAWDOWN_USDT:
+                add_super_fast_scanner_log_db(
+                    "CIRCUIT_BREAKER",
+                    "STOPPED",
+                    f"Süper FAST Günlük Maksimum Zarar Sınırına (-${SUPER_FAST_DAILY_MAX_DRAWDOWN_USDT}) Ulaşıldı."
+                )
+                return
 
         # 2.5. BTC Piyasa Rejimi & Ölü Testere Kalkanı (Sermaye Koruma)
         btc_regime = self.client.get_btc_regime()
-        if btc_regime.get("block_all_entries", False):
+        if SUPER_FAST_BLOCK_DEAD_CHOP and btc_regime.get("block_all_entries", False):
             add_super_fast_scanner_log_db("BTC_KALKANI", "PROTECTED", "BTC Ölü Testere Piyasada (İşlemler Donduruldu)")
             return
 
