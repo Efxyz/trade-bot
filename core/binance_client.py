@@ -32,21 +32,24 @@ class BinanceFuturesClient:
     def _handle_response(self, resp: requests.Response) -> bool:
         """Rate limit denetimi (429/418 yakalama ve ağırlık kontrolü)."""
         if resp.status_code in (429, 418):
-            retry_after = 20
+            retry_after = 30
             try:
-                retry_after = int(resp.headers.get("Retry-After", 20))
+                retry_after = int(resp.headers.get("Retry-After", 30))
             except Exception:
                 pass
-            BinanceFuturesClient._rate_limited_until = time.time() + max(retry_after, 15)
-            print(f"⚠️ [Binance Rate Limit {resp.status_code}] {max(retry_after, 15)} saniye merkezi koruma/soğuma moduna geçildi.")
+            BinanceFuturesClient._rate_limited_until = time.time() + max(retry_after, 20)
+            print(f"⚠️ [Binance Rate Limit {resp.status_code}] {max(retry_after, 20)} saniye merkezi koruma/soğuma moduna geçildi.")
             return False
 
-        # Binance 1m ağırlık takibi (Max 1200)
+        # Binance 1m ağırlık takibi (Max 1200) - 750 ve 900 eşiklerinde proaktif frenleme
         used_weight = resp.headers.get("x-mbx-used-weight-1m")
         if used_weight:
             try:
-                if int(used_weight) >= 1050:
-                    time.sleep(0.35)
+                w = int(used_weight)
+                if w >= 900:
+                    time.sleep(0.50)
+                elif w >= 750:
+                    time.sleep(0.20)
             except Exception:
                 pass
         return True
@@ -125,7 +128,7 @@ class BinanceFuturesClient:
                         "count": int(t.get("count", 0))
                     }
             with BinanceFuturesClient._cache_lock:
-                BinanceFuturesClient._cache[cache_key] = (results, now + 8.0)
+                BinanceFuturesClient._cache[cache_key] = (results, now + 20.0)
             return results
         except Exception as e:
             print(f"⚠️ [Binance get_24hr_tickers Hata]: {e}")
@@ -175,8 +178,8 @@ class BinanceFuturesClient:
                     "quote_volume": float(item[7])
                 })
             
-            # Dinamik TTL: 1m için 8s, 5m için 20s, 15m/1h için 45s
-            ttl = 8.0 if interval == "1m" else (20.0 if interval == "5m" else 45.0)
+            # Dinamik TTL: 1m için 15s, 5m için 30s, 15m/1h için 60s (Binance limit kalkanı)
+            ttl = 15.0 if interval == "1m" else (30.0 if interval == "5m" else 60.0)
             with BinanceFuturesClient._cache_lock:
                 BinanceFuturesClient._cache[cache_key] = (candles, now + ttl)
             return candles
