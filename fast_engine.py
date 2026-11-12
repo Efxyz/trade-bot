@@ -65,6 +65,12 @@ class FastTradingBotOrchestrator:
             add_fast_scanner_log_db("ALL", "BLOCKED", f"FAST Günlük Devre Kesici (-${abs(today_dollar_gain):.2f} >= -${FAST_DAILY_MAX_DRAWDOWN_USDT})")
             return
 
+        # 2.5. BTC Piyasa Rejimi & Ölü Testere Kalkanı (Sermaye Koruma)
+        btc_regime = self.client.get_btc_regime()
+        if btc_regime.get("block_all_entries", False):
+            add_fast_scanner_log_db("BTC_KALKANI", "PROTECTED", "BTC Ölü Testere Piyasada (İşlemler Donduruldu)")
+            return
+
         active_symbols = {p["symbol"] for p in active_positions}
         long_count = sum(1 for p in active_positions if p["direction"] == "LONG")
         short_count = sum(1 for p in active_positions if p["direction"] == "SHORT")
@@ -99,7 +105,15 @@ class FastTradingBotOrchestrator:
 
                 direction = setup["direction"]
 
-                # Yön Kalkanı Denetimi (Max 2 Long veya 2 Short)
+                # BTC Yön Kalkanı Denetimi (Ayı/Düşüşte LONG Yasak, Rallide SHORT Yasak)
+                if direction == "LONG" and btc_regime.get("block_longs", False):
+                    add_fast_scanner_log_db(symbol, "BLOCKED", "BTC Düşüş/Ayı Kalkanı (LONG Engellendi)")
+                    continue
+                if direction == "SHORT" and btc_regime.get("block_shorts", False):
+                    add_fast_scanner_log_db(symbol, "BLOCKED", "BTC Yükseliş/Ralli Kalkanı (SHORT Engellendi)")
+                    continue
+
+                # Yön Kalkanı Denetimi (Max 6 Long veya 6 Short)
                 if direction == "LONG" and long_count >= FAST_MAX_POSITIONS_PER_DIRECTION:
                     add_fast_scanner_log_db(symbol, "BLOCKED", f"Maksimum LONG Sınırı ({FAST_MAX_POSITIONS_PER_DIRECTION}) Dolu")
                     continue
@@ -156,7 +170,7 @@ class FastTradingBotOrchestrator:
             except Exception as e:
                 add_fast_scanner_log_db(symbol, "ERROR", f"Tarama Hatası: {str(e)[:50]}")
             finally:
-                time.sleep(0.04)
+                time.sleep(0.10)
 
     def run_forever(self):
         """FAST Botun 7/24 Kesintisiz Arka Plan Motoru (2sn Takip + 20sn Tarama)."""
