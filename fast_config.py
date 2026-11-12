@@ -36,18 +36,19 @@ FAST_NOTIFY_INDIVIDUAL_TRADES = False       # Her işlem için tekil bildirim g�
 FAST_NOTIFY_HOURLY_REPORT = True           # Sadece her saat başı toplu PnL ve işlem raporu gönder
 
 # ========================================================
-# HIZLI MERDİVEN KÂR SİSTEMİ (FAST STEP-LADDER)
+# HIZLI MERDİVEN KÂR SİSTEMİ (FAST STEP-LADDER - KOMİSYON KORUMALI)
 # ========================================================
-# 1m hızlı mumlarda kârı anında korumak için sıkı basamaklar
+# Binance vadeli roundtrip taker komisyonu (%0.10 ham / %1.0 marjin).
+# BE+ kilidi %0.15 ham kârı sabitleyerek komisyon düşüldükten sonra NET +%0.50 KÂR garantiler.
 FAST_LADDER_STEPS = [
-    # Basamak 1: Fiyat +%0.22 kâra ulaştığında Stop'u +%0.08'e çek (Komisyonu çıkartır, işlemi garantiler)
-    {"step": 1, "trigger_raw_pct": 0.22, "lock_raw_pct": 0.08, "name": "⚡ Hızlı BE+ (Komisyon Sigortası)"},
+    # Basamak 1: Fiyat +%0.28 kâra ulaştığında Stop'u +%0.15'e çek (Komisyonu net aşar, kasaya kâr yazar)
+    {"step": 1, "trigger_raw_pct": 0.28, "lock_raw_pct": 0.15, "name": "⚡ Hızlı BE+ (Komisyon Korumalı)"},
     
-    # Basamak 2: Fiyat +%0.40 kâra ulaştığında Stop'u +%0.22'ye çek (10x'te +%2.2 marjin kârı cepte)
-    {"step": 2, "trigger_raw_pct": 0.40, "lock_raw_pct": 0.22, "name": "⚡ Hızlı Kilit (+%2.2 Kâr)"},
+    # Basamak 2: Fiyat +%0.45 kâra ulaştığında Stop'u +%0.28'e çek (10x'te net +%1.8 marjin kârı cepte)
+    {"step": 2, "trigger_raw_pct": 0.45, "lock_raw_pct": 0.28, "name": "⚡ Hızlı Kilit (+%1.8 Kâr)"},
     
-    # Basamak 3: Fiyat +%0.60 kâra ulaştığında Stop'u +%0.45'e çek (10x'te +%4.5 marjin kârı cepte)
-    {"step": 3, "trigger_raw_pct": 0.60, "lock_raw_pct": 0.45, "name": "⚡ Hızlı Kilit (+%4.5 Kâr)"}
+    # Basamak 3: Fiyat +%0.65 kâra ulaştığında Stop'u +%0.45'e çek (10x'te net +%3.5 marjin kârı cepte)
+    {"step": 3, "trigger_raw_pct": 0.65, "lock_raw_pct": 0.45, "name": "⚡ Hızlı Kilit (+%3.5 Kâr)"}
 ]
 
 # Dinamik Takip Kanalı
@@ -58,22 +59,22 @@ FAST_DYNAMIC_CHANNEL_PCT = 0.18
 # ========================================================
 FAST_PRIMARY_TIMEFRAME = "1m"           # 1 Dakikalık Ana İşlem Zaman Dilimi
 FAST_CONFIRMATION_TIMEFRAME = "5m"      # 5 Dakikalık Mikro Trend Teyit Dilimi
-FAST_SCAN_INTERVAL_SECONDS = 20         # 20 Saniyede Bir Hızlı Tarama (Seri Döngü)
+FAST_SCAN_INTERVAL_SECONDS = 45         # 45 Saniyede Bir Orta Hızda Tarama (1m Mumlar İçin Optimize)
 
-FAST_TARGET_PROFIT_PCT = 0.65           # Hedef Kâr: Fiyatta +%0.65 (10x'te +%6.5 Marjin Kârı)
-FAST_STOP_LOSS_PCT = 0.40               # Stop Loss: Fiyatta -%0.40 (10x'te -%4.0 Marjin Kaybı)
-FAST_MIN_CONFLUENCE_SCORE = 65          # Hızlı Giriş Eşiği (65+ puan ile bol ve seri işlem fırsatı)
-FAST_MIN_RR_RATIO = 1.4                 # Minimum 1:1.4 Risk/Ödül oranı
+FAST_TARGET_PROFIT_PCT = 0.70           # Hedef Kâr: Fiyatta +%0.70 (10x'te +%7.0 Marjin Kârı)
+FAST_STOP_LOSS_PCT = 0.35               # Stop Loss: Fiyatta -%0.35 (10x'te -%3.5 Marjin Kaybı)
+FAST_MIN_CONFLUENCE_SCORE = 70          # Hızlı Giriş Eşiği (70+ puan ile kaliteli filtrelenmiş kurulumlar)
+FAST_MIN_RR_RATIO = 1.5                 # Minimum 1:1.5 Risk/Ödül oranı
 FAST_MAX_HOLD_MINUTES = 15              # Maksimum Pozisyon Süresi: 15 Dakika (Hareketsizse Çık!)
 
 # Erken İptal (Hızlı Zarar Freni)
 FAST_EARLY_INVALIDATION_ENABLED = True
-FAST_EARLY_INVALIDATION_MINUTES = 4     # 4. dakikada negatifse (-%0.25) oyalanmadan çık
-FAST_EARLY_INVALIDATION_LOSS_PCT = 0.25
+FAST_EARLY_INVALIDATION_MINUTES = 4     # 4. dakikada negatifse (-%0.22) oyalanmadan çık
+FAST_EARLY_INVALIDATION_LOSS_PCT = 0.22
 
 # Günlük Devre Kesici & Karantina (FAST Kasa Kalkanı)
 FAST_DAILY_MAX_DRAWDOWN_USDT = 35.0     # Günlük -$35 net zararda FAST taramayı o günlüğüne durdur
-FAST_POST_LOSS_COOLDOWN_MINUTES = 5     # Zararlı paritede yalnızca 5 dk mola (hızlı devam)
+FAST_POST_LOSS_COOLDOWN_MINUTES = 15    # Zararlı paritede 15 dk mola (testere tuzağına son)
 
 # Freqtrade Side Guard (FAST Yön Kalkanı)
 FAST_SIDE_GUARD_ENABLED = True
