@@ -94,6 +94,7 @@ class TradingBotOrchestrator:
 
         # 1.6 GÜNLÜK AZAMİ KAYIP SİGORTASI (Daily Drawdown Circuit Breaker)
         from config import (
+            ENABLE_CIRCUIT_BREAKER,
             DAILY_BASE_MAX_TRADES,
             PROFIT_STEP_FOR_BONUS_TRADES,
             BONUS_TRADES_PER_STEP,
@@ -107,16 +108,17 @@ class TradingBotOrchestrator:
             get_and_update_today_peak_profit
         )
 
-        today_loss = get_today_net_dollar_loss()
-        if today_loss >= DAILY_MAX_DRAWDOWN_USDT:
-            msg = (
-                f"Günlük azami kayıp limiti (${DAILY_MAX_DRAWDOWN_USDT:.2f}) aşıldı! "
-                f"Bugünkü net zarar: -${today_loss:.2f}. Acil durum sigortası devreye girdi, "
-                f"tüm yeni girişler gün sonuna kadar donduruldu."
-            )
-            print(f"🛑 [Acil Durum Sigortası / Circuit Breaker] {msg}")
-            add_scanner_log("CIRCUIT BREAKER", "PROTECTED", msg, "Acil Durum Sermaye Sigortası")
-            return
+        if ENABLE_CIRCUIT_BREAKER:
+            today_loss = get_today_net_dollar_loss()
+            if today_loss >= DAILY_MAX_DRAWDOWN_USDT:
+                msg = (
+                    f"Günlük azami kayıp limiti (${DAILY_MAX_DRAWDOWN_USDT:.2f}) aşıldı! "
+                    f"Bugünkü net zarar: -${today_loss:.2f}. Acil durum sigortası devreye girdi, "
+                    f"tüm yeni girişler gün sonuna kadar donduruldu."
+                )
+                print(f"🛑 [Acil Durum Sigortası / Circuit Breaker] {msg}")
+                add_scanner_log("CIRCUIT BREAKER", "PROTECTED", msg, "Acil Durum Sermaye Sigortası")
+                return
 
         today_pnl = get_today_net_dollar_pnl()
 
