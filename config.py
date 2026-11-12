@@ -122,8 +122,8 @@ MAX_RSI_SHORT = 60.0            # 60 üzeri güçlü boğa momentumunda SHORT gi
 MIN_4BAR_RANGE_PCT = 0.35       # Son 1 saatte dalgalanma %0.35'in altındaysa piyasa ölü kabul edilir
 BTC_CHOP_MIN_RANGE_4H_PCT = 0.80 # BTC 4 saatlik hareket alanı <%0.80 ise piyasa donuktur, işlem açılmaz
 
-# Tarama Aralığı (15m Mumlar İçin Optimize Edilmiş Kurumsal Ritim)
-SCAN_INTERVAL_SECONDS = 90  # 15m SMC için her 90 saniyede bir (1.5 dk) sakin ve derin kurumsal tarama
+# Tarama Aralığı (15m Mumlar İçin Optimize Edilmiş Kurumsal Ritim - Daha Yavaş & Sakin)
+SCAN_INTERVAL_SECONDS = 180  # 15m SMC için her 180 saniyede bir (3 dk) sakin ve derin kurumsal tarama
 
 # Zaman Dilimleri
 PRIMARY_TIMEFRAME = "15m"   # 15 Dakikalık Mumlar
