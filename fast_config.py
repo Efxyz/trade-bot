@@ -73,8 +73,10 @@ FAST_EARLY_INVALIDATION_MINUTES = 4     # 4. dakikada negatifse (-%0.22) oyalanm
 FAST_EARLY_INVALIDATION_LOSS_PCT = 0.22
 
 # Günlük Devre Kesici & Karantina (FAST Kasa Kalkanı)
+FAST_CIRCUIT_BREAKER_ENABLED = False     # Patron Talimatı: Devre kesici kapatıldı (Bugün işlemler izleniyor)
 FAST_DAILY_MAX_DRAWDOWN_USDT = 35.0     # Günlük -$35 net zararda FAST taramayı o günlüğüne durdur
 FAST_POST_LOSS_COOLDOWN_MINUTES = 15    # Zararlı paritede 15 dk mola (testere tuzağına son)
+FAST_BLOCK_DEAD_CHOP = False            # Hızlı scalping için piyasa dondurması kapalı (LONG koruması aktif kalır)
 
 # Freqtrade Side Guard (FAST Yön Kalkanı)
 FAST_SIDE_GUARD_ENABLED = True
