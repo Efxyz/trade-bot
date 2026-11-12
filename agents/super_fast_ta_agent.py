@@ -20,7 +20,7 @@ from super_fast_config import (
 
 class SuperFastTechnicalAnalysisAgent:
     def __init__(self):
-        self.min_confluence_score = 60  # Bol ve seri işlem için dinamik eşik
+        self.min_confluence_score = 68  # 68+ kaliteli filtreleme (gürültü ve sahte fitil kalkanı)
 
     def analyze_super_fast_setup(
         self,
