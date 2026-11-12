@@ -107,9 +107,9 @@ ENABLE_CIRCUIT_BREAKER = False          # Patron Talimatı: Devre kesici kapatı
 DAILY_MAX_DRAWDOWN_USDT = 50.0         # Günlük Acil Durum Sigortası (Circuit Breaker): -$50 kayıpta taramayı 24s dondur
 DAILY_TRAILING_PROFIT_LOCK_ENABLED = True # Günlük Zirve Kâr Kilidi (Kazanılan kârı asla geri vermeme kalkanı)
 
-# SMC & Confluence Kalite Eşiği (Sadece Kusursuz Grade A+ Kurulumlar - Keskin Nişancı Modu)
-MIN_CONFLUENCE_SCORE = 82            # 82 altı ortalama sinyaller kesinlikle elenir (Eski: 76)
-MIN_CONFLUENCE_SCORE_SHORT = 84      # Short Asimetrisi Kalkanı: Short için en az 84 puan (Tüm geçmiş kayıpları engelleme filtresi)
+# SMC & Confluence Kalite Eşiği (Dengeli Kurumsal SMC Kalibrasyonu)
+MIN_CONFLUENCE_SCORE = 72            # 72+ Grade A kaliteli fırsatlar için optimize edildi (Eski: 82)
+MIN_CONFLUENCE_SCORE_SHORT = 74      # Short Kalite Eşiği: 74+ (Eski: 84)
 
 # Likidite ve Slippage / Spread Koruması (Jesse & Hummingbot Standartları)
 MAX_ORDERBOOK_SPREAD_PCT = 0.12     # En iyi alış/satış makası %0.12'den genişse likidite tuzağı kabul edilir
@@ -121,7 +121,7 @@ MIN_RSI_LONG = 40.0             # 40 altı zayıf momentumda LONG alınmaz
 MIN_RSI_SHORT = 34.0            # 34 altı RSI ile ASLA dipten SHORT girilmez
 MAX_RSI_SHORT = 60.0            # 60 üzeri güçlü boğa momentumunda SHORT girilmez
 MIN_4BAR_RANGE_PCT = 0.35       # Son 1 saatte dalgalanma %0.35'in altındaysa piyasa ölü kabul edilir
-BTC_CHOP_MIN_RANGE_4H_PCT = 0.80 # BTC 4 saatlik hareket alanı <%0.80 ise piyasa donuktur, işlem açılmaz
+BTC_CHOP_MIN_RANGE_4H_PCT = 0.75 # BTC 4 saatlik hareket alanı <%0.75 ise piyasa donuktur (Eski: 0.80 / 1.20)
 
 # Tarama Aralığı (15m Mumlar İçin Optimize Edilmiş Kurumsal Ritim - Daha Yavaş & Sakin)
 SCAN_INTERVAL_SECONDS = 180  # 15m SMC için her 180 saniyede bir (3 dk) sakin ve derin kurumsal tarama
