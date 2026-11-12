@@ -1460,7 +1460,7 @@ HTML_OFFICE_TEMPLATE = """
                     brandBadge.style.background = 'linear-gradient(135deg, #ec4899, #8b5cf6)';
                 }
                 if (scanTitle) {
-                    scanTitle.innerHTML = '⚡⚡ SANİYELİK HFT TARAMA MASASI (50+ PARİTE ROTASYONU)';
+                    scanTitle.innerHTML = '⚡⚡ SANİYELİK HFT TARAMA MASASI (15 LİKİT PARİTE)';
                 }
             } else if (mode === 'fast') {
                 if (banner) {
@@ -1474,7 +1474,7 @@ HTML_OFFICE_TEMPLATE = """
                     brandBadge.style.background = 'linear-gradient(135deg, #f59e0b, #ea580c)';
                 }
                 if (scanTitle) {
-                    scanTitle.innerHTML = '⚡ 1M TARAMA & FAST SCALP MASASI (50+ PARİTE ROTASYONU)';
+                    scanTitle.innerHTML = '⚡ 1M TARAMA & FAST SCALP MASASI (15 LİKİT PARİTE)';
                 }
             } else {
                 if (banner) banner.style.display = 'none';
