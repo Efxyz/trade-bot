@@ -69,6 +69,12 @@ class SuperFastTradingBotOrchestrator:
             )
             return
 
+        # 2.5. BTC Piyasa Rejimi & Ölü Testere Kalkanı (Sermaye Koruma)
+        btc_regime = self.client.get_btc_regime()
+        if btc_regime.get("block_all_entries", False):
+            add_super_fast_scanner_log_db("BTC_KALKANI", "PROTECTED", "BTC Ölü Testere Piyasada (İşlemler Donduruldu)")
+            return
+
         active_symbols = {p["symbol"] for p in active_positions}
         long_count = sum(1 for p in active_positions if p["direction"] == "LONG")
         short_count = sum(1 for p in active_positions if p["direction"] == "SHORT")
@@ -109,6 +115,14 @@ class SuperFastTradingBotOrchestrator:
                     continue
 
                 direction = setup["direction"]
+
+                # BTC Yön Kalkanı Denetimi (Ayı/Düşüşte LONG Yasak, Rallide SHORT Yasak)
+                if direction == "LONG" and btc_regime.get("block_longs", False):
+                    add_super_fast_scanner_log_db(symbol, "BLOCKED", "BTC Düşüş/Ayı Kalkanı (LONG Engellendi)")
+                    continue
+                if direction == "SHORT" and btc_regime.get("block_shorts", False):
+                    add_super_fast_scanner_log_db(symbol, "BLOCKED", "BTC Yükseliş/Ralli Kalkanı (SHORT Engellendi)")
+                    continue
 
                 # Yön Kalkanı Denetimi (Max 12 Long veya 12 Short)
                 if direction == "LONG" and long_count >= SUPER_FAST_MAX_POSITIONS_PER_DIRECTION:
@@ -165,7 +179,7 @@ class SuperFastTradingBotOrchestrator:
             except Exception as e:
                 add_super_fast_scanner_log_db(symbol, "ERROR", f"Tarama Hatası: {str(e)[:50]}")
             finally:
-                time.sleep(0.04)
+                time.sleep(0.08)
 
     def run_forever(self):
         """Süper FAST Botun 7/24 Kesintisiz Arka Plan Motoru (1sn Takip + 5sn Tarama)."""
