@@ -19,8 +19,10 @@ from fast_config import (
     FAST_PRIMARY_TIMEFRAME,
     FAST_CONFIRMATION_TIMEFRAME,
     FAST_COINS_UNIVERSE,
+    FAST_CIRCUIT_BREAKER_ENABLED,
     FAST_DAILY_MAX_DRAWDOWN_USDT,
     FAST_POST_LOSS_COOLDOWN_MINUTES,
+    FAST_BLOCK_DEAD_CHOP,
     FAST_SIDE_GUARD_ENABLED,
     FAST_SIDE_MAX_CONSECUTIVE_LOSSES,
     FAST_SIDE_COOLDOWN_MINUTES
@@ -59,15 +61,16 @@ class FastTradingBotOrchestrator:
             return
 
         # 2. Günlük Devre Kesici (Circuit Breaker) Kontrolü
-        fast_stats = get_fast_performance_stats() or {}
-        today_dollar_gain = float(fast_stats.get("today_dollar_gain") or 0.0)
-        if today_dollar_gain <= -FAST_DAILY_MAX_DRAWDOWN_USDT:
-            add_fast_scanner_log_db("ALL", "BLOCKED", f"FAST Günlük Devre Kesici (-${abs(today_dollar_gain):.2f} >= -${FAST_DAILY_MAX_DRAWDOWN_USDT})")
-            return
+        if FAST_CIRCUIT_BREAKER_ENABLED:
+            fast_stats = get_fast_performance_stats() or {}
+            today_dollar_gain = float(fast_stats.get("today_dollar_gain") or 0.0)
+            if today_dollar_gain <= -FAST_DAILY_MAX_DRAWDOWN_USDT:
+                add_fast_scanner_log_db("ALL", "BLOCKED", f"FAST Günlük Devre Kesici (-${abs(today_dollar_gain):.2f} >= -${FAST_DAILY_MAX_DRAWDOWN_USDT})")
+                return
 
         # 2.5. BTC Piyasa Rejimi & Ölü Testere Kalkanı (Sermaye Koruma)
         btc_regime = self.client.get_btc_regime()
-        if btc_regime.get("block_all_entries", False):
+        if FAST_BLOCK_DEAD_CHOP and btc_regime.get("block_all_entries", False):
             add_fast_scanner_log_db("BTC_KALKANI", "PROTECTED", "BTC Ölü Testere Piyasada (İşlemler Donduruldu)")
             return
 
