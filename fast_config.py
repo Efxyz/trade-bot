@@ -61,20 +61,22 @@ FAST_PRIMARY_TIMEFRAME = "1m"           # 1 Dakikalık Ana İşlem Zaman Dilimi
 FAST_CONFIRMATION_TIMEFRAME = "5m"      # 5 Dakikalık Mikro Trend Teyit Dilimi
 FAST_SCAN_INTERVAL_SECONDS = 45         # 45 Saniyede Bir Orta Hızda Tarama (1m Mumlar İçin Optimize)
 
-FAST_TARGET_PROFIT_PCT = 0.70           # Hedef Kâr: Fiyatta +%0.70 (10x'te +%7.0 Marjin Kârı)
-FAST_STOP_LOSS_PCT = 0.35               # Stop Loss: Fiyatta -%0.35 (10x'te -%3.5 Marjin Kaybı)
-FAST_MIN_CONFLUENCE_SCORE = 70          # Hızlı Giriş Eşiği (70+ puan ile kaliteli filtrelenmiş kurulumlar)
-FAST_MIN_RR_RATIO = 1.5                 # Minimum 1:1.5 Risk/Ödül oranı
-FAST_MAX_HOLD_MINUTES = 15              # Maksimum Pozisyon Süresi: 15 Dakika (Hareketsizse Çık!)
+FAST_TARGET_PROFIT_PCT = 0.95           # Hedef Kâr: Fiyatta +%0.95 (10x'te +%9.5 Marjin Kârı - Komisyonun 9.5 katı!)
+FAST_STOP_LOSS_PCT = 0.45               # Stop Loss: Fiyatta -%0.45 (10x'te -%4.5 Marjin Kaybı)
+FAST_MIN_CONFLUENCE_SCORE = 72          # Hızlı Giriş Eşiği (72+ puan ile kaliteli filtrelenmiş kurulumlar)
+FAST_MIN_RR_RATIO = 1.8                 # Minimum 1:1.8 Risk/Ödül oranı
+FAST_MAX_HOLD_MINUTES = 20              # Maksimum Pozisyon Süresi: 20 Dakika (Hareketsizse Çık!)
 
 # Erken İptal (Hızlı Zarar Freni)
 FAST_EARLY_INVALIDATION_ENABLED = True
-FAST_EARLY_INVALIDATION_MINUTES = 4     # 4. dakikada negatifse (-%0.22) oyalanmadan çık
-FAST_EARLY_INVALIDATION_LOSS_PCT = 0.22
+FAST_EARLY_INVALIDATION_MINUTES = 5     # 5. dakikada negatifse (-%0.25) oyalanmadan çık
+FAST_EARLY_INVALIDATION_LOSS_PCT = 0.25
 
-# Günlük Devre Kesici & Karantina (FAST Kasa Kalkanı)
-FAST_CIRCUIT_BREAKER_ENABLED = False     # Patron Talimatı: Devre kesici kapatıldı (Bugün işlemler izleniyor)
+# Günlük Devre Kesici & Kasa Koruma Kotası (FAST Kasa Kalkanı - 14 Kasım Komisyon Dersi)
+FAST_CIRCUIT_BREAKER_ENABLED = True     # Kasa Sigortası: Aktif!
 FAST_DAILY_MAX_DRAWDOWN_USDT = 35.0     # Günlük -$35 net zararda FAST taramayı o günlüğüne durdur
+FAST_MAX_DAILY_TRADES = 15              # Sert Günlük İşlem Kotası: Günde Maksimum 15 Kaliteli İşlem (Overtrading Kilidi)
+FAST_MAX_DAILY_FEE_USDT = 15.0          # Komisyon Tavanı: Günlük komisyon $15'i aşarsa o günkü taramayı dondur
 FAST_POST_LOSS_COOLDOWN_MINUTES = 15    # Zararlı paritede 15 dk mola (testere tuzağına son)
 FAST_BLOCK_DEAD_CHOP = False            # Hızlı scalping için piyasa dondurması kapalı (LONG koruması aktif kalır)
 
