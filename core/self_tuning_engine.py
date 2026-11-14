@@ -40,7 +40,10 @@ SAFETY_GUARDRAILS = {
     "MAX_LEVERAGE_ALLOWED": 20,          # Asla 20x'in üzerine çıkamaz
     "MAX_DAILY_DRAWDOWN_PCT": 6.0,       # Günlük %6 kayıpta sistem otomatik kilitlenir
     "MIN_SL_FLOOR_PCT": 0.80,            # Stop mesafesi gürültüye ezilmemek için %0.80'den dar olamaz
-    "MAX_SL_CEILING_PCT": 1.60           # Stop mesafesi %1.60'tan geniş olamaz
+    "MAX_SL_CEILING_PCT": 1.60,          # Stop mesafesi %1.60'tan geniş olamaz
+    "MIN_CONFLUENCE_FLOOR": 65,          # Confluence tabanı felç olmamak için 65'ten düşük olamaz
+    "MAX_CONFLUENCE_CEILING": 74,        # Confluence tavanı felç olmamak için 74'ten yüksek olamaz
+    "MAX_BTC_CHOP_CEILING": 0.85         # BTC Chop tavanı kilitlenmeyi önlemek için %0.85'ten yüksek olamaz
 }
 
 class SelfTuningEngine:
@@ -68,6 +71,13 @@ class SelfTuningEngine:
                     defaults.update(saved)
             except Exception:
                 pass
+
+        # 🛡️ Eski sunucu kalıntılarını temizleme ve Güvenlik Tavanı Koruması
+        if defaults.get("min_confluence_score", 68) > 74:
+            defaults["min_confluence_score"] = 68
+        if defaults.get("btc_chop_min_range_4h_pct", 0.70) > 0.85:
+            defaults["btc_chop_min_range_4h_pct"] = 0.70
+
         return defaults
 
     @classmethod
@@ -128,19 +138,20 @@ class SelfTuningEngine:
         tuned = dict(current)
         changes = []
 
-        # A) Confluence Barajı Kalibrasyonu (Dengeli Kurumsal Taban: 70 - 78)
+        # A) Confluence Barajı Kalibrasyonu (Dengeli Kurumsal Taban: 65 - 74)
         if win_rate < 52.0 or expectancy < 0.0:
             # Kazanma oranı zayıfsa barajı yükselt (Sadece kusursuz sinyaller)
-            new_score = min(78, current.get("min_confluence_score", 72) + 2)
+            new_score = min(SAFETY_GUARDRAILS.get("MAX_CONFLUENCE_CEILING", 74), current.get("min_confluence_score", 68) + 2)
             if new_score != current.get("min_confluence_score"):
                 tuned["min_confluence_score"] = new_score
                 changes.append(f"Zayıf win-rate (%{win_rate:.1f}) nedeniyle SMC kalite barajı {new_score}/100 seviyesine yükseltildi.")
-        elif win_rate >= 65.0 and expectancy > 1.5:
-            # Çok yüksek başarı varsa kontrollü esnet
-            new_score = max(70, current.get("min_confluence_score", 72) - 1)
-            if new_score != current.get("min_confluence_score"):
+        elif win_rate >= 60.0 and expectancy >= 0.50:
+            # Yüksek başarı ve pozitif beklentide fırsat akışını aç (66-70 arası ideal)
+            curr_score = current.get("min_confluence_score", 68)
+            new_score = max(SAFETY_GUARDRAILS.get("MIN_CONFLUENCE_FLOOR", 65), curr_score - 1 if curr_score <= 72 else 68)
+            if new_score != curr_score:
                 tuned["min_confluence_score"] = new_score
-                changes.append(f"Yüksek win-rate (%{win_rate:.1f}) ödülü: SMC barajı {new_score}/100 seviyesine optimize edildi.")
+                changes.append(f"Yüksek win-rate (%{win_rate:.1f}) ve pozitif beklenti (E: {expectancy:.2f}): SMC barajı {new_score}/100 seviyesine optimize edildi.")
 
         # B) Stop-Loss Mesafesi Kalibrasyonu (Fitil Koruması)
         # Hızlı stop olan işlemler çoksa (%1.0'den dar stoplar gürültüye gidiyorsa)
@@ -151,13 +162,16 @@ class SelfTuningEngine:
                 tuned["min_scalp_sl_pct"] = new_sl_min
                 changes.append(f"Likidite fitili kayıpları tespit edildi: Minimum stop payı %{new_sl_min:.2f} seviyesine genişletildi (Gürültü Koruması).")
 
-        # C) BTC Chop Kalkanı Kalibrasyonu
-        # Eğer zaman aşımı (TIMEOUT) kayıpları toplam işlemlerin %30'unu geçiyorsa piyasa yatay demektir
-        if len(timeouts) / total_trades > 0.28:
-            new_chop = round(min(1.20, current.get("btc_chop_min_range_4h_pct", 0.80) + 0.05), 2)
+        # C) BTC Chop Kalkanı Kalibrasyonu (Maks %0.85 tavanı, kilitlenme önleme)
+        if len(timeouts) / total_trades > 0.35:
+            new_chop = round(min(SAFETY_GUARDRAILS.get("MAX_BTC_CHOP_CEILING", 0.85), current.get("btc_chop_min_range_4h_pct", 0.70) + 0.05), 2)
             if new_chop != current.get("btc_chop_min_range_4h_pct"):
                 tuned["btc_chop_min_range_4h_pct"] = new_chop
-                changes.append(f"Yatay piyasa zaman aşımları yüksek (%{len(timeouts)/total_trades*100:.0f}): BTC Dead Chop kalkanı %{new_chop:.2f} eşiğine sıkılaştırıldı.")
+                changes.append(f"Yatay piyasa zaman aşımları yüksek: BTC Dead Chop kalkanı %{new_chop:.2f} eşiğine sıkılaştırıldı.")
+        else:
+            if current.get("btc_chop_min_range_4h_pct", 0.70) > 0.75:
+                tuned["btc_chop_min_range_4h_pct"] = 0.70
+                changes.append("Piyasa stabilizasyonu: BTC Dead Chop kalkanı %0.70 dengeli tabanına çekildi.")
 
         # D) Merdiven Kâr Kanalı İyileştirmesi
         if len(ladders) >= 5 and avg_win < 4.0:
@@ -168,6 +182,8 @@ class SelfTuningEngine:
         # 3. GÜVENLİK ANAYASASI DENETİMİ (ENFORCE IMMUTABLE BOUNDS)
         tuned["risk_per_trade_pct"] = min(SAFETY_GUARDRAILS["MAX_RISK_PER_TRADE_PCT"], tuned.get("risk_per_trade_pct", 2.0))
         tuned["max_concurrent_trades"] = min(SAFETY_GUARDRAILS["MAX_CONCURRENT_TRADES_HARD"], tuned.get("max_concurrent_trades", 2))
+        tuned["min_confluence_score"] = max(SAFETY_GUARDRAILS["MIN_CONFLUENCE_FLOOR"], min(SAFETY_GUARDRAILS["MAX_CONFLUENCE_CEILING"], tuned.get("min_confluence_score", 68)))
+        tuned["btc_chop_min_range_4h_pct"] = max(0.55, min(SAFETY_GUARDRAILS["MAX_BTC_CHOP_CEILING"], tuned.get("btc_chop_min_range_4h_pct", 0.70)))
         tuned["min_scalp_sl_pct"] = max(SAFETY_GUARDRAILS["MIN_SL_FLOOR_PCT"], min(SAFETY_GUARDRAILS["MAX_SL_CEILING_PCT"] - 0.25, tuned.get("min_scalp_sl_pct", 1.0)))
         if tuned.get("min_scalp_sl_pct", 1.0) >= tuned.get("max_scalp_sl_pct", 1.35):
             tuned["max_scalp_sl_pct"] = round(tuned["min_scalp_sl_pct"] + 0.30, 2)
