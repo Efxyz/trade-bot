@@ -63,18 +63,20 @@ SUPER_FAST_PRIMARY_TIMEFRAME = "1s"          # Saniyelik / Tick Akışı Ana İ�
 SUPER_FAST_CONFIRMATION_TIMEFRAME = "1m"     # 1 Dakikalık Mikro Trend Teyit Dilimi
 SUPER_FAST_SCAN_INTERVAL_SECONDS = 8         # 8 Saniyede Bir Hızlı Tarama Döngüsü (Tam Limit Ayarında)
 
-SUPER_FAST_TARGET_PROFIT_PCT = 0.50          # Hedef Kâr: Fiyatta +%0.50 (10x'te +%5.0 Marjin Kârı)
-SUPER_FAST_STOP_LOSS_PCT = 0.25              # Stop Loss: Fiyatta -%0.25 (10x'te -%2.5 Marjin Kaybı)
-SUPER_FAST_MAX_HOLD_MINUTES = 6              # 6 Dakika içinde kâra gitmeyen mikro scalpten çık (Hızlı Rotasyon)
+SUPER_FAST_TARGET_PROFIT_PCT = 0.75          # Hedef Kâr: Fiyatta +%0.75 (10x'te +%7.5 Marjin Kârı - Komisyonun 7.5 katı!)
+SUPER_FAST_STOP_LOSS_PCT = 0.35              # Stop Loss: Fiyatta -%0.35 (10x'te -%3.5 Marjin Kaybı)
+SUPER_FAST_MAX_HOLD_MINUTES = 8              # 8 Dakika içinde kâra gitmeyen mikro scalpten çık (Hızlı Rotasyon)
 
 # Erken Geçersizlik (Early Invalidation)
 SUPER_FAST_EARLY_INVALIDATION_ENABLED = True
-SUPER_FAST_EARLY_INVALIDATION_MINUTES = 2    # 2 dakika içinde tersine -%0.16 giderse erken kes
-SUPER_FAST_EARLY_INVALIDATION_LOSS_PCT = 0.16
+SUPER_FAST_EARLY_INVALIDATION_MINUTES = 3    # 3 dakika içinde tersine -%0.20 giderse erken kes
+SUPER_FAST_EARLY_INVALIDATION_LOSS_PCT = 0.20
 
-# Güvenlik Kalkanı
-SUPER_FAST_CIRCUIT_BREAKER_ENABLED = False  # Patron Talimatı: Devre kesici kapatıldı (Bugün işlemler izleniyor)
+# Güvenlik Kalkanı & Kasa Koruma Kotası (Süper FAST Kasa Kalkanı - 14 Kasım Komisyon Dersi)
+SUPER_FAST_CIRCUIT_BREAKER_ENABLED = True   # Kasa Sigortası: Aktif!
 SUPER_FAST_DAILY_MAX_DRAWDOWN_USDT = 40.0    # Günlük $40 kümülatif zararda yeni mikro işlemleri durdur
+SUPER_FAST_MAX_DAILY_TRADES = 25             # Sert Günlük İşlem Kotası: Günde Maksimum 25 İşlem (Overtrading Kilidi)
+SUPER_FAST_MAX_DAILY_FEE_USDT = 20.0         # Komisyon Tavanı: Günlük komisyon $20'yi aşarsa o günkü taramayı dondur
 SUPER_FAST_POST_LOSS_COOLDOWN_MINUTES = 12   # Zararlı kapanan pariteye 12 dakika dinlenme (intikam işlemine son)
 SUPER_FAST_BLOCK_DEAD_CHOP = False           # Saniyelik scalping için piyasa dondurması kapalı (LONG koruması aktif kalır)
 SUPER_FAST_SIDE_GUARD_ENABLED = True
