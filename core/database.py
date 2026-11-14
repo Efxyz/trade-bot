@@ -1309,6 +1309,7 @@ def get_fast_performance_stats() -> Dict:
                 SUM(CASE WHEN simulated_pnl_pct > 0 THEN 1 ELSE 0 END) as today_wins,
                 SUM(CASE WHEN simulated_pnl_pct < 0 THEN 1 ELSE 0 END) as today_losses,
                 SUM(simulated_pnl_pct) as today_net_pnl_pct,
+                SUM(fee_pct) as today_fee_pct,
                 SUM(COALESCE(allocated_margin_usdt, 75.0) * (simulated_pnl_pct / 100.0)) as today_dollar_gain
             FROM fast_signals
             WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER')
@@ -1326,6 +1327,7 @@ def get_fast_performance_stats() -> Dict:
         row["today_trades"] = t_trades
         row["today_wins"] = t_wins
         row["today_losses"] = t_losses
+        row["today_fee_pct"] = round(t_row.get("today_fee_pct") or 0.0, 2)
         row["today_net_pnl_pct"] = t_pct
         row["today_dollar_gain"] = t_dollar
         row["today_win_rate"] = t_wr
@@ -1743,6 +1745,7 @@ def get_super_fast_performance_stats() -> Dict:
                 SUM(CASE WHEN simulated_pnl_pct > 0 THEN 1 ELSE 0 END) as today_wins,
                 SUM(CASE WHEN simulated_pnl_pct < 0 THEN 1 ELSE 0 END) as today_losses,
                 SUM(simulated_pnl_pct) as today_net_pnl_pct,
+                SUM(fee_pct) as today_fee_pct,
                 SUM(COALESCE(allocated_margin_usdt, 35.0) * (simulated_pnl_pct / 100.0)) as today_dollar_gain
             FROM super_fast_signals
             WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER')
@@ -1756,6 +1759,7 @@ def get_super_fast_performance_stats() -> Dict:
         row["today_trades"] = t_trades
         row["today_wins"] = t_wins
         row["today_losses"] = today_row.get("today_losses") or 0
+        row["today_fee_pct"] = round(today_row.get("today_fee_pct") or 0.0, 2)
         row["today_net_pnl_pct"] = round(today_row.get("today_net_pnl_pct") or 0.0, 2)
         row["today_dollar_gain"] = round(today_row.get("today_dollar_gain") or 0.0, 2)
         row["today_win_rate"] = round((t_wins / t_trades * 100.0), 1) if t_trades > 0 else 0.0
