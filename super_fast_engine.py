@@ -20,6 +20,10 @@ from super_fast_config import (
     SUPER_FAST_COINS_UNIVERSE,
     SUPER_FAST_CIRCUIT_BREAKER_ENABLED,
     SUPER_FAST_DAILY_MAX_DRAWDOWN_USDT,
+    SUPER_FAST_MAX_DAILY_TRADES,
+    SUPER_FAST_MAX_DAILY_FEE_USDT,
+    SUPER_FAST_MAX_DAILY_TRADES,
+    SUPER_FAST_MAX_DAILY_FEE_USDT,
     SUPER_FAST_POST_LOSS_COOLDOWN_MINUTES,
     SUPER_FAST_BLOCK_DEAD_CHOP,
     SUPER_FAST_SIDE_GUARD_ENABLED,
@@ -60,17 +64,39 @@ class SuperFastTradingBotOrchestrator:
         if active_count >= SUPER_FAST_MAX_CONCURRENT_TRADES:
             return
 
-        # 2. Günlük Devre Kesici (Circuit Breaker) Kontrolü
-        if SUPER_FAST_CIRCUIT_BREAKER_ENABLED:
-            stats = get_super_fast_performance_stats() or {}
-            today_dollar_gain = float(stats.get("today_dollar_gain") or 0.0)
-            if today_dollar_gain <= -SUPER_FAST_DAILY_MAX_DRAWDOWN_USDT:
-                add_super_fast_scanner_log_db(
-                    "CIRCUIT_BREAKER",
-                    "STOPPED",
-                    f"Süper FAST Günlük Maksimum Zarar Sınırına (-${SUPER_FAST_DAILY_MAX_DRAWDOWN_USDT}) Ulaşıldı."
-                )
-                return
+        # 2. Günlük Devre Kesici & Sert İşlem/Komisyon Kotası (Anti-Overtrading Guard)
+        stats = get_super_fast_performance_stats() or {}
+        today_trades = int(stats.get("today_trades") or 0)
+        today_dollar_gain = float(stats.get("today_dollar_gain") or 0.0)
+        today_fee_pct = float(stats.get("today_fee_pct") or 0.0)
+        today_fee_usd = (today_fee_pct / 100.0) * SUPER_FAST_ALLOCATED_MARGIN_PER_TRADE
+
+        # A) Sert Günlük İşlem Kotası (Maks 25 İşlem)
+        if today_trades >= SUPER_FAST_MAX_DAILY_TRADES:
+            add_super_fast_scanner_log_db(
+                "CIRCUIT_BREAKER",
+                "STOPPED",
+                f"⚡⚡ Süper FAST Günlük İşlem Kotası ({today_trades}/{SUPER_FAST_MAX_DAILY_TRADES}) Doldu. Komisyon Koruma Kilidi Aktif."
+            )
+            return
+
+        # B) Günlük Komisyon Tavanı (Maks $20)
+        if today_fee_usd >= SUPER_FAST_MAX_DAILY_FEE_USDT:
+            add_super_fast_scanner_log_db(
+                "CIRCUIT_BREAKER",
+                "STOPPED",
+                f"⚡⚡ Süper FAST Günlük Komisyon Tavanı (${today_fee_usd:.2f} >= ${SUPER_FAST_MAX_DAILY_FEE_USDT}) Aşıldı. Komisyon Kilidi."
+            )
+            return
+
+        # C) Günlük Zarar Limiti Devre Kesici
+        if SUPER_FAST_CIRCUIT_BREAKER_ENABLED and today_dollar_gain <= -SUPER_FAST_DAILY_MAX_DRAWDOWN_USDT:
+            add_super_fast_scanner_log_db(
+                "CIRCUIT_BREAKER",
+                "STOPPED",
+                f"Süper FAST Günlük Maksimum Zarar Sınırına (-${SUPER_FAST_DAILY_MAX_DRAWDOWN_USDT}) Ulaşıldı."
+            )
+            return
 
         # 2.5. BTC Piyasa Rejimi & Ölü Testere Kalkanı (Sermaye Koruma)
         btc_regime = self.client.get_btc_regime()
