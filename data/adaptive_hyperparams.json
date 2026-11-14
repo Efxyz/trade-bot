@@ -1,12 +1,12 @@
 {
-  "min_confluence_score": 72,
+  "min_confluence_score": 68,
   "min_scalp_sl_pct": 0.85,
   "max_scalp_sl_pct": 1.15,
-  "btc_chop_min_range_4h_pct": 0.75,
+  "btc_chop_min_range_4h_pct": 0.70,
   "ladder_dynamic_channel_pct": 0.25,
   "max_hold_minutes": 90,
   "risk_per_trade_pct": 2.0,
   "max_concurrent_trades": 5,
-  "last_calibrated_at": "2026-11-12 18:38:00",
-  "adaptation_level": "Self-Calibrated Balanced (72/74 Confluence)"
+  "last_calibrated_at": "2026-11-14 17:55:00",
+  "adaptation_level": "Self-Calibrated Active (68 Confluence / 0.70% Chop)"
 }
