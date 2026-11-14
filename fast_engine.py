@@ -21,6 +21,10 @@ from fast_config import (
     FAST_COINS_UNIVERSE,
     FAST_CIRCUIT_BREAKER_ENABLED,
     FAST_DAILY_MAX_DRAWDOWN_USDT,
+    FAST_MAX_DAILY_TRADES,
+    FAST_MAX_DAILY_FEE_USDT,
+    FAST_MAX_DAILY_TRADES,
+    FAST_MAX_DAILY_FEE_USDT,
     FAST_POST_LOSS_COOLDOWN_MINUTES,
     FAST_BLOCK_DEAD_CHOP,
     FAST_SIDE_GUARD_ENABLED,
@@ -60,13 +64,27 @@ class FastTradingBotOrchestrator:
         if active_count >= FAST_MAX_CONCURRENT_TRADES:
             return
 
-        # 2. Günlük Devre Kesici (Circuit Breaker) Kontrolü
-        if FAST_CIRCUIT_BREAKER_ENABLED:
-            fast_stats = get_fast_performance_stats() or {}
-            today_dollar_gain = float(fast_stats.get("today_dollar_gain") or 0.0)
-            if today_dollar_gain <= -FAST_DAILY_MAX_DRAWDOWN_USDT:
-                add_fast_scanner_log_db("ALL", "BLOCKED", f"FAST Günlük Devre Kesici (-${abs(today_dollar_gain):.2f} >= -${FAST_DAILY_MAX_DRAWDOWN_USDT})")
-                return
+        # 2. Günlük Devre Kesici & Sert İşlem/Komisyon Kotası (Anti-Overtrading Guard)
+        fast_stats = get_fast_performance_stats() or {}
+        today_trades = int(fast_stats.get("today_trades") or 0)
+        today_dollar_gain = float(fast_stats.get("today_dollar_gain") or 0.0)
+        today_fee_pct = float(fast_stats.get("today_fee_pct") or 0.0)
+        today_fee_usd = (today_fee_pct / 100.0) * FAST_ALLOCATED_MARGIN_PER_TRADE
+
+        # A) Sert Günlük İşlem Kotası (Maks 15 İşlem)
+        if today_trades >= FAST_MAX_DAILY_TRADES:
+            add_fast_scanner_log_db("ALL", "BLOCKED", f"⚡ FAST Günlük İşlem Kotası ({today_trades}/{FAST_MAX_DAILY_TRADES}) Doldu. Komisyon Koruma Kilidi Aktif.")
+            return
+
+        # B) Günlük Komisyon Tavanı (Maks $15)
+        if today_fee_usd >= FAST_MAX_DAILY_FEE_USDT:
+            add_fast_scanner_log_db("ALL", "BLOCKED", f"⚡ FAST Günlük Komisyon Tavanı (${today_fee_usd:.2f} >= ${FAST_MAX_DAILY_FEE_USDT}) Aşıldı. Komisyon Kilidi.")
+            return
+
+        # C) Günlük Zarar Limiti Devre Kesici
+        if FAST_CIRCUIT_BREAKER_ENABLED and today_dollar_gain <= -FAST_DAILY_MAX_DRAWDOWN_USDT:
+            add_fast_scanner_log_db("ALL", "BLOCKED", f"FAST Günlük Devre Kesici (-${abs(today_dollar_gain):.2f} >= -${FAST_DAILY_MAX_DRAWDOWN_USDT})")
+            return
 
         # 2.5. BTC Piyasa Rejimi & Ölü Testere Kalkanı (Sermaye Koruma)
         btc_regime = self.client.get_btc_regime()
