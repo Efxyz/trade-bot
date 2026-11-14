@@ -103,13 +103,13 @@ DAILY_BASE_MAX_TRADES = 4              # Taban Keskin Nişancı Kotası: Zor/tes
 PROFIT_STEP_FOR_BONUS_TRADES = 15.0     # Her +$15 net kârda kota genişlemesi
 BONUS_TRADES_PER_STEP = 2              # Her +$15 kârda +2 ekstra işlem hakkı (Kârlı günde sınırsız avlanma)
 DAILY_MAX_NEW_TRADES = 4               # Geriye dönük uyumluluk için alias
-ENABLE_CIRCUIT_BREAKER = False          # Patron Talimatı: Devre kesici kapatıldı (Bugün işlemler izleniyor)
+ENABLE_CIRCUIT_BREAKER = True           # Güvenlik Kalkanı: Günlük -$50 kayıpta taramayı 24s dondur
 DAILY_MAX_DRAWDOWN_USDT = 50.0         # Günlük Acil Durum Sigortası (Circuit Breaker): -$50 kayıpta taramayı 24s dondur
 DAILY_TRAILING_PROFIT_LOCK_ENABLED = True # Günlük Zirve Kâr Kilidi (Kazanılan kârı asla geri vermeme kalkanı)
 
-# SMC & Confluence Kalite Eşiği (Dengeli Kurumsal SMC Kalibrasyonu)
-MIN_CONFLUENCE_SCORE = 72            # 72+ Grade A kaliteli fırsatlar için optimize edildi (Eski: 82)
-MIN_CONFLUENCE_SCORE_SHORT = 74      # Short Kalite Eşiği: 74+ (Eski: 84)
+# SMC & Confluence Kalite Eşiği (Dengeli Kurumsal SMC Kalibrasyonu - 14 Kasım Canlı Saha Ayarı)
+MIN_CONFLUENCE_SCORE = 68            # 68+ Grade A fırsatlar için optimize edildi (Eski: 72/82)
+MIN_CONFLUENCE_SCORE_SHORT = 70      # Short Kalite Eşiği: 70+ (Eski: 74/84)
 
 # Likidite ve Slippage / Spread Koruması (Jesse & Hummingbot Standartları)
 MAX_ORDERBOOK_SPREAD_PCT = 0.12     # En iyi alış/satış makası %0.12'den genişse likidite tuzağı kabul edilir
@@ -121,7 +121,7 @@ MIN_RSI_LONG = 40.0             # 40 altı zayıf momentumda LONG alınmaz
 MIN_RSI_SHORT = 34.0            # 34 altı RSI ile ASLA dipten SHORT girilmez
 MAX_RSI_SHORT = 60.0            # 60 üzeri güçlü boğa momentumunda SHORT girilmez
 MIN_4BAR_RANGE_PCT = 0.35       # Son 1 saatte dalgalanma %0.35'in altındaysa piyasa ölü kabul edilir
-BTC_CHOP_MIN_RANGE_4H_PCT = 0.75 # BTC 4 saatlik hareket alanı <%0.75 ise piyasa donuktur (Eski: 0.80 / 1.20)
+BTC_CHOP_MIN_RANGE_4H_PCT = 0.70 # BTC 4 saatlik hareket alanı <%0.70 ise piyasa donuktur (Eski: 0.75 / 1.20)
 
 # Tarama Aralığı (15m Mumlar İçin Optimize Edilmiş Kurumsal Ritim - Daha Yavaş & Sakin)
 SCAN_INTERVAL_SECONDS = 180  # 15m SMC için her 180 saniyede bir (3 dk) sakin ve derin kurumsal tarama
