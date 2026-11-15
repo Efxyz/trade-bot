@@ -447,35 +447,51 @@ class TechnicalAnalysisAgent:
         short_factors = []
 
         # --- A. SMC Kriterleri (35 Puan) ---
-        # 1. Fair Value Gap (FVG / İmbalance): Sadece aktif retest veya çok yakın (<%0.35) ise puan ver
+        # 1. Fair Value Gap (FVG / İmbalance)
         if fvg["current_in_fvg"] == "BULLISH_TEST":
             long_score += 15
             long_factors.append("Bullish FVG Test Desteği")
-        elif fvg["bullish_fvg"] and abs(current_price - fvg["bullish_fvg"]["top"]) / current_price <= 0.0035:
-            long_score += 8
-            long_factors.append("Bullish FVG Yakınlığı")
+        elif fvg.get("bullish_fvg"):
+            age = fvg["bullish_fvg"].get("age_candles", 10)
+            dist_pct = abs(current_price - fvg["bullish_fvg"]["top"]) / current_price * 100.0
+            if age <= 3:
+                long_score += 15
+                long_factors.append(f"Taze Bullish FVG Oluşumu ({age}. mum)")
+            elif dist_pct <= 1.20:
+                long_score += 10
+                long_factors.append("Bullish FVG Yakınlığı")
 
         if fvg["current_in_fvg"] == "BEARISH_TEST":
             short_score += 15
             short_factors.append("Bearish FVG Test Direnci")
-        elif fvg["bearish_fvg"] and abs(current_price - fvg["bearish_fvg"]["bottom"]) / current_price <= 0.0035:
-            short_score += 8
-            short_factors.append("Bearish FVG Yakınlığı")
+        elif fvg.get("bearish_fvg"):
+            age = fvg["bearish_fvg"].get("age_candles", 10)
+            dist_pct = abs(current_price - fvg["bearish_fvg"]["bottom"]) / current_price * 100.0
+            if age <= 3:
+                short_score += 15
+                short_factors.append(f"Taze Bearish FVG Oluşumu ({age}. mum)")
+            elif dist_pct <= 1.20:
+                short_score += 10
+                short_factors.append("Bearish FVG Yakınlığı")
 
-        # 2. Kurumsal Order Block (OB): Sadece aktif retest veya çok yakın (<%0.35) ise puan ver
+        # 2. Kurumsal Order Block (OB)
         if ob["current_at_ob"] == "BULLISH_OB_RETEST":
             long_score += 12
             long_factors.append("Kurumsal Order Block Retest (Alıcı)")
-        elif ob["bullish_ob"] and abs(current_price - ob["bullish_ob"]["high"]) / current_price <= 0.0035:
-            long_score += 6
-            long_factors.append("Kurumsal Order Block Yakınlığı")
+        elif ob.get("bullish_ob"):
+            dist_ob = abs(current_price - ob["bullish_ob"]["high"]) / current_price * 100.0
+            if dist_ob <= 1.50:
+                long_score += 8
+                long_factors.append("Kurumsal Order Block Yakınlığı")
 
         if ob["current_at_ob"] == "BEARISH_OB_RETEST":
             short_score += 12
             short_factors.append("Kurumsal Order Block Retest (Satıcı)")
-        elif ob["bearish_ob"] and abs(current_price - ob["bearish_ob"]["low"]) / current_price <= 0.0035:
-            short_score += 6
-            short_factors.append("Kurumsal Order Block Yakınlığı")
+        elif ob.get("bearish_ob"):
+            dist_ob = abs(current_price - ob["bearish_ob"]["low"]) / current_price * 100.0
+            if dist_ob <= 1.50:
+                short_score += 8
+                short_factors.append("Kurumsal Order Block Yakınlığı")
 
         if sweeps["bullish_sweep"]:
             long_score += 8
@@ -506,24 +522,31 @@ class TechnicalAnalysisAgent:
             short_score += 12
             short_factors.append("VWAP Altı (Kurumsal Satıcı)")
 
-        # Hacim patlama bonusu
-        recent_vol = candles_15m[-1]["volume"]
-        avg_v = sum(c["volume"] for c in candles_15m[-11:-1]) / 10
-        if recent_vol > (avg_v * 1.3):
+        # Hacim patlama bonusu (Son tamamlanan muma göre gürültüsüz ölçüm)
+        prior_vols = [c["volume"] for c in candles_15m[-12:-2]]
+        avg_v = sum(prior_vols) / len(prior_vols) if prior_vols else 1.0
+        if len(candles_15m) >= 2 and (candles_15m[-2]["volume"] >= (avg_v * 0.85) or candles_15m[-1]["volume"] >= (avg_v * 1.10)):
             long_score += 8
             short_score += 8
-            long_factors.append("Hacim Patlaması (>1.3x)")
-            short_factors.append("Hacim Patlaması (>1.3x)")
+            long_factors.append("Sağlıklı Hacim İvmesi")
+            short_factors.append("Sağlıklı Hacim İvmesi")
 
         # --- D. Trend & RSI Momentumu (20 Puan) ---
-        # Long Trend
-        if current_price > curr_ema20 and curr_ema20 >= curr_ema50:
-            long_score += 10
-            long_factors.append("EMA 20>50 Trend")
-        # Short Trend
-        if current_price < curr_ema20 and curr_ema20 <= curr_ema50:
-            short_score += 10
-            short_factors.append("EMA 20<50 Trend")
+        # Trend & EMA Momentumu (15m)
+        if current_price > curr_ema20:
+            if curr_ema20 >= curr_ema50:
+                long_score += 10
+                long_factors.append("EMA 20>50 Trend")
+            else:
+                long_score += 7
+                long_factors.append("EMA 20 Üzeri İvme (Erken Trend)")
+        if current_price < curr_ema20:
+            if curr_ema20 <= curr_ema50:
+                short_score += 10
+                short_factors.append("EMA 20<50 Trend")
+            else:
+                short_score += 7
+                short_factors.append("EMA 20 Altı Baskı (Erken Trend)")
 
         # RSI Sweet Spot
         if 48 <= curr_rsi <= 68:
@@ -534,23 +557,25 @@ class TechnicalAnalysisAgent:
             short_factors.append(f"RSI İdeal Baskı ({curr_rsi:.1f})")
 
         # --- 0. 1 SAATLİK MAKRO TREND KALKANI (1h Macro Confluence Shield) ---
-        # Üst zaman diliminin ana yönüne karşı ters işlem açılması kesinlikle yasaklanır
+        # 1 saatlik grafikte derin çöküş (%2.5'ten fazla fark) varsa LONG engellenir;
+        # normal toparlanma ve konsolidasyon aşamasında ise kaliteli kurulumlar onaylanır
         if candles_1h and len(candles_1h) >= 20:
             closes_1h = [c["close"] for c in candles_1h]
             ema20_1h = self.calculate_ema(closes_1h, 20)[-1]
             last_1h = closes_1h[-1]
-            if ema20_1h is not None:
-                if long_score >= target_min_score and last_1h < ema20_1h:
+            if ema20_1h is not None and ema20_1h > 0:
+                macro_diff_pct = ((last_1h - ema20_1h) / ema20_1h) * 100.0
+                if long_score >= target_min_score and macro_diff_pct < -2.5:
                     return None, (
-                        f"📌 <strong>Mevcut Durum:</strong> 1 Saatlik Makro Trend Satıcılı (Fiyat {last_1h} < 1h EMA20 {ema20_1h:.4f}).<br>"
-                        f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Üst zaman diliminde (1h) düşüş trendi varken 15m'de LONG açmak testere tuzağına çeker.<br>"
-                        f"🎯 <strong>Beklenen Şart:</strong> 1 Saatlik mumun EMA20 üzerine çıkarak makro boğa teyidi vermesi."
+                        f"📌 <strong>Mevcut Durum:</strong> 1 Saatlik Makro Çöküş Trendi (Fiyat %{abs(macro_diff_pct):.1f} EMA20 altında).<br>"
+                        f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Üst zaman diliminde derin düşüş varken LONG açmak testere tuzağına çeker.<br>"
+                        f"🎯 <strong>Beklenen Şart:</strong> Fiyatın toparlanarak 1h EMA20 (%{abs(macro_diff_pct):.1f}) yaklaşması."
                     )
-                if short_score >= target_min_score and last_1h > ema20_1h:
+                if short_score >= target_min_score and macro_diff_pct > 2.5:
                     return None, (
-                        f"📌 <strong>Mevcut Durum:</strong> 1 Saatlik Makro Trend Alıcılı (Fiyat {last_1h} > 1h EMA20 {ema20_1h:.4f}).<br>"
-                        f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Üst zaman diliminde (1h) yükseliş trendi varken 15m'de SHORT açmak ralliye karşı durmaktır.<br>"
-                        f"🎯 <strong>Beklenen Şart:</strong> 1 Saatlik mumun EMA20 altına inerek makro ayı teyidi vermesi."
+                        f"📌 <strong>Mevcut Durum:</strong> 1 Saatlik Makro Ralli Trendi (Fiyat %{macro_diff_pct:.1f} EMA20 üzerinde).<br>"
+                        f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Üst zaman diliminde güçlü ralli varken SHORT açmak ralliye karşı durmaktır.<br>"
+                        f"🎯 <strong>Beklenen Şart:</strong> Rallinin soğuması."
                     )
 
         # --- SMC PREMIUM / DISCOUNT & DALGA ANALİZİ (Son 20 Mum) ---
@@ -569,13 +594,19 @@ class TechnicalAnalysisAgent:
         # --- EŞİK DEĞERLERİ & İŞLEM KARARI (Otonom Kalibre Edilmiş Baraj: target_min_score) ---
         # LONG KONTROLÜ
         if long_score >= target_min_score and long_score > short_score:
-            # 1. SMC Discount Kalkanı: Tepeden Alımı Kesinlikle Engelle
-            # Fiyat dalganın üst %55'inde (Primli/Premium bölgede) ise ve aktif FVG/OB desteği test edilmiyorsa elenir!
-            if SMC_PREMIUM_DISCOUNT_FILTER and zone_pct > 55.0 and fvg["current_in_fvg"] != "BULLISH_TEST" and ob["current_at_ob"] != "BULLISH_OB_RETEST":
+            # 1. SMC Discount Kalkanı: Aşırı Şişkinlik / Tepe Alımını Engelle
+            # Sadece aşırı tepe bölgesinde (%88 üzeri) ve taze FVG/OB desteği veya Squeeze kırılımı YOKSA engellenir!
+            has_fresh_support = (
+                fvg.get("current_in_fvg") == "BULLISH_TEST" or
+                ob.get("current_at_ob") == "BULLISH_OB_RETEST" or
+                (fvg.get("bullish_fvg") and fvg["bullish_fvg"].get("age_candles", 10) <= 3) or
+                (squeeze.get("squeeze_fired") and squeeze.get("momentum") > 0)
+            )
+            if SMC_PREMIUM_DISCOUNT_FILTER and zone_pct > 88.0 and not has_fresh_support:
                 return None, (
-                    f"📌 <strong>Mevcut Durum:</strong> Fiyat Primli / Premium Bölgede (%{zone_pct:.1f} / Denge: %50.0).<br>"
-                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Yükseliş dalgasının tepesinde alım (long) açmak kurumsal kar realizasyonu tuzağına çeker.<br>"
-                    f"🎯 <strong>Beklenen Şart:</strong> Fiyatın İndirimli (Discount < %50) bölgeye veya Bullish FVG/OB desteğine geri çekilmesi (pullback)."
+                    f"📌 <strong>Mevcut Durum:</strong> Fiyat Aşırı Primli Bölgede (%{zone_pct:.1f} / Denge: %50.0).<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Yükseliş dalgasının aşırı tepesinde alım (long) açmak kurumsal kar realizasyonu tuzağına çeker.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> Fiyatın konsolide olup desteğe gevşemesi."
                 )
 
             # 2. VWAP Aşırı Uzaklaşma (Lastik Bandı Kalkanı)
@@ -669,13 +700,18 @@ class TechnicalAnalysisAgent:
             except Exception:
                 pass
 
-            # 1. SMC Premium Kalkanı: Dipten Satışı Kesinlikle Engelle
-            # Fiyat dalganın alt %45'inde (İndirimli/Discount bölgede) ise ve aktif FVG/OB direnci test edilmiyorsa elenir!
-            if SMC_PREMIUM_DISCOUNT_FILTER and zone_pct < 45.0 and fvg["current_in_fvg"] != "BEARISH_TEST" and ob["current_at_ob"] != "BEARISH_OB_RETEST":
+            # 1. SMC Premium Kalkanı: Aşırı Dipte Satışı Engelle
+            has_fresh_resistance = (
+                fvg.get("current_in_fvg") == "BEARISH_TEST" or
+                ob.get("current_at_ob") == "BEARISH_OB_RETEST" or
+                (fvg.get("bearish_fvg") and fvg["bearish_fvg"].get("age_candles", 10) <= 3) or
+                (squeeze.get("squeeze_fired") and squeeze.get("momentum") < 0)
+            )
+            if SMC_PREMIUM_DISCOUNT_FILTER and zone_pct < 12.0 and not has_fresh_resistance:
                 return None, (
-                    f"📌 <strong>Mevcut Durum:</strong> Fiyat İndirimli / Discount Bölgede (%{zone_pct:.1f} / Denge: %50.0).<br>"
-                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Düşüş dalgasının dip seviyesinde satış (short) açmak kurumsal dip avı (V-dip) tuzağına çeker.<br>"
-                    f"🎯 <strong>Beklenen Şart:</strong> Fiyatın Primli (Premium > %50) bölgeye veya Bearish FVG/OB direncine retest yapması."
+                    f"📌 <strong>Mevcut Durum:</strong> Fiyat Aşırı Dip Bölgede (%{zone_pct:.1f} / Denge: %50.0).<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Düşüş dalgasının aşırı dibinde satış (short) açmak kurumsal dip alımı tuzağına çeker.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> Fiyatın tepki verip dirence yükselmesi."
                 )
 
             # 2. VWAP Aşırı Uzaklaşma (Lastik Bandı Kalkanı)
