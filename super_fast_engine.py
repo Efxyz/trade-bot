@@ -122,8 +122,8 @@ class SuperFastTradingBotOrchestrator:
 
             try:
                 add_stream_symbol(symbol)
-                # 1m mumlar ve son fiyatlar
-                candles_1m = self.client.get_klines(symbol, interval="1m", limit=20)
+                # 1m mumlar ve son fiyatlar (Regresyon kanalı ve Camarilla için 30 mum)
+                candles_1m = self.client.get_klines(symbol, interval="1m", limit=30)
                 if not candles_1m or len(candles_1m) < 10:
                     if self.client.is_rate_limited():
                         add_super_fast_scanner_log_db("ALL", "PROTECTED", "Binance API Dinlenme Modu (Rate-Limit Koruması)")
