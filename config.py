@@ -107,9 +107,9 @@ ENABLE_CIRCUIT_BREAKER = True           # Güvenlik Kalkanı: Günlük -$50 kay�
 DAILY_MAX_DRAWDOWN_USDT = 50.0         # Günlük Acil Durum Sigortası (Circuit Breaker): -$50 kayıpta taramayı 24s dondur
 DAILY_TRAILING_PROFIT_LOCK_ENABLED = True # Günlük Zirve Kâr Kilidi (Kazanılan kârı asla geri vermeme kalkanı)
 
-# SMC & Confluence Kalite Eşiği (Dengeli Kurumsal SMC Kalibrasyonu - 14 Kasım Canlı Saha Ayarı)
-MIN_CONFLUENCE_SCORE = 68            # 68+ Grade A fırsatlar için optimize edildi (Eski: 72/82)
-MIN_CONFLUENCE_SCORE_SHORT = 70      # Short Kalite Eşiği: 70+ (Eski: 74/84)
+# SMC & Confluence Kalite Eşiği (Dengeli Kurumsal SMC Kalibrasyonu - 15 Kasım Canlı Saha Ayarı)
+MIN_CONFLUENCE_SCORE = 65            # 65+ Grade A fırsatlar için optimize edildi (Eski: 68/72/82)
+MIN_CONFLUENCE_SCORE_SHORT = 68      # Short Kalite Eşiği: 68+ (Eski: 70/74/84)
 
 # Likidite ve Slippage / Spread Koruması (Jesse & Hummingbot Standartları)
 MAX_ORDERBOOK_SPREAD_PCT = 0.12     # En iyi alış/satış makası %0.12'den genişse likidite tuzağı kabul edilir
