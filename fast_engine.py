@@ -23,8 +23,6 @@ from fast_config import (
     FAST_DAILY_MAX_DRAWDOWN_USDT,
     FAST_MAX_DAILY_TRADES,
     FAST_MAX_DAILY_FEE_USDT,
-    FAST_MAX_DAILY_TRADES,
-    FAST_MAX_DAILY_FEE_USDT,
     FAST_POST_LOSS_COOLDOWN_MINUTES,
     FAST_BLOCK_DEAD_CHOP,
     FAST_SIDE_GUARD_ENABLED,
@@ -37,7 +35,8 @@ from core.database import (
     get_fast_active_and_pending_signals,
     get_fast_performance_stats,
     add_fast_scanner_log_db,
-    check_fast_side_stoploss_guard
+    check_fast_side_stoploss_guard,
+    is_symbol_locked_by_other_bot
 )
 from agents.fast_ta_agent import FastTechnicalAnalysisAgent
 from agents.fast_tracker_agent import FastCounterfactualTrackerAgent
@@ -142,6 +141,12 @@ class FastTradingBotOrchestrator:
                     continue
                 if direction == "SHORT" and short_count >= FAST_MAX_POSITIONS_PER_DIRECTION:
                     add_fast_scanner_log_db(symbol, "BLOCKED", f"Maksimum SHORT Sınırı ({FAST_MAX_POSITIONS_PER_DIRECTION}) Dolu")
+                    continue
+
+                # Multi-Bot Anti-Collision & Anti-Hedging Kalkanı (Standard veya SÜPER FAST çakışması)
+                is_other_locked, lock_reason = is_symbol_locked_by_other_bot(symbol, "fast", direction)
+                if is_other_locked:
+                    add_fast_scanner_log_db(symbol, "BLOCKED", lock_reason)
                     continue
 
                 # Haber Kararlandırma Konseyi Veto Denetimi (Kara Kuğu / Hack Koruması)
