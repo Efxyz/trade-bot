@@ -8,6 +8,7 @@ Risk Profile Grades & Dynamic Position Sizing (Fixed 2% Risk Rule):
 - Grade C  : 10x Spekülatif / Yüksek Volatilite
 """
 from typing import Dict, Tuple, Optional, List
+from datetime import datetime, timezone
 from config import (
     MAX_SL_PCT_10X,
     MAX_SL_PCT_20X,
@@ -48,9 +49,9 @@ class RiskOfficerAgent:
         symbol = ta_setup["symbol"]
         sl_pct = ta_setup["sl_pct"]
         tp1_pct = ta_setup.get("tp1_pct", sl_pct * 1.5)
-        tp2_pct = ta_setup["tp2_pct"]
-        rr = ta_setup["risk_reward"]
-        is_empty_move = news_analysis.get("is_empty_move", False)
+        tp2_pct = ta_setup.get("tp2_pct", tp1_pct * 1.5)
+        rr = ta_setup.get("risk_reward", round(tp1_pct / sl_pct, 2) if sl_pct > 0 else 1.8)
+        is_empty_move = news_analysis.get("is_empty_move", False) if news_analysis else False
 
         # 1. KRİTİK FİLTRE: BTC PİYASA ÇÖKÜŞ VE RALLİ KALKANI (BTC Market Shield)
         if btc_regime and btc_regime.get("block_longs", False) and direction == "LONG":
@@ -114,9 +115,17 @@ class RiskOfficerAgent:
                     )
                 }
 
-        # 1.6 ZEHİRLİ FONLAMA ORANI (TOXIC FUNDING RATE) KALKANI
+        # 1.6 8 SAATLİK FONLAMA ORANI & PENCERE KAÇIŞ KALKANI
         if funding_data:
             fr = funding_data.get("lastFundingRate", 0.0)
+            now_utc = datetime.now(timezone.utc)
+            # 8 saatlik döngü pencereleri: 00:00, 08:00, 16:00 UTC
+            hour_mod = now_utc.hour % 8
+            minutes_to_settlement = (8 - hour_mod) * 60 - now_utc.minute
+            if minutes_to_settlement >= 480:
+                minutes_to_settlement = 0
+
+            # Kural A: Genel Zehirli Fonlama Oranı Tavanı
             if direction == "LONG" and fr > MAX_ALLOWED_FUNDING_RATE:
                 return False, {
                     "decision": "REJECT",
@@ -135,6 +144,27 @@ class RiskOfficerAgent:
                         f"🎯 <strong>Beklenen Şart:</strong> Fonlama oranının normale dönmesi."
                     )
                 }
+
+            # Kural B: 8 Saatlik Fonlama Penceresi Kaçış Kalkanı (Settlement'a 30 dk kala fonlama aleyhte ise engelle)
+            if minutes_to_settlement <= 30:
+                if direction == "LONG" and fr > 0.00015:
+                    return False, {
+                        "decision": "REJECT",
+                        "reason": (
+                            f"📌 <strong>Mevcut Durum:</strong> Fonlama Kesintisine {minutes_to_settlement} dk kaldı (Aleyhte: +%{fr*100:.3f}).<br>"
+                            f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> 8 saatlik pencere kapanışında ters fonlama ödememek için işlem donduruldu.<br>"
+                            f"🎯 <strong>Beklenen Şart:</strong> Fonlama saatinin geçmesi."
+                        )
+                    }
+                elif direction == "SHORT" and fr < -0.00015:
+                    return False, {
+                        "decision": "REJECT",
+                        "reason": (
+                            f"📌 <strong>Mevcut Durum:</strong> Fonlama Kesintisine {minutes_to_settlement} dk kaldı (Aleyhte: %{fr*100:.3f}).<br>"
+                            f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> 8 saatlik pencere kapanışında ters fonlama ödememek için işlem donduruldu.<br>"
+                            f"🎯 <strong>Beklenen Şart:</strong> Fonlama saatinin geçmesi."
+                        )
+                    }
 
         # 1.7 SEKTÖR VE AYNI COİN TEKRAR KORUMASI (DIVERSIFICATION GUARD)
         if active_signals:
