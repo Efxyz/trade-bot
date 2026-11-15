@@ -6308,6 +6308,19 @@ def api_fast_clear_history():
         _terminal_cache["fast_stats"] = get_fast_performance_stats()
     return jsonify({"status": "cleared"})
 
+@app.route("/api/fast/reset-all", methods=["POST"])
+@require_admin_pin
+def api_fast_reset_all():
+    from core.database import reset_fast_bot_db, get_fast_performance_stats
+    reset_fast_bot_db()
+    with _cache_lock:
+        _terminal_cache["fast_active_positions"] = []
+        _terminal_cache["fast_total_unrealized_pnl"] = 0.0
+        _terminal_cache["fast_trade_history"] = []
+        _terminal_cache["fast_scanner_logs"] = []
+        _terminal_cache["fast_stats"] = get_fast_performance_stats()
+    return jsonify({"status": "reset", "bot": "fast", "equity": 1000.0})
+
 # ========================================================
 # SÜPER FAST BOT ÖZEL API ENDPOINT'LERİ (SANİYELİK HFT)
 # ========================================================
@@ -6363,6 +6376,19 @@ def api_super_fast_clear_history():
         _terminal_cache["super_fast_trade_history"] = []
         _terminal_cache["super_fast_stats"] = get_super_fast_performance_stats()
     return jsonify({"status": "cleared"})
+
+@app.route("/api/superfast/reset-all", methods=["POST"])
+@require_admin_pin
+def api_super_fast_reset_all():
+    from core.database import reset_super_fast_bot_db, get_super_fast_performance_stats
+    reset_super_fast_bot_db()
+    with _cache_lock:
+        _terminal_cache["super_fast_active_positions"] = []
+        _terminal_cache["super_fast_total_unrealized_pnl"] = 0.0
+        _terminal_cache["super_fast_trade_history"] = []
+        _terminal_cache["super_fast_scanner_logs"] = []
+        _terminal_cache["super_fast_stats"] = get_super_fast_performance_stats()
+    return jsonify({"status": "reset", "bot": "superfast", "equity": 1000.0})
 
 import socket
 
