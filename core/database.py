@@ -288,6 +288,30 @@ def init_db():
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tuning_id ON self_tuning_logs(id DESC)")
 
+        # Otonom Öğrenme Motoru - Sürekli Kendi Kendini Eğitme & Keşif Raporları Tablosu
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS autonomous_learning_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                time_str TEXT NOT NULL,
+                epoch_num INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                health_score INTEGER NOT NULL,
+                trades_analyzed INTEGER NOT NULL,
+                win_rate REAL NOT NULL,
+                profit_factor REAL NOT NULL,
+                expectancy REAL NOT NULL,
+                regime_diagnosis TEXT NOT NULL,
+                loss_attribution_json TEXT NOT NULL,
+                win_factors_json TEXT NOT NULL,
+                hypotheses_json TEXT NOT NULL,
+                parameter_deltas_json TEXT NOT NULL,
+                summary TEXT NOT NULL
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_learning_epoch ON autonomous_learning_reports(epoch_num DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_learning_id ON autonomous_learning_reports(id DESC)")
+
         # Günlük Durum ve Zirve Kâr Takip Tablosu (High-Water Mark State)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS system_state (
@@ -616,6 +640,130 @@ def get_tuning_logs_db(limit: int = 10) -> List[Dict]:
                 d["params"] = {}
             logs.append(d)
         return logs
+
+def save_learning_report_db(report_data: Dict) -> int:
+    """Otonom öğrenme döngüsü raporunu veritabanına kaydeder."""
+    import json
+    from datetime import datetime, timezone, timedelta
+    tr_tz = timezone(timedelta(hours=3))
+    now_tr = datetime.now(timezone.utc).astimezone(tr_tz)
+    time_str = now_tr.strftime("%H:%M:%S")
+
+    epoch_num = int(report_data.get("epoch_num", 1))
+    status = str(report_data.get("status", "AUTO_APPROVED"))
+    health_score = int(report_data.get("health_score", 75))
+    trades_analyzed = int(report_data.get("trades_analyzed", 0))
+    win_rate = float(report_data.get("win_rate", 50.0))
+    profit_factor = float(report_data.get("profit_factor", 1.0))
+    expectancy = float(report_data.get("expectancy", 0.0))
+    regime_diagnosis = str(report_data.get("regime_diagnosis", "Piyasa analizi yapıldı."))
+    loss_attr = report_data.get("loss_attribution", [])
+    win_factors = report_data.get("win_factors", [])
+    hypotheses = report_data.get("hypotheses", [])
+    param_deltas = report_data.get("parameter_deltas", [])
+    summary = str(report_data.get("summary", ""))
+
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS autonomous_learning_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                time_str TEXT NOT NULL,
+                epoch_num INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                health_score INTEGER NOT NULL,
+                trades_analyzed INTEGER NOT NULL,
+                win_rate REAL NOT NULL,
+                profit_factor REAL NOT NULL,
+                expectancy REAL NOT NULL,
+                regime_diagnosis TEXT NOT NULL,
+                loss_attribution_json TEXT NOT NULL,
+                win_factors_json TEXT NOT NULL,
+                hypotheses_json TEXT NOT NULL,
+                parameter_deltas_json TEXT NOT NULL,
+                summary TEXT NOT NULL
+            )
+        """)
+        cursor.execute("""
+            INSERT INTO autonomous_learning_reports (
+                time_str, epoch_num, status, health_score, trades_analyzed,
+                win_rate, profit_factor, expectancy, regime_diagnosis,
+                loss_attribution_json, win_factors_json, hypotheses_json,
+                parameter_deltas_json, summary
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            time_str, epoch_num, status, health_score, trades_analyzed,
+            win_rate, profit_factor, expectancy, regime_diagnosis,
+            json.dumps(loss_attr, ensure_ascii=False) if isinstance(loss_attr, (list, dict)) else str(loss_attr),
+            json.dumps(win_factors, ensure_ascii=False) if isinstance(win_factors, (list, dict)) else str(win_factors),
+            json.dumps(hypotheses, ensure_ascii=False) if isinstance(hypotheses, (list, dict)) else str(hypotheses),
+            json.dumps(param_deltas, ensure_ascii=False) if isinstance(param_deltas, (list, dict)) else str(param_deltas),
+            summary
+        ))
+        conn.commit()
+        return cursor.lastrowid
+
+def get_learning_reports_db(limit: int = 15) -> List[Dict]:
+    """Geçmiş otonom öğrenme ve keşif raporlarını döner."""
+    import json
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS autonomous_learning_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                time_str TEXT NOT NULL,
+                epoch_num INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                health_score INTEGER NOT NULL,
+                trades_analyzed INTEGER NOT NULL,
+                win_rate REAL NOT NULL,
+                profit_factor REAL NOT NULL,
+                expectancy REAL NOT NULL,
+                regime_diagnosis TEXT NOT NULL,
+                loss_attribution_json TEXT NOT NULL,
+                win_factors_json TEXT NOT NULL,
+                hypotheses_json TEXT NOT NULL,
+                parameter_deltas_json TEXT NOT NULL,
+                summary TEXT NOT NULL
+            )
+        """)
+        cursor.execute("""
+            SELECT id, created_at, time_str, epoch_num, status, health_score,
+                   trades_analyzed, win_rate, profit_factor, expectancy,
+                   regime_diagnosis, loss_attribution_json, win_factors_json,
+                   hypotheses_json, parameter_deltas_json, summary
+            FROM autonomous_learning_reports
+            ORDER BY id DESC
+            LIMIT ?
+        """, (limit,))
+        rows = []
+        for r in cursor.fetchall():
+            d = dict(r)
+            try:
+                d["loss_attribution"] = json.loads(d.get("loss_attribution_json") or "[]")
+            except Exception:
+                d["loss_attribution"] = []
+            try:
+                d["win_factors"] = json.loads(d.get("win_factors_json") or "[]")
+            except Exception:
+                d["win_factors"] = []
+            try:
+                d["hypotheses"] = json.loads(d.get("hypotheses_json") or "[]")
+            except Exception:
+                d["hypotheses"] = []
+            try:
+                d["parameter_deltas"] = json.loads(d.get("parameter_deltas_json") or "[]")
+            except Exception:
+                d["parameter_deltas"] = []
+            rows.append(d)
+        return rows
+
+def get_latest_learning_report_db() -> Optional[Dict]:
+    """En son yapılan otonom öğrenme raporunu döner."""
+    reports = get_learning_reports_db(limit=1)
+    return reports[0] if reports else None
 
 def save_signal(data: Dict) -> int:
     """Yeni sinyali kaydeder ve doğrudan aktif sanal işlem olarak başlatır."""
