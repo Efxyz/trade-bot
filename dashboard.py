@@ -404,6 +404,52 @@ HTML_OFFICE_TEMPLATE = """
             font-size: 11px; font-weight: 500; line-height: 1.35; color: #e2e8f0;
         }
 
+        /* 🏛️ Coine Özel Kararlandırma Konseyi & Alt Tablar */
+        .news-sub-header {
+            padding: 7px 10px;
+            background: rgba(255, 255, 255, 0.02);
+            border-bottom: 1px solid var(--panel-border);
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .news-subtab-btn {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--panel-border);
+            color: var(--text-muted);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .news-subtab-btn.active {
+            background: rgba(245, 158, 11, 0.16);
+            border-color: #f59e0b;
+            color: #f59e0b;
+        }
+        .bubble-reg {
+            background: rgba(168, 85, 247, 0.07);
+            border-left: 3px solid #a855f7;
+            color: #f3e8ff;
+        }
+        .bubble-sec-safe {
+            background: rgba(16, 185, 129, 0.07);
+            border-left: 3px solid #10b981;
+            color: #d1fae5;
+        }
+        .bubble-sec-alert {
+            background: rgba(239, 68, 68, 0.12);
+            border-left: 3px solid #ef4444;
+            color: #fee2e2;
+        }
+        .bubble-whale {
+            background: rgba(245, 158, 11, 0.07);
+            border-left: 3px solid #f59e0b;
+            color: #fef3c7;
+        }
+
         /* 🏛️ Ajanlar Yatırım Komitesi Tartışma Odası */
         .debate-tabs {
             display: flex; gap: 6px; align-items: center;
@@ -1379,10 +1425,51 @@ HTML_OFFICE_TEMPLATE = """
                     </div>
                 </div>
 
-                <!-- Haber Akışı (Tab 4) -->
-                <div class="news-list" id="newsList" style="display: none;">
-                    <div style="text-align: center; color: var(--text-muted); padding: 20px; font-size: 11px;">
-                        Piyasa haberleri çekiliyor...
+                <!-- 📰 Haber Akışı & Haber Kararlandırma Konseyi (Tab 4) -->
+                <div id="newsContainer" style="display: none; flex-direction: column; height: 100%; overflow: hidden; flex: 1;">
+                    <!-- Üst Kontrol & Hızlı Arama Çubuğu -->
+                    <div class="news-sub-header">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div style="display: flex; gap: 5px;">
+                                <button class="news-subtab-btn active" id="btnSubCouncil" onclick="switchNewsSubTab('council')">
+                                    🏛️ Coine Özel Konsey <span id="councilBadgeCount" style="opacity: 0.8; font-size: 9px;">(0)</span>
+                                </button>
+                                <button class="news-subtab-btn" id="btnSubRss" onclick="switchNewsSubTab('rss')">
+                                    🌐 Küresel RSS <span id="rssBadgeCount" style="opacity: 0.8; font-size: 9px;">(0)</span>
+                                </button>
+                            </div>
+                            <span style="font-size: 10px; color: #f59e0b; font-family: 'JetBrains Mono'; font-weight: 700;" id="newsCouncilStatus">🛡️ 3 Masalı Konsey</span>
+                        </div>
+                        
+                        <!-- Hızlı Coin Araştırma Çubuğu -->
+                        <div style="display: flex; gap: 5px; align-items: center; background: #0c101b; padding: 4px 6px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);">
+                            <span style="font-size: 11px;">🪙</span>
+                            <input type="text" id="coinNewsInput" placeholder="Coin Araştır (örn: SOL, BTC, KAVA, PEPE)" 
+                                   style="background: transparent; border: none; color: #fff; font-size: 11px; flex: 1; outline: none; font-family: 'JetBrains Mono';"
+                                   onkeydown="if(event.key === 'Enter') triggerManualNewsInvestigation();">
+                            <select id="coinNewsDir" style="background: #141926; border: 1px solid var(--panel-border); color: #38bdf8; font-size: 10px; font-weight: 700; border-radius: 4px; padding: 2px 4px; outline: none; cursor: pointer;">
+                                <option value="LONG">🟢 LONG</option>
+                                <option value="SHORT">🔴 SHORT</option>
+                            </select>
+                            <button onclick="triggerManualNewsInvestigation()" id="btnInvestigateCoin"
+                                    style="background: #38bdf8; color: #090d16; border: none; font-size: 10px; font-weight: 800; padding: 4px 9px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 3px; transition: 0.2s;">
+                                <span id="investigateSpinner" style="display: none;">⏳</span> <span>🔍 Konseyi Çalıştır</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 1. Coine Özel Konsey Raporları Akışı -->
+                    <div class="news-list" id="councilReportList" style="flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 8px;">
+                        <div style="text-align: center; color: var(--text-muted); padding: 25px; font-size: 11px;">
+                            🏛️ Coine özel haber konseyi raporları yükleniyor...
+                        </div>
+                    </div>
+
+                    <!-- 2. Küresel Piyasa RSS Akışı (Mevcut Liste) -->
+                    <div class="news-list" id="newsList" style="flex: 1; overflow-y: auto; padding: 8px; display: none; flex-direction: column; gap: 6px;">
+                        <div style="text-align: center; color: var(--text-muted); padding: 20px; font-size: 11px;">
+                            Piyasa haberleri çekiliyor...
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1429,6 +1516,7 @@ HTML_OFFICE_TEMPLATE = """
         let prevReflectHtml = '';
         let prevTuningHtml = '';
         let prevNewsHtml = '';
+        let prevCouncilHtml = '';
         let prevHistHtml = '';
 
         // Sol Panel Görünüm Modları: 'btc' (Sadece BTC), 'positions' (Sadece Pozisyonlar), 'split' (İkili)
@@ -1679,7 +1767,7 @@ HTML_OFFICE_TEMPLATE = """
             const debateList = document.getElementById('debateList');
             const reflectList = document.getElementById('reflectionsList');
             const tuningList = document.getElementById('tuningList');
-            const newsList = document.getElementById('newsList');
+            const newsContainer = document.getElementById('newsContainer');
 
             const tabDebateBtn = document.getElementById('tabDebateBtn');
             const tabReflectBtn = document.getElementById('tabReflectBtn');
@@ -1690,7 +1778,7 @@ HTML_OFFICE_TEMPLATE = """
             if (debateList) debateList.style.display = (tab === 'debate' ? 'flex' : 'none');
             if (reflectList) reflectList.style.display = (tab === 'reflections' ? 'flex' : 'none');
             if (tuningList) tuningList.style.display = (tab === 'tuning' ? 'flex' : 'none');
-            if (newsList) newsList.style.display = (tab === 'news' ? 'flex' : 'none');
+            if (newsContainer) newsContainer.style.display = (tab === 'news' ? 'flex' : 'none');
 
             if (tabDebateBtn) tabDebateBtn.classList.toggle('active', tab === 'debate');
             if (tabReflectBtn) tabReflectBtn.classList.toggle('active', tab === 'reflections');
@@ -1708,9 +1796,60 @@ HTML_OFFICE_TEMPLATE = """
                     counter.innerText = 'Otonom Kalibrasyon';
                     counter.style.color = '#10b981';
                 } else {
-                    counter.innerText = 'Canlı RSS';
+                    counter.innerText = 'Haber Konseyi & RSS';
                     counter.style.color = '#f59e0b';
                 }
+            }
+        }
+
+        let activeNewsSubTab = 'council';
+        function switchNewsSubTab(subTab) {
+            activeNewsSubTab = subTab;
+            const councilList = document.getElementById('councilReportList');
+            const rssList = document.getElementById('newsList');
+            const btnCouncil = document.getElementById('btnSubCouncil');
+            const btnRss = document.getElementById('btnSubRss');
+
+            if (councilList) councilList.style.display = (subTab === 'council' ? 'flex' : 'none');
+            if (rssList) rssList.style.display = (subTab === 'rss' ? 'flex' : 'none');
+
+            if (btnCouncil) btnCouncil.classList.toggle('active', subTab === 'council');
+            if (btnRss) btnRss.classList.toggle('active', subTab === 'rss');
+        }
+
+        async function triggerManualNewsInvestigation() {
+            const inputEl = document.getElementById('coinNewsInput');
+            const dirEl = document.getElementById('coinNewsDir');
+            const spinner = document.getElementById('investigateSpinner');
+            const btn = document.getElementById('btnInvestigateCoin');
+
+            const symbol = (inputEl ? inputEl.value : '').trim().toUpperCase();
+            const direction = dirEl ? dirEl.value : 'LONG';
+
+            if (!symbol) {
+                alert('Lütfen analiz edilecek coin sembolünü girin (örn: SOL, BTC, KAVA, PEPE).');
+                return;
+            }
+
+            if (spinner) spinner.style.display = 'inline-block';
+            if (btn) btn.disabled = true;
+
+            try {
+                const res = await fetch(`/api/news/investigate?symbol=${encodeURIComponent(symbol)}&direction=${encodeURIComponent(direction)}`);
+                const data = await res.json();
+                if (data && data.success && data.data) {
+                    // Konsey alt sekmesine geç ve veriyi anında tazele
+                    switchNewsSubTab('council');
+                    fetchTerminal();
+                } else {
+                    alert('Haber konseyi sorgulama hatası: ' + (data ? data.error : 'Bilinmeyen hata'));
+                }
+            } catch (err) {
+                console.error('Haber konseyi API hatası:', err);
+                alert('Bağlantı hatası: ' + err.message);
+            } finally {
+                if (spinner) spinner.style.display = 'none';
+                if (btn) btn.disabled = false;
             }
         }
 
@@ -2379,30 +2518,192 @@ HTML_OFFICE_TEMPLATE = """
                 }
             }
 
-            // 4. Sağ Alt: 📰 Canlı Haber & Sentiment Masası
-            const news = data.news_feed;
-            if (Array.isArray(news) && news.length > 0) {
-                const newsList = document.getElementById('newsList');
-                let newsHtml = '';
-                news.forEach(n => {
-                    let sentClass = 'sent-neut';
-                    if (n.sentiment === 'BULLISH') sentClass = 'sent-bull';
-                    if (n.sentiment === 'BEARISH') sentClass = 'sent-bear';
+            // 4. Sağ Alt: 📰 Haber Kararlandırma Konseyi & Canlı RSS Masası
+            const investigations = data.coin_news_investigations;
+            const councilReportList = document.getElementById('councilReportList');
+            const councilBadge = document.getElementById('councilBadgeCount');
+            if (councilBadge && Array.isArray(investigations)) {
+                councilBadge.innerText = '(' + investigations.length + ')';
+            }
 
-                    newsHtml += `
-                        <div class="news-item">
-                            <div class="news-meta">
-                                <span>${n.source || 'RSS'}</span>
-                                <span class="${sentClass}">${n.sentiment}</span>
-                                <span>${formatTurkeyTime(n.time)}</span>
+            if (councilReportList && Array.isArray(investigations) && investigations.length > 0) {
+                let cHtml = '';
+                investigations.forEach(inv => {
+                    const isLong = inv.direction === 'LONG';
+                    const score = Number(inv.news_score || 50);
+                    let scoreColor = '#38bdf8';
+                    let scoreBg = 'rgba(56, 189, 248, 0.12)';
+                    if (score >= 65) {
+                        scoreColor = '#22c55e';
+                        scoreBg = 'rgba(34, 197, 94, 0.15)';
+                    } else if (score <= 35) {
+                        scoreColor = '#ef4444';
+                        scoreBg = 'rgba(239, 68, 68, 0.15)';
+                    }
+
+                    const mult = Number(inv.pos_multiplier !== undefined ? inv.pos_multiplier : 1.0);
+                    let multText = mult + 'x Pozisyon';
+                    let multColor = '#38bdf8';
+                    let multBg = 'rgba(56, 189, 248, 0.12)';
+                    if (inv.is_vetoed || mult === 0.0) {
+                        multText = '🚨 0.0x VETO';
+                        multColor = '#ef4444';
+                        multBg = 'rgba(239, 68, 68, 0.2)';
+                    } else if (mult >= 1.20) {
+                        multText = '🔥 ' + mult + 'x (+%25 Hacim)';
+                        multColor = '#22c55e';
+                        multBg = 'rgba(34, 197, 94, 0.18)';
+                    } else if (mult >= 1.05) {
+                        multText = '📈 ' + mult + 'x (+%10 Hacim)';
+                        multColor = '#10b981';
+                        multBg = 'rgba(16, 185, 129, 0.15)';
+                    } else if (mult < 1.0) {
+                        multText = '🛡️ ' + mult + 'x (Defansif Kasa)';
+                        multColor = '#f59e0b';
+                        multBg = 'rgba(245, 158, 11, 0.15)';
+                    }
+
+                    const isVeto = inv.is_vetoed || mult === 0.0;
+                    const verdictColor = isVeto ? '#ef4444' : (score >= 65 ? '#22c55e' : (score <= 35 ? '#f59e0b' : '#38bdf8'));
+                    const verdictBg = isVeto ? 'rgba(239, 68, 68, 0.15)' : (score >= 65 ? 'rgba(34, 197, 94, 0.12)' : 'rgba(56, 189, 248, 0.10)');
+
+                    // 3 Masanın Görüşleri
+                    const debateArr = Array.isArray(inv.council_debate) ? inv.council_debate : [];
+                    let regText = 'Regülasyon ve hukuki zemin stabil, inceleme altında.';
+                    let secText = 'Protokol ve akıllı sözleşme güvenliği olağan akışında.';
+                    let whaleText = 'Sosyal hacim ve balina transferleri normal seviyede.';
+
+                    debateArr.forEach(d => {
+                        const str = String(d);
+                        const cleanContent = str.indexOf(']:') !== -1 ? str.substring(str.indexOf(']:') + 2).trim() : str;
+                        if (str.includes('Regülasyon') || str.includes('🏛️')) {
+                            regText = cleanContent;
+                        } else if (str.includes('Güvenlik') || str.includes('Protokol') || str.includes('🔐')) {
+                            secText = cleanContent;
+                        } else if (str.includes('Balina') || str.includes('Twitter') || str.includes('X') || str.includes('🐋')) {
+                            whaleText = cleanContent;
+                        }
+                    });
+
+                    const isSecAlert = isVeto || secText.includes('KRİTİK') || secText.includes('GÜVENLİK ALARMI') || secText.includes('hack') || secText.includes('açığı');
+
+                    // Coine Özel Yakalanan Haber Başlıkları
+                    const topArts = Array.isArray(inv.top_articles) ? inv.top_articles : [];
+                    let articlesHtml = '';
+                    if (topArts.length > 0) {
+                        let artItems = '';
+                        topArts.slice(0, 3).forEach(a => {
+                            let aSent = a.sentiment || 'NEUTRAL';
+                            let sColor = aSent === 'BULLISH' ? '#22c55e' : (aSent === 'BEARISH' ? '#ef4444' : '#94a3b8');
+                            artItems += `
+                                <div style="font-size: 10px; color: #cbd5e1; display: flex; align-items: baseline; gap: 5px; margin-bottom: 2px;">
+                                    <span style="font-size: 8.5px; padding: 1px 4px; border-radius: 3px; background: rgba(255,255,255,0.06); color: var(--text-muted); font-family: 'JetBrains Mono';">${a.source || 'Haber'}</span>
+                                    <span style="font-size: 8.5px; font-weight: 700; color: ${sColor};">${aSent}</span>
+                                    <span style="color: #e2e8f0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">${a.title}</span>
+                                </div>
+                            `;
+                        });
+                        articlesHtml = `
+                            <div style="margin-top: 5px; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 4px;">
+                                <div style="font-size: 9px; color: var(--text-muted); font-weight: 700; margin-bottom: 3px;">🔍 Doğrulanan Haberler:</div>
+                                ${artItems}
                             </div>
-                            <div class="news-title">${n.title}</div>
+                        `;
+                    }
+
+                    cHtml += `
+                        <div class="debate-card" style="border-left: 3px solid ${verdictColor}; background: #101622;">
+                            <div class="debate-header">
+                                <div class="debate-sym">
+                                    <span style="color: #fff; font-size: 12px; font-weight: 800;">🪙 ${inv.symbol}</span>
+                                    <span class="tag ${isLong ? 'tag-long' : 'tag-short'}">${inv.direction}</span>
+                                    <span style="font-size: 9.5px; color: var(--text-muted); font-family: 'JetBrains Mono';">${formatTurkeyTime(inv.time_str || inv.created_at)}</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 5px;">
+                                    <span style="font-family: 'JetBrains Mono'; font-size: 9.5px; font-weight: 800; padding: 2px 5px; border-radius: 4px; background: ${scoreBg}; color: ${scoreColor}; border: 1px solid ${scoreColor};">
+                                        📊 Skor: ${score}/100
+                                    </span>
+                                    <span style="font-family: 'JetBrains Mono'; font-size: 9.5px; font-weight: 800; padding: 2px 5px; border-radius: 4px; background: ${multBg}; color: ${multColor}; border: 1px solid ${multColor};">
+                                        ${multText}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div style="padding: 4px 7px; border-radius: 4px; background: ${verdictBg}; color: ${verdictColor}; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: space-between;">
+                                <span>${inv.verdict}</span>
+                                ${inv.funding_rate_pct ? `<span style="font-size: 9px; opacity: 0.9; font-family: 'JetBrains Mono';">Fonlama: %${Number(inv.funding_rate_pct).toFixed(3)}</span>` : ''}
+                            </div>
+
+                            ${isVeto ? `
+                                <div style="padding: 5px 7px; border-radius: 4px; background: rgba(239, 68, 68, 0.12); border-left: 3px solid #ef4444; color: #fca5a5; font-size: 10px; font-weight: 600;">
+                                    ${inv.veto_reason || '🚨 Pozisyon Konsey Tarafından Kara Kuğu Riski Sebebiyle Veto Edildi (0.0x Marjin)'}
+                                </div>
+                            ` : ''}
+
+                            <div style="display: flex; flex-direction: column; gap: 3px; margin-top: 2px;">
+                                <div class="dialogue-bubble bubble-reg" style="font-size: 10px; padding: 4px 7px;">
+                                    <div class="speaker-title" style="color: #c084fc;">🏛️ Regülasyon &amp; Hukuk Şefi</div>
+                                    <div>${regText}</div>
+                                </div>
+
+                                <div class="dialogue-bubble ${isSecAlert ? 'bubble-sec-alert' : 'bubble-sec-safe'}" style="font-size: 10px; padding: 4px 7px;">
+                                    <div class="speaker-title" style="color: ${isSecAlert ? '#f87171' : '#34d399'};">🔐 Protokol &amp; On-Chain Güvenlik</div>
+                                    <div>${secText}</div>
+                                </div>
+
+                                <div class="dialogue-bubble bubble-whale" style="font-size: 10px; padding: 4px 7px;">
+                                    <div class="speaker-title" style="color: #fbbf24;">🐋 Balina &amp; X / Twitter Masası</div>
+                                    <div>${whaleText}</div>
+                                </div>
+                            </div>
+
+                            ${articlesHtml}
                         </div>
                     `;
                 });
-                if (newsHtml !== prevNewsHtml) {
-                    newsList.innerHTML = newsHtml;
-                    prevNewsHtml = newsHtml;
+
+                if (cHtml !== prevCouncilHtml) {
+                    councilReportList.innerHTML = cHtml;
+                    prevCouncilHtml = cHtml;
+                }
+            } else if (councilReportList && (!investigations || investigations.length === 0)) {
+                councilReportList.innerHTML = `
+                    <div style="text-align: center; color: var(--text-muted); padding: 25px; font-size: 11px;">
+                        🏛️ Henüz incelenen bir coin yok. Yukarıdaki arama kutusuna coin yazarak (örn: SOL, BTC, KAVA) konseyi çalıştırabilirsiniz.
+                    </div>
+                `;
+            }
+
+            // Küresel RSS Haberleri
+            const news = data.news_feed;
+            const rssBadge = document.getElementById('rssBadgeCount');
+            if (rssBadge && Array.isArray(news)) {
+                rssBadge.innerText = '(' + news.length + ')';
+            }
+            if (Array.isArray(news) && news.length > 0) {
+                const newsList = document.getElementById('newsList');
+                if (newsList) {
+                    let newsHtml = '';
+                    news.forEach(n => {
+                        let sentClass = 'sent-neut';
+                        if (n.sentiment === 'BULLISH') sentClass = 'sent-bull';
+                        if (n.sentiment === 'BEARISH') sentClass = 'sent-bear';
+
+                        newsHtml += `
+                            <div class="news-item">
+                                <div class="news-meta">
+                                    <span>${n.source || 'RSS'}</span>
+                                    <span class="${sentClass}">${n.sentiment}</span>
+                                    <span>${formatTurkeyTime(n.time)}</span>
+                                </div>
+                                <div class="news-title">${n.title}</div>
+                            </div>
+                        `;
+                    });
+                    if (newsHtml !== prevNewsHtml) {
+                        newsList.innerHTML = newsHtml;
+                        prevNewsHtml = newsHtml;
+                    }
                 }
             }
 
@@ -5313,6 +5614,7 @@ _terminal_cache = {
     "active_positions": [],
     "scanner_logs": [],
     "news_feed": [],
+    "coin_news_investigations": [],
     "trade_history": [],
     "committee_debates": [],
     "trade_reflections": [],
@@ -5322,7 +5624,7 @@ _terminal_cache = {
 # İlk açılışta ekranın boş kalmaması veya gidip gelmemesi için DB'den anında besle
 try:
     from core.database import (
-        get_scanner_logs_db, get_news_feed_db, get_performance_stats,
+        get_scanner_logs_db, get_news_feed_db, get_coin_news_investigations_db, get_performance_stats,
         get_all_signals, get_active_and_pending_signals, get_latest_debates_db,
         get_recent_reflections_db,
         get_fast_performance_stats, get_fast_active_and_pending_signals,
@@ -5333,6 +5635,7 @@ try:
     _terminal_cache["stats"] = get_performance_stats() or {}
     _terminal_cache["scanner_logs"] = get_scanner_logs_db(limit=40) or []
     _terminal_cache["news_feed"] = get_news_feed_db(limit=25) or []
+    _terminal_cache["coin_news_investigations"] = get_coin_news_investigations_db(limit=25) or []
     _all_init = get_all_signals(limit=40) or []
     _terminal_cache["trade_history"] = [s for s in _all_init if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER")]
     _terminal_cache["active_positions"] = get_active_and_pending_signals() or []
@@ -5404,6 +5707,7 @@ def update_terminal_cache_loop():
                     news_feed = news_agent.fetch_latest_market_news()
                 debates = get_latest_debates_db(limit=8)
                 reflections = get_recent_reflections_db(limit=15)
+                coin_investigations = get_coin_news_investigations_db(limit=25)
             except Exception:
                 with _cache_lock:
                     stats = _terminal_cache.get("stats", {})
@@ -5411,6 +5715,7 @@ def update_terminal_cache_loop():
                     history = _terminal_cache.get("trade_history", [])
                     scanner_logs = _terminal_cache.get("scanner_logs", [])
                     news_feed = _terminal_cache.get("news_feed", [])
+                    coin_investigations = _terminal_cache.get("coin_news_investigations", [])
                     debates = _terminal_cache.get("committee_debates", [])
                     reflections = _terminal_cache.get("trade_reflections", [])
 
@@ -5670,6 +5975,7 @@ def update_terminal_cache_loop():
                     "active_positions": active_positions,
                     "scanner_logs": scanner_logs if scanner_logs else _terminal_cache.get("scanner_logs", []),
                     "news_feed": news_feed if news_feed else _terminal_cache.get("news_feed", []),
+                    "coin_news_investigations": coin_investigations if coin_investigations else _terminal_cache.get("coin_news_investigations", []),
                     "trade_history": history if history else _terminal_cache.get("trade_history", []),
                     "committee_debates": debates if debates else _terminal_cache.get("committee_debates", []),
                     "trade_reflections": reflections if reflections else _terminal_cache.get("trade_reflections", []),
@@ -5699,6 +6005,43 @@ def update_terminal_cache_loop():
 def api_data():
     with _cache_lock:
         return jsonify(_terminal_cache)
+
+@app.route("/api/news/coin-investigations", methods=["GET"])
+def api_news_coin_investigations():
+    from core.database import get_coin_news_investigations_db
+    limit = int(request.args.get("limit", 25))
+    return jsonify(get_coin_news_investigations_db(limit=limit))
+
+@app.route("/api/news/investigate", methods=["GET", "POST"])
+def api_news_investigate():
+    global _terminal_cache
+    if request.method == "POST" and request.is_json:
+        data = request.get_json() or {}
+        symbol = data.get("symbol", "BTC")
+        direction = data.get("direction", "LONG")
+    else:
+        symbol = request.args.get("symbol", "BTC")
+        direction = request.args.get("direction", "LONG")
+    
+    if not symbol:
+        return jsonify({"success": False, "error": "Sembol belirtilmelidir (örn: SOL, BTC)"}), 400
+    
+    try:
+        from agents.news_agent import NewsAgent
+        from core.database import get_coin_news_investigations_db
+        agent = NewsAgent()
+        clean_sym = symbol.strip().upper()
+        if not clean_sym.endswith("USDT") and not clean_sym.endswith("BUSD"):
+            clean_sym += "USDT"
+        inv = agent.investigate_coin_news(clean_sym, direction.strip().upper())
+        
+        # Önbelleği de anında güncelle
+        with _cache_lock:
+            _terminal_cache["coin_news_investigations"] = get_coin_news_investigations_db(limit=25)
+            
+        return jsonify({"success": True, "data": inv})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route("/api/reflections")
 def api_reflections():
