@@ -230,10 +230,20 @@ class TradingBotOrchestrator:
                     add_scanner_log(symbol, "REJECTED", ta_reason)
                     continue
 
-                # Ajan 2: Fonlama Oranı, Derinlik (Spread) ve Haber Analizi
+                # Ajan 2: Fonlama Oranı, Derinlik (Spread) ve Haber Analizi (Haber Kararlandırma Konseyi)
                 funding_data = self.client.get_funding_rate(symbol)
                 book_ticker = self.client.get_book_ticker(symbol)
                 news_analysis = self.news_agent.analyze_catalyst(symbol, ta_setup["direction"], funding_data)
+
+                # Haber Kararlandırma Konseyi Veto Kalkanı (Kara Kuğu, Hack, SEC vb.)
+                if news_analysis and news_analysis.get("is_vetoed"):
+                    add_scanner_log(
+                        symbol,
+                        "REJECTED",
+                        news_analysis.get("veto_reason", "Haber Konseyi Veto Etti"),
+                        news_analysis.get("summary", "")[:75]
+                    )
+                    continue
 
                 # Ajan 3: Risk Şefi (Dinamik Bileşik Kasa, 10x/20x, BTC Kalkanı, Slippage ve Fonlama denetimi)
                 from core.database import get_active_and_pending_signals, get_current_equity
@@ -297,7 +307,7 @@ class TradingBotOrchestrator:
                     "tp2_pct": ta_setup["tp2_pct"],
                     "allocated_margin_usdt": risk_report["allocated_margin_usdt"],
                     "risk_usd": risk_report["risk_usd"],
-                    "news_summary": f"🏛️ Komite Puanı: {ai_verdict.get('ai_confidence', 0)}/10 | {ai_verdict.get('ai_critique', '')}",
+                    "news_summary": f"{news_analysis.get('summary', '')} | 🏛️ Komite: {ai_verdict.get('ai_confidence', 0)}/10",
                     "ta_reasons": ta_setup["ta_reasons"],
                     "ai_verdict": ai_verdict,
                     "quant_sim": quant_sim,
