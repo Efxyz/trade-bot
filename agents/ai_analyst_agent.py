@@ -219,10 +219,10 @@ class AIAnalystAgent:
             elif funding_pct > 0.005:
                 bear_points.append(f"Fonlama pozitif (+%{funding_pct:.4f}), dikkatli olunmalı")
 
-            if curr_rsi > 64:
-                bear_points.append(f"RSI {curr_rsi:.1f} seviyesinde, tepeye çok yakınız. Buradan alım yapmak tepe likiditesi olmak demek!")
+            if curr_rsi > 70.0:
+                bear_points.append(f"RSI {curr_rsi:.1f} seviyesinde, aşırı alım bölgesindeyiz. Buradan alım yapmak tepe likiditesi olmak demek!")
                 is_fatal_trap = True
-                trap_reason = "Aşırı yükselmiş RSI (tepeden mal alma riski)"
+                trap_reason = "Aşırı yükselmiş RSI (>70.0 tepeden mal alma riski)"
             elif curr_rsi < 42:
                 bear_points.append(f"RSI {curr_rsi:.1f} zayıf momentumda, yukarı tepki zayıf kalabilir")
 
@@ -247,10 +247,10 @@ class AIAnalystAgent:
             elif funding_pct < -0.005:
                 bear_points.append(f"Fonlama negatif (-%{abs(funding_pct):.4f}), yukarı sıçrama riski var")
 
-            if curr_rsi < 36:
-                bear_points.append(f"RSI {curr_rsi:.1f} ile dibe çok inmiş! Buradan short açmak ayı tuzağına (bear trap) düşmek olur!")
+            if curr_rsi < 30.0:
+                bear_points.append(f"RSI {curr_rsi:.1f} ile aşırı satım bölgesine inmiş! Buradan short açmak ayı tuzağına (bear trap) düşmek olur!")
                 is_fatal_trap = True
-                trap_reason = "Aşırı düşmüş RSI (dipten short açma riski)"
+                trap_reason = "Aşırı düşmüş RSI (<30.0 dipten short açma riski)"
             elif curr_rsi > 58:
                 bear_points.append(f"RSI {curr_rsi:.1f} seviyesinde alıcı baskısı devam ediyor, short için henüz erken")
 
@@ -318,14 +318,21 @@ class AIAnalystAgent:
             }
         ]
 
-        if is_fatal_trap or score < 76 or not quant_approved:
+        from config import MIN_CONFLUENCE_SCORE
+        try:
+            from core.self_tuning_engine import SelfTuningEngine
+            active_min_score = SelfTuningEngine.get_current_params().get("min_confluence_score", MIN_CONFLUENCE_SCORE)
+        except Exception:
+            active_min_score = MIN_CONFLUENCE_SCORE
+
+        if is_fatal_trap or score < active_min_score or not quant_approved:
             consensus_verdict = "REJECTED"
             consensus_score = round(min(7.2, max(5.0, score / 10.0)), 1)
             rating = "NEUTRAL_PASS"
             if not quant_approved:
                 chief_arg = (
                     f"Komite Kararı: Kuant Simülasyon Ajanı'nın 10,000 Monte Carlo stokastik fiyat yolu simülasyonu "
-                    f"yetersiz kazanma olasılığı (%{quant_win_prob:.1f} < %70.0) ve yüksek Stop riski (%{quant_loss_prob:.1f}) tespit etti! "
+                    f"yetersiz kazanma olasılığı (%{quant_win_prob:.1f} < %48.0) veya negatif beklenti ({quant_exp_r:+.2f}R) tespit etti! "
                     f"Matematiksel kural gereği Boğa talebi VETO EDİLDİ (Rating: {rating})."
                 )
             else:
@@ -336,9 +343,9 @@ class AIAnalystAgent:
                 )
         else:
             consensus_verdict = "APPROVED"
-            # Kuant onayı ek güven skoru ekler (%75 üzeri win rate)
-            bonus = 0.3 if quant_win_prob >= 75.0 else 0.0
-            consensus_score = round(min(9.8, 7.8 + (score - 76) * 0.1 + bonus), 1)
+            # Kuant onayı ek güven skoru ekler (%55 üzeri win rate)
+            bonus = 0.3 if quant_win_prob >= 55.0 else 0.0
+            consensus_score = round(min(9.8, 7.8 + (score - active_min_score) * 0.1 + bonus), 1)
             rating = f"STRONG_{direction}" if consensus_score >= 8.6 else f"TACTICAL_{direction}"
             chief_arg = (
                 f"Komite Kararı: Boğa Analisti'nin SMC argümanları, Kuant Ajanı'nın 10,000 Monte Carlo "
