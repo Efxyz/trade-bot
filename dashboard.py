@@ -2464,6 +2464,7 @@ HTML_OFFICE_TEMPLATE = """
 
             // 3.7 Sağ Alt: 🧬 Otonom Öğrenme & Kalibrasyon (Self-Tuning Engine)
             const tuning = data.tuning_info;
+            const learningReports = data.learning_reports || [];
             const tuningList = document.getElementById('tuningList');
             if (tuningList && tuning) {
                 const hScore = tuning.health_score || 75;
@@ -2472,45 +2473,138 @@ HTML_OFFICE_TEMPLATE = """
                 const expVal = Number(tuning.expectancy || 0).toFixed(2);
                 const expSign = expVal >= 0 ? '+' : '';
                 const p = tuning.tuned_params || {};
+                const currentEpoch = tuning.epoch_num || (learningReports.length > 0 ? learningReports[0].epoch_num : 1);
 
+                // 1. Üst Özet ve Metrik Kartı
                 let tHtml = `
                     <div class="reflection-card" style="border-left: 3px solid #10b981; background: rgba(16, 185, 129, 0.04);">
                         <div class="reflection-top">
-                            <span style="font-weight: 700; color: #10b981; font-size: 12px;">🧬 Otonom Öğrenme Motoru</span>
-                            <span style="font-size: 10px; background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 2px 7px; border-radius: 4px; font-weight: 700;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span style="font-weight: 800; color: #10b981; font-size: 12px;">🧬 Otonom Öğrenme Motoru</span>
+                                <span style="background: rgba(16, 185, 129, 0.18); border: 1px solid #10b981; color: #10b981; font-size: 9px; font-weight: 800; padding: 1px 5px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;">
+                                    <span style="width: 5px; height: 5px; border-radius: 50%; background: #10b981; box-shadow: 0 0 6px #10b981; display: inline-block;"></span>
+                                    OTONOM AKTİF
+                                </span>
+                                <span style="background: rgba(56, 189, 248, 0.15); border: 1px solid #38bdf8; color: #38bdf8; font-size: 9px; font-weight: 800; padding: 1px 5px; border-radius: 4px; font-family: 'JetBrains Mono';">
+                                    Döngü #${currentEpoch}
+                                </span>
+                            </div>
+                            <span style="font-size: 10px; background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 2px 7px; border-radius: 4px; font-weight: 700; border: 1px solid rgba(16, 185, 129, 0.3);">
                                 Sağlık Skoru: ${hScore}/100
                             </span>
                         </div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 4px; font-size: 10px; text-align: center;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 5px; margin-top: 5px; font-size: 10px; text-align: center;">
                             <div style="background: rgba(255,255,255,0.03); padding: 4px; border-radius: 4px;">
-                                <div style="color: var(--text-muted);">Kazanma Oranı</div>
-                                <div style="font-weight: 700; color: ${winR >= 50 ? '#10b981' : '#ef4444'}; font-size: 11px;">%${winR}</div>
+                                <div style="color: var(--text-muted); font-size: 9px;">Kazanma Oranı</div>
+                                <div style="font-weight: 800; color: ${winR >= 50 ? '#10b981' : '#ef4444'}; font-size: 11px;">%${winR}</div>
                             </div>
                             <div style="background: rgba(255,255,255,0.03); padding: 4px; border-radius: 4px;">
-                                <div style="color: var(--text-muted);">Beklenti (E)</div>
-                                <div style="font-weight: 700; color: ${expVal >= 0 ? '#10b981' : '#ef4444'}; font-size: 11px;">${expSign}${expVal}%</div>
+                                <div style="color: var(--text-muted); font-size: 9px;">Beklenti (E)</div>
+                                <div style="font-weight: 800; color: ${expVal >= 0 ? '#10b981' : '#ef4444'}; font-size: 11px;">${expSign}${expVal}%</div>
                             </div>
                             <div style="background: rgba(255,255,255,0.03); padding: 4px; border-radius: 4px;">
-                                <div style="color: var(--text-muted);">Kâr Faktörü</div>
-                                <div style="font-weight: 700; color: ${pFactor >= 1.0 ? '#10b981' : '#ef4444'}; font-size: 11px;">${pFactor}</div>
+                                <div style="color: var(--text-muted); font-size: 9px;">Kâr Faktörü</div>
+                                <div style="font-weight: 800; color: ${pFactor >= 1.0 ? '#10b981' : '#ef4444'}; font-size: 11px;">${pFactor}</div>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.03); padding: 4px; border-radius: 4px;">
+                                <div style="color: var(--text-muted); font-size: 9px;">İncelenen İşlem</div>
+                                <div style="font-weight: 800; color: #38bdf8; font-size: 11px;">${tuning.trades_analyzed || (learningReports.length > 0 ? learningReports[0].trades_analyzed : 16)}</div>
                             </div>
                         </div>
                         <div style="font-size: 10px; color: #cbd5e1; margin-top: 6px; line-height: 1.4; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 5px;">
                             <strong>⚙️ Aktif Kalibre Parametreler:</strong><br>
-                            • SMC Kalite Barajı: <span style="color:#38bdf8; font-weight:700;">${p.min_confluence_score || 76}/100</span><br>
+                            • SMC Kalite Barajı: <span style="color:#38bdf8; font-weight:700;">${p.min_confluence_score || 65}/100</span><br>
                             • Fitil Korumalı Stop Mesafesi: <span style="color:#f59e0b; font-weight:700;">%${p.min_scalp_sl_pct || 0.95} - %${p.max_scalp_sl_pct || 1.35}</span><br>
-                            • BTC Dead Chop Eşiği: <span style="color:#ef4444; font-weight:700;">4s &lt; %${p.btc_chop_min_range_4h_pct || 0.80}</span><br>
+                            • BTC Dead Chop Eşiği: <span style="color:#ef4444; font-weight:700;">4s &lt; %${p.btc_chop_min_range_4h_pct || 0.70}</span><br>
+                            • Merdiven Takip Kanalı: <span style="color:#10b981; font-weight:700;">%${p.ladder_dynamic_channel_pct || 0.25} Dinamik Kâr Kilidi</span><br>
                             • Değiştirilemez Kasa Kalkanı: <span style="color:#10b981; font-weight:700;">Maks %2.0 Risk (Kilitli 🔒)</span><br>
                             • Son Kalibrasyon: <span style="color:#a78bfa; font-weight:700;">${formatTurkeyTime(tuning.calibrated_at || p.last_calibrated_at || '')} (TSİ)</span>
                         </div>
                         <div style="font-size: 9.5px; color: #94a3b8; margin-top: 4px;">
                             <strong>💡 Son Öğrenme Raporu:</strong> ${tuning.summary || 'Parametreler optimize edildi.'}
                         </div>
-                        <button onclick="runCalibrationNow()" class="btn-clear" style="border-color:#10b981; color:#10b981; padding: 5px 10px; margin-top: 6px; font-weight: 700; width: 100%;">
-                            🧬 Şimdi Analiz Et ve Optimize Et
+                        <button onclick="runAutonomousTrainingNow()" id="btnAutoTrain" class="btn-clear" style="border-color:#10b981; color:#10b981; padding: 6px 12px; margin-top: 6px; font-weight: 800; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer;">
+                            <span id="autoTrainSpinner" style="display: none;">⏳</span> <span>🧬 Şimdi Eğit &amp; Optimize Et (Otonom Döngü)</span>
                         </button>
                     </div>
                 `;
+
+                // 2. Alt Liste: 📚 Otonom Öğrenme & Keşif Raporları
+                if (Array.isArray(learningReports) && learningReports.length > 0) {
+                    tHtml += `
+                        <div style="font-size: 11px; font-weight: 800; color: #e2e8f0; margin-top: 8px; margin-bottom: 3px; display: flex; justify-content: space-between; align-items: center;">
+                            <span>📚 Otonom Öğrenme &amp; Keşif Raporları (${learningReports.length} Döngü)</span>
+                            <span style="font-size: 9.5px; color: #10b981; font-weight: 700;">🤖 Otomatik Onaylı</span>
+                        </div>
+                    `;
+
+                    learningReports.forEach(r => {
+                        const isAuto = r.status === 'AUTO_APPROVED';
+                        const statusBadge = isAuto 
+                            ? '<span style="background: rgba(34, 197, 94, 0.15); border: 1px solid #22c55e; color: #22c55e; font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 4px;">🟢 OTONOM ONAYLANDI</span>'
+                            : '<span style="background: rgba(56, 189, 248, 0.15); border: 1px solid #38bdf8; color: #38bdf8; font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 4px;">⚖️ PARAMETRELER OPTİMAL</span>';
+
+                        const hypotheses = Array.isArray(r.hypotheses) ? r.hypotheses : [];
+                        const deltas = Array.isArray(r.parameter_deltas) ? r.parameter_deltas : [];
+                        const lossAttr = r.loss_attribution || {};
+
+                        let deltasHtml = '';
+                        if (deltas.length > 0) {
+                            deltasHtml = `
+                                <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;">
+                                    ${deltas.map(d => `<span style="font-size: 9.5px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; color: #6ee7b7;">⚙️ ${d.param_name}: ${d.old_val} → ${d.new_val} (${d.delta})</span>`).join('')}
+                                </div>
+                            `;
+                        }
+
+                        let hypothesesHtml = '';
+                        if (hypotheses.length > 0) {
+                            hypothesesHtml = `
+                                <div style="display: flex; flex-direction: column; gap: 3px; margin-top: 4px;">
+                                    ${hypotheses.map(h => `<div style="font-size: 9.5px; color: #e2e8f0; line-height: 1.35; padding: 3px 6px; border-radius: 4px; background: rgba(56, 189, 248, 0.05); border-left: 2px solid #38bdf8;">${h}</div>`).join('')}
+                                </div>
+                            `;
+                        }
+
+                        let lossBarHtml = '';
+                        if (lossAttr && (lossAttr.total_losses > 0 || lossAttr.wick_hunt_pct !== undefined)) {
+                            lossBarHtml = `
+                                <div style="font-size: 9px; color: #cbd5e1; margin-top: 4px; background: rgba(255,255,255,0.02); padding: 3px 6px; border-radius: 4px;">
+                                    <strong>🔍 Hata Analizi:</strong> Fitil Avı %${lossAttr.wick_hunt_pct || 0} | Testere %${lossAttr.timeout_pct || 0} | Trend Kırılımı %${lossAttr.reversal_pct || 0}
+                                </div>
+                            `;
+                        }
+
+                        tHtml += `
+                            <div class="debate-card" style="border-left: 3px solid ${isAuto ? '#10b981' : '#38bdf8'}; background: #0f1523; padding: 8px 10px; margin-top: 6px;">
+                                <div class="debate-header">
+                                    <div class="debate-sym">
+                                        <span style="color: #fff; font-size: 11.5px; font-weight: 800;">🧬 Döngü (Epoch) #${r.epoch_num}</span>
+                                        ${statusBadge}
+                                    </div>
+                                    <span style="font-size: 9.5px; color: var(--text-muted); font-family: 'JetBrains Mono';">${formatTurkeyTime(r.time_str || r.created_at)}</span>
+                                </div>
+
+                                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 9.5px; color: var(--text-muted); border-bottom: 1px dashed rgba(255,255,255,0.07); padding-bottom: 4px;">
+                                    <span>İncelenen: <strong style="color: #fff;">${r.trades_analyzed} İşlem</strong></span>
+                                    <span>Win-Rate: <strong style="color: ${r.win_rate >= 50 ? '#10b981' : '#ef4444'};">%${r.win_rate}</strong></span>
+                                    <span>Beklenti: <strong style="color: ${r.expectancy >= 0 ? '#10b981' : '#ef4444'};">${r.expectancy >= 0 ? '+' : ''}${r.expectancy}%</strong></span>
+                                    <span>Kâr Faktörü: <strong style="color: #38bdf8;">${r.profit_factor}</strong></span>
+                                </div>
+
+                                ${r.regime_diagnosis ? `
+                                    <div style="padding: 4px 7px; border-radius: 4px; background: rgba(168, 85, 247, 0.08); border-left: 3px solid #a855f7; color: #f3e8ff; font-size: 9.5px; margin-top: 4px;">
+                                        <strong>🏛️ Rejim Teşhisi:</strong> ${r.regime_diagnosis}
+                                    </div>
+                                ` : ''}
+
+                                ${lossBarHtml}
+                                ${hypothesesHtml}
+                                ${deltasHtml}
+                            </div>
+                        `;
+                    });
+                }
 
                 if (tHtml !== prevTuningHtml) {
                     tuningList.innerHTML = tHtml;
@@ -2859,6 +2953,29 @@ HTML_OFFICE_TEMPLATE = """
                 }
             } catch(e) {}
             if (btn) btn.innerText = '🗑️ Geçmişi Temizle';
+        }
+
+        async function runAutonomousTrainingNow() {
+            const btn = document.getElementById('btnAutoTrain');
+            const spinner = document.getElementById('autoTrainSpinner');
+            if (spinner) spinner.style.display = 'inline-block';
+            if (btn) btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/tuning/run-autonomous', { method: 'POST' });
+                const json = await res.json();
+                if (json && json.success) {
+                    await fetchTerminal();
+                } else {
+                    alert('Otonom eğitim hatası: ' + (json ? json.error : 'Bilinmeyen hata'));
+                }
+            } catch(e) {
+                console.error('Otonom eğitim hatası:', e);
+                alert('Otonom eğitim bağlantı hatası: ' + e);
+            } finally {
+                if (spinner) spinner.style.display = 'none';
+                if (btn) btn.disabled = false;
+            }
         }
 
         async function runCalibrationNow() {
@@ -5618,6 +5735,7 @@ _terminal_cache = {
     "trade_history": [],
     "committee_debates": [],
     "trade_reflections": [],
+    "learning_reports": [],
     "tuning_info": {}
 }
 
@@ -5626,7 +5744,7 @@ try:
     from core.database import (
         get_scanner_logs_db, get_news_feed_db, get_coin_news_investigations_db, get_performance_stats,
         get_all_signals, get_active_and_pending_signals, get_latest_debates_db,
-        get_recent_reflections_db,
+        get_recent_reflections_db, get_learning_reports_db,
         get_fast_performance_stats, get_fast_active_and_pending_signals,
         get_fast_all_signals, get_fast_scanner_logs_db
     )
@@ -5636,12 +5754,13 @@ try:
     _terminal_cache["scanner_logs"] = get_scanner_logs_db(limit=40) or []
     _terminal_cache["news_feed"] = get_news_feed_db(limit=25) or []
     _terminal_cache["coin_news_investigations"] = get_coin_news_investigations_db(limit=25) or []
+    _terminal_cache["learning_reports"] = get_learning_reports_db(limit=15) or []
     _all_init = get_all_signals(limit=40) or []
     _terminal_cache["trade_history"] = [s for s in _all_init if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER")]
     _terminal_cache["active_positions"] = get_active_and_pending_signals() or []
     _terminal_cache["committee_debates"] = get_latest_debates_db(limit=8) or []
     _terminal_cache["trade_reflections"] = get_recent_reflections_db(limit=15) or []
-    _terminal_cache["tuning_info"] = SelfTuningEngine.run_calibration_cycle(min_trades_required=5) or {}
+    _terminal_cache["tuning_info"] = SelfTuningEngine.run_autonomous_training_cycle(auto_commit=True) or {}
 
     # FAST Bot Başlangıç Önbellek Verileri
     _terminal_cache["fast_stats"] = get_fast_performance_stats() or {}
@@ -5708,6 +5827,18 @@ def update_terminal_cache_loop():
                 debates = get_latest_debates_db(limit=8)
                 reflections = get_recent_reflections_db(limit=15)
                 coin_investigations = get_coin_news_investigations_db(limit=25)
+                learning_reports = get_learning_reports_db(limit=15)
+
+                # Otonom Kendi Kendini Eğitme Kontrolü (Her 3 dakikada bir otomatik eğitim döngüsü)
+                if not hasattr(update_terminal_cache_loop, "_last_auto_train_ts"):
+                    update_terminal_cache_loop._last_auto_train_ts = time.time()
+                if time.time() - update_terminal_cache_loop._last_auto_train_ts > 180:
+                    try:
+                        SelfTuningEngine.run_autonomous_training_cycle(auto_commit=True)
+                        update_terminal_cache_loop._last_auto_train_ts = time.time()
+                        learning_reports = get_learning_reports_db(limit=15)
+                    except Exception:
+                        pass
             except Exception:
                 with _cache_lock:
                     stats = _terminal_cache.get("stats", {})
@@ -5716,6 +5847,7 @@ def update_terminal_cache_loop():
                     scanner_logs = _terminal_cache.get("scanner_logs", [])
                     news_feed = _terminal_cache.get("news_feed", [])
                     coin_investigations = _terminal_cache.get("coin_news_investigations", [])
+                    learning_reports = _terminal_cache.get("learning_reports", [])
                     debates = _terminal_cache.get("committee_debates", [])
                     reflections = _terminal_cache.get("trade_reflections", [])
 
@@ -5980,6 +6112,7 @@ def update_terminal_cache_loop():
                     "committee_debates": debates if debates else _terminal_cache.get("committee_debates", []),
                     "trade_reflections": reflections if reflections else _terminal_cache.get("trade_reflections", []),
                     "tuning_info": _terminal_cache.get("tuning_info", {}),
+                    "learning_reports": learning_reports if learning_reports else _terminal_cache.get("learning_reports", []),
                     # FAST Scalper (1m) Bağımsız Alanı
                     "fast_stats": fast_stats,
                     "fast_max_concurrent_trades": FAST_MAX_CONCURRENT_TRADES,
@@ -6053,14 +6186,33 @@ def api_tuning():
     from core.self_tuning_engine import SelfTuningEngine
     return jsonify(SelfTuningEngine.run_calibration_cycle(min_trades_required=5))
 
+@app.route("/api/tuning/reports", methods=["GET"])
+def api_tuning_reports():
+    from core.database import get_learning_reports_db
+    limit = int(request.args.get("limit", 15))
+    return jsonify(get_learning_reports_db(limit=limit))
+
+@app.route("/api/tuning/run-autonomous", methods=["POST"])
+def api_tuning_run_autonomous():
+    global _terminal_cache
+    from core.self_tuning_engine import SelfTuningEngine
+    from core.database import get_learning_reports_db
+    res = SelfTuningEngine.run_autonomous_training_cycle(auto_commit=True)
+    with _cache_lock:
+        _terminal_cache["tuning_info"] = res
+        _terminal_cache["learning_reports"] = get_learning_reports_db(limit=15)
+    return jsonify({"success": True, "data": res})
+
 @app.route("/api/tuning/calibrate", methods=["POST"])
 @require_admin_pin
 def api_tuning_calibrate():
     global _terminal_cache
     from core.self_tuning_engine import SelfTuningEngine
+    from core.database import get_learning_reports_db
     res = SelfTuningEngine.run_calibration_cycle(min_trades_required=5)
     with _cache_lock:
         _terminal_cache["tuning_info"] = res
+        _terminal_cache["learning_reports"] = get_learning_reports_db(limit=15)
     return jsonify(res)
 
 @app.route("/api/scan", methods=["POST"])
