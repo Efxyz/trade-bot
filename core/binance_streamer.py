@@ -59,6 +59,7 @@ def add_stream_symbol(symbol: str):
 
 def _run_streamer():
     global _STREAMER_ACTIVE, _LAST_EVENT_TIME, _CURRENT_WS
+    reconnect_delay = 2.0
 
     while True:
         ws = None
@@ -71,6 +72,7 @@ def _run_streamer():
             )
             _CURRENT_WS = ws
             _STREAMER_ACTIVE = True
+            reconnect_delay = 2.0  # Başarılı bağlantıda bekleme süresini sıfırla
 
             while True:
                 msg = ws.recv()
@@ -111,9 +113,10 @@ def _run_streamer():
                                     "detected_at": now
                                 })
 
-        except Exception:
+        except Exception as e:
             _STREAMER_ACTIVE = False
-            time.sleep(2)
+            time.sleep(reconnect_delay)
+            reconnect_delay = min(reconnect_delay * 1.5, 300.0)  # Exponential Backoff (Maksimum 5 dk)
         finally:
             if ws:
                 try:
