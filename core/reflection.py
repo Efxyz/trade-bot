@@ -119,6 +119,13 @@ class ReflectorEngine:
         except Exception as e:
             print(f"⚠️ [Reflector] DB kayıt hatası: {e}")
 
+        # Otonom Kendi Kendini Eğitme Döngüsünü Tetikle (Sürekli Öğrenen Ajan Politikası)
+        try:
+            from core.self_tuning_engine import SelfTuningEngine
+            SelfTuningEngine.run_autonomous_training_cycle(auto_commit=True)
+        except Exception as e:
+            print(f"⚠️ [Reflector] Otonom eğitim döngüsü tetikleme hatası: {e}")
+
         return reflection_dict
 
     @staticmethod
