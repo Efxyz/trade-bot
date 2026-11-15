@@ -95,6 +95,41 @@ class ChartAgent:
             fvg_col = "#10b981" if direction == "LONG" else "#ef4444"
             ax_main.axhspan(active_fvg["bottom"], active_fvg["top"], color=fvg_col, alpha=0.15, label=f"SMC FVG Bölgesi")
 
+        # Volume Profile: POC (Point of Control) & %70 Değer Alanı (Value Area)
+        vp = setup.get("volume_profile")
+        if vp and isinstance(vp, dict):
+            poc_val = vp.get("poc")
+            if poc_val:
+                ax_main.axhline(poc_val, color="#fbbf24", linestyle="-.", linewidth=1.2, alpha=0.85, label=f"POC: {poc_val}")
+            vah_val = vp.get("vah")
+            val_val = vp.get("val")
+            if vah_val and val_val:
+                ax_main.axhspan(val_val, vah_val, color="#fbbf24", alpha=0.06, label="Value Area (%70)")
+
+        # Camarilla Intraday Destek / Direnç Seviyeleri
+        cam = setup.get("camarilla")
+        if cam and isinstance(cam, dict):
+            s3 = cam.get("s3") or cam.get("s3_reversal")
+            r3 = cam.get("r3") or cam.get("r3_reversal")
+            if s3:
+                ax_main.axhline(s3, color="#34d399", linestyle=":", linewidth=1.0, alpha=0.7, label=f"Camarilla S3 ({s3})")
+            if r3:
+                ax_main.axhline(r3, color="#f87171", linestyle=":", linewidth=1.0, alpha=0.7, label=f"Camarilla R3 ({r3})")
+
+        # Fibonacci: Altın Cep (Golden Pocket 0.618 - 0.665) Alanı
+        fib = indicators.get("fib_golden_pocket")
+        if fib and isinstance(fib, dict) and fib.get("fib_618") and fib.get("fib_665"):
+            f_top = max(fib["fib_618"], fib["fib_665"])
+            f_bot = min(fib["fib_618"], fib["fib_665"])
+            ax_main.axhspan(f_bot, f_top, color="#d97706", alpha=0.15, label="Fibonacci Altın Cep (0.618-0.665)")
+
+        # SuperTrend Trend Çizgisi
+        st = indicators.get("supertrend")
+        if st and isinstance(st, dict) and st.get("supertrend"):
+            st_val = st["supertrend"]
+            st_col = "#10b981" if st.get("is_bullish") else "#ef4444"
+            ax_main.axhline(st_val, color=st_col, linestyle="-.", linewidth=1.0, alpha=0.8, label=f"SuperTrend ({st_val})")
+
         # Fiyat Seviyeleri (Giriş, SL, TP1, TP2)
         entry_p = setup["current_price"]
         sl_p = setup["stop_loss"]
