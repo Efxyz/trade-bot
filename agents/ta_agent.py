@@ -36,7 +36,8 @@ from core.advanced_indicators import (
     calculate_adx,
     calculate_fibonacci_golden_pocket,
     detect_swing_failure_pattern,
-    calculate_supertrend
+    calculate_supertrend,
+    calculate_vwap_bands
 )
 
 class TechnicalAnalysisAgent:
@@ -425,6 +426,7 @@ class TechnicalAnalysisAgent:
         fib_gp = calculate_fibonacci_golden_pocket(candles_15m, lookback=45)
         sfp = detect_swing_failure_pattern(candles_15m, lookback=25)
         supertrend = calculate_supertrend(candles_15m, period=10, multiplier=3.0)
+        vwap_bands = calculate_vwap_bands(candles_15m, lookback=40)
 
         curr_ema20 = ema20[-1]
         curr_ema50 = ema50[-1]
@@ -551,6 +553,14 @@ class TechnicalAnalysisAgent:
             short_score += 8
             long_factors.append("Sağlıklı Hacim İvmesi")
             short_factors.append("Sağlıklı Hacim İvmesi")
+
+        # --- C2. VWAP Standart Sapma Bantları & Kurumsal Mean-Reversion (15 Puan) ---
+        if vwap_bands.get("is_mean_reversion_long"):
+            long_score += 15
+            long_factors.append(f"🌊 VWAP Mean-Reversion Taban Sekmesi (Z: {vwap_bands['z_score']})")
+        elif vwap_bands.get("is_mean_reversion_short"):
+            short_score += 15
+            short_factors.append(f"🌊 VWAP Mean-Reversion Tavan Reddi (Z: {vwap_bands['z_score']})")
 
         # --- D. Trend & RSI Momentumu (20 Puan) ---
         # Trend & EMA Momentumu (15m)
@@ -816,7 +826,21 @@ class TechnicalAnalysisAgent:
                 sl_pct = round((sl_dist / current_price) * 100, 2)
 
             stop_loss = round(current_price - sl_dist, 6)
-            tp = round(current_price + tp_dist, 6)
+            tp1 = round(current_price + tp_dist, 6)
+            tp2 = round(current_price + (tp_dist * 1.6), 6)
+
+            # 🪜 2 Kademeli Giriş Merdiveni (FVG/OB Equilibrium DCA)
+            entry_limit_2 = 0.0
+            if fvg.get("bullish_fvg"):
+                f_eq = (fvg["bullish_fvg"]["top"] + fvg["bullish_fvg"]["bottom"]) / 2.0
+                if stop_loss < f_eq < current_price:
+                    entry_limit_2 = round(f_eq, 6)
+            elif ob.get("bullish_ob"):
+                o_eq = (ob["bullish_ob"]["high"] + ob["bullish_ob"]["low"]) / 2.0
+                if stop_loss < o_eq < current_price:
+                    entry_limit_2 = round(o_eq, 6)
+            if entry_limit_2 <= 0:
+                entry_limit_2 = round(current_price - (sl_dist * 0.35), 6)
 
             factors_str = ", ".join(long_factors[:5])
             setup = {
@@ -830,16 +854,17 @@ class TechnicalAnalysisAgent:
                 "entry_min": round(current_price * 0.9995, 6),
                 "entry_max": round(current_price * 1.0005, 6),
                 "actual_entry_price": current_price,
+                "entry_limit_2": entry_limit_2,
                 "stop_loss": stop_loss,
-                "take_profit_1": tp,
-                "take_profit_2": tp,
+                "take_profit_1": tp1,
+                "take_profit_2": tp2,
                 "risk_reward": actual_rr,
                 "sl_pct": sl_pct,
                 "tp1_pct": tp_pct,
-                "tp2_pct": tp_pct,
+                "tp2_pct": round(tp_pct * 1.6, 2),
                 "ta_reasons": (
                     f"[{setup_type} | Skor: {min(long_score, 100)}/100] {factors_str}. "
-                    f"RSI={curr_rsi:.1f}, VWAP={curr_vwap:.4f}, LR-Kanal={lr_channel.get('trend', 'FLAT')} (%{lr_channel.get('position_pct', 50)}), POC=${vol_profile.get('poc', 0)}. Hedef: +%{tp_pct} ({leverage}x ile +%{round(tp_pct*leverage, 1)} kar)."
+                    f"RSI={curr_rsi:.1f}, VWAP={curr_vwap:.4f}, LR-Kanal={lr_channel.get('trend', 'FLAT')} (%{lr_channel.get('position_pct', 50)}), POC=${vol_profile.get('poc', 0)}. Hedef1: +%{tp_pct}, Runner TP2: +%{round(tp_pct*1.6, 2)} ({leverage}x)."
                 ),
                 "indicators": {
                     "ema20": ema20,
@@ -967,7 +992,21 @@ class TechnicalAnalysisAgent:
                 sl_pct = round((sl_dist / current_price) * 100, 2)
 
             stop_loss = round(current_price + sl_dist, 6)
-            tp = round(current_price - tp_dist, 6)
+            tp1 = round(current_price - tp_dist, 6)
+            tp2 = round(current_price - (tp_dist * 1.6), 6)
+
+            # 🪜 2 Kademeli Giriş Merdiveni (FVG/OB Equilibrium DCA)
+            entry_limit_2 = 0.0
+            if fvg.get("bearish_fvg"):
+                f_eq = (fvg["bearish_fvg"]["top"] + fvg["bearish_fvg"]["bottom"]) / 2.0
+                if current_price < f_eq < stop_loss:
+                    entry_limit_2 = round(f_eq, 6)
+            elif ob.get("bearish_ob"):
+                o_eq = (ob["bearish_ob"]["high"] + ob["bearish_ob"]["low"]) / 2.0
+                if current_price < o_eq < stop_loss:
+                    entry_limit_2 = round(o_eq, 6)
+            if entry_limit_2 <= 0:
+                entry_limit_2 = round(current_price + (sl_dist * 0.35), 6)
 
             factors_str = ", ".join(short_factors[:5])
             setup = {
@@ -981,16 +1020,17 @@ class TechnicalAnalysisAgent:
                 "entry_min": round(current_price * 0.9995, 6),
                 "entry_max": round(current_price * 1.0005, 6),
                 "actual_entry_price": current_price,
+                "entry_limit_2": entry_limit_2,
                 "stop_loss": stop_loss,
-                "take_profit_1": tp,
-                "take_profit_2": tp,
+                "take_profit_1": tp1,
+                "take_profit_2": tp2,
                 "risk_reward": actual_rr,
                 "sl_pct": sl_pct,
                 "tp1_pct": tp_pct,
-                "tp2_pct": tp_pct,
+                "tp2_pct": round(tp_pct * 1.6, 2),
                 "ta_reasons": (
                     f"[{setup_type} | Skor: {min(short_score, 100)}/100] {factors_str}. "
-                    f"RSI={curr_rsi:.1f}, VWAP={curr_vwap:.4f}, LR-Kanal={lr_channel.get('trend', 'FLAT')} (%{lr_channel.get('position_pct', 50)}), POC=${vol_profile.get('poc', 0)}. Hedef: %{tp_pct} düşüş ({leverage}x ile +%{round(tp_pct*leverage, 1)} kar)."
+                    f"RSI={curr_rsi:.1f}, VWAP={curr_vwap:.4f}, LR-Kanal={lr_channel.get('trend', 'FLAT')} (%{lr_channel.get('position_pct', 50)}), POC=${vol_profile.get('poc', 0)}. Hedef1: %{tp_pct}, Runner TP2: %{round(tp_pct*1.6, 2)} ({leverage}x)."
                 ),
                 "indicators": {
                     "ema20": ema20,
