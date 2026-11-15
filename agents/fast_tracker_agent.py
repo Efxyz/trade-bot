@@ -45,8 +45,10 @@ class FastCounterfactualTrackerAgent:
             entry_price = float(sig.get("actual_entry_price") or sig["entry_min"])
             stop_loss = float(sig["stop_loss"])
             tp1 = float(sig["take_profit_1"])
+            tp2 = float(sig.get("take_profit_2") or (tp1 * 1.008 if direction == "LONG" else tp1 * 0.992))
             leverage = int(sig.get("leverage") or 10)
             allocated_margin = float(sig.get("allocated_margin_usdt") or 75.0)
+            partial_tp_taken = int(sig.get("partial_tp_taken") or 0)
 
             # 1. Anlık Fiyat (Önce WebSocket, yoksa lazy 24hr ticker, yoksa tekil REST API)
             live_price = None
@@ -130,16 +132,45 @@ class FastCounterfactualTrackerAgent:
             exit_status = ""
 
             if direction == "LONG":
-                if live_price <= current_sl:
+                # TP1 Parçalı Kâr Alma (Free-Trade Runner Geçişi)
+                if live_price >= tp1 and partial_tp_taken == 0:
+                    partial_raw = ((tp1 - entry_price) / entry_price) * 100.0
+                    partial_net = (partial_raw * leverage) - (BINANCE_ROUNDTRIP_FEE_PCT * leverage)
+                    half_margin = allocated_margin * 0.5
+                    realized_usd = round(half_margin * (partial_net / 100.0), 2)
+                    current_sl = entry_price * 1.0003
+                    ladder_step = max(ladder_step, 2)
+                    ladder_name = f"🎯 TP1 %50 Kilit (+${realized_usd}) | Runner"
+                    update_fast_signal_status(sig_id, {
+                        "partial_tp_taken": 1,
+                        "realized_pnl_usd": realized_usd,
+                        "stop_loss": current_sl,
+                        "allocated_margin_usdt": half_margin,
+                        "status": "ACTIVE_PARTIAL_TP1",
+                        "ladder_step": ladder_step,
+                        "ladder_name": ladder_name
+                    })
+                    partial_tp_taken = 1
+                    allocated_margin = half_margin
+                    print(f"🎯 [FAST {symbol}] TP1 Vuruldu! %50 Kâr Alındı (+${realized_usd}). Stop girişte, Runner devrede!")
+
+                elif partial_tp_taken == 1 and live_price >= tp2:
+                    is_closed = True
+                    exit_price = tp2
+                    exit_status = "HIT_TP2_RUNNER"
+
+                elif live_price <= current_sl:
                     is_closed = True
                     exit_price = current_sl
-                    if ladder_step >= 2:
+                    if partial_tp_taken == 1:
+                        exit_status = "RUNNER_BE_EXIT"
+                    elif ladder_step >= 2:
                         exit_status = f"LADDER_STEP_{ladder_step}_LOCK"
                     elif ladder_step == 1:
                         exit_status = "CLOSED_BE"
                     else:
                         exit_status = "HIT_SL"
-                elif live_price >= tp1:
+                elif live_price >= tp1 and partial_tp_taken == 0:
                     is_closed = True
                     exit_price = tp1
                     exit_status = "HIT_TP"
@@ -156,16 +187,44 @@ class FastCounterfactualTrackerAgent:
                     exit_status = "TIMEOUT_PROFIT_EXIT" if raw_diff > 0.001 else "TIMEOUT_EXIT"
 
             else: # SHORT
-                if live_price >= current_sl:
+                if live_price <= tp1 and partial_tp_taken == 0:
+                    partial_raw = ((entry_price - tp1) / entry_price) * 100.0
+                    partial_net = (partial_raw * leverage) - (BINANCE_ROUNDTRIP_FEE_PCT * leverage)
+                    half_margin = allocated_margin * 0.5
+                    realized_usd = round(half_margin * (partial_net / 100.0), 2)
+                    current_sl = entry_price * 0.9997
+                    ladder_step = max(ladder_step, 2)
+                    ladder_name = f"🎯 TP1 %50 Kilit (+${realized_usd}) | Runner"
+                    update_fast_signal_status(sig_id, {
+                        "partial_tp_taken": 1,
+                        "realized_pnl_usd": realized_usd,
+                        "stop_loss": current_sl,
+                        "allocated_margin_usdt": half_margin,
+                        "status": "ACTIVE_PARTIAL_TP1",
+                        "ladder_step": ladder_step,
+                        "ladder_name": ladder_name
+                    })
+                    partial_tp_taken = 1
+                    allocated_margin = half_margin
+                    print(f"🎯 [FAST {symbol}] TP1 Vuruldu! %50 Kâr Alındı (+${realized_usd}). Stop girişte, Runner devrede!")
+
+                elif partial_tp_taken == 1 and live_price <= tp2:
+                    is_closed = True
+                    exit_price = tp2
+                    exit_status = "HIT_TP2_RUNNER"
+
+                elif live_price >= current_sl:
                     is_closed = True
                     exit_price = current_sl
-                    if ladder_step >= 2:
+                    if partial_tp_taken == 1:
+                        exit_status = "RUNNER_BE_EXIT"
+                    elif ladder_step >= 2:
                         exit_status = f"LADDER_STEP_{ladder_step}_LOCK"
                     elif ladder_step == 1:
                         exit_status = "CLOSED_BE"
                     else:
                         exit_status = "HIT_SL"
-                elif live_price <= tp1:
+                elif live_price <= tp1 and partial_tp_taken == 0:
                     is_closed = True
                     exit_price = tp1
                     exit_status = "HIT_TP"
@@ -187,6 +246,17 @@ class FastCounterfactualTrackerAgent:
                 gross_margin = raw_gain_pct * leverage
                 fee_pct = BINANCE_ROUNDTRIP_FEE_PCT * leverage
                 net_margin = gross_margin - fee_pct
+
+                prev_realized_usd = float(sig.get("realized_pnl_usd") or 0.0)
+                if partial_tp_taken == 1:
+                    runner_usd = allocated_margin * (net_margin / 100.0)
+                    total_dollar_pnl = prev_realized_usd + runner_usd
+                    orig_margin = allocated_margin * 2.0
+                    net_margin = (total_dollar_pnl / orig_margin) * 100.0
+                    gross_margin = net_margin + fee_pct
+                    dollar_pnl = round(total_dollar_pnl, 2)
+                else:
+                    dollar_pnl = round(allocated_margin * (net_margin / 100.0), 2)
 
                 closed_time = now.strftime("%Y-%m-%d %H:%M:%S")
                 update_fast_signal_status(sig_id, {
