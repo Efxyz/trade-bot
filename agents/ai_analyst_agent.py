@@ -266,13 +266,18 @@ class AIAnalystAgent:
             )
 
         # ----------------------------------------------------
-        # 📰 3. MAKRO & DUYGU MASASI (Market Context Analyst)
+        # 🏛️ 3. HABER KARARLANDIRMA KONSEYİ (News Intelligence Council - 3 Uzman Masa)
         # ----------------------------------------------------
+        council_quotes = news_analysis.get("council_debate", [])
+        news_verdict = news_analysis.get("verdict", "NÖTR ORGANİK AKIŞ")
+        news_score = news_analysis.get("news_score", 50)
+        pos_mult = news_analysis.get("pos_multiplier", 1.0)
+        
+        council_summary_str = " | ".join(council_quotes) if council_quotes else news_summary
         macro_arg = (
-            f"Makro Görünüm: Bitcoin ${btc_price:,.0f} seviyesinde ({btc_summary}). "
-            f"Duygu Masası: {news_summary} ({sentiment}). "
-            f"Genel piyasa havası incelendiğinde {symbol} paritesinde ani haber riski görünmüyor, "
-            f"fakat genel likiditeye saygı gösterilmeli."
+            f"🏛️ Haber Kararlandırma Konseyi ({news_score}/100 Puan | {news_verdict} | Kasa Çarpanı: {pos_mult}x): "
+            f"{council_summary_str}. "
+            f"Makro Lider: Bitcoin ${btc_price:,.0f} ({btc_summary})."
         )
 
         # ----------------------------------------------------
@@ -302,7 +307,7 @@ class AIAnalystAgent:
         dialogue = [
             {"role": "BULL", "agent_name": "Boğa Analisti (Alpha Hunter)", "avatar": "🟢", "argument": bull_arg},
             {"role": "BEAR", "agent_name": "Ayı Analisti (Risk Şefi)", "avatar": "🔴", "argument": bear_arg},
-            {"role": "MACRO", "agent_name": "Makro & Duygu Masası", "avatar": "📰", "argument": macro_arg},
+            {"role": "MACRO", "agent_name": "Haber Kararlandırma Konseyi (3 Uzman Masa)", "avatar": "🏛️", "argument": macro_arg},
             {
                 "role": "QUANT",
                 "agent_name": "Kuant Simülasyon Ajanı (Monte Carlo 10,000 Yol)",
