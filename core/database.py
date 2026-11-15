@@ -215,6 +215,29 @@ def init_db():
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_news_items_id ON news_items(id DESC)")
 
+        # Coine Özel Haber Kararlandırma Konseyi Raporları Tablosu
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS coin_news_investigations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                time_str TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                direction TEXT NOT NULL,
+                news_score REAL NOT NULL,
+                verdict TEXT NOT NULL,
+                is_vetoed INTEGER DEFAULT 0,
+                veto_reason TEXT DEFAULT '',
+                pos_multiplier REAL DEFAULT 1.0,
+                funding_rate_pct REAL DEFAULT 0.0,
+                article_count INTEGER DEFAULT 0,
+                council_debate_json TEXT DEFAULT '[]',
+                top_articles_json TEXT DEFAULT '[]',
+                summary TEXT DEFAULT ''
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_coin_news_inv_id ON coin_news_investigations(id DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_coin_news_inv_symbol ON coin_news_investigations(symbol)")
+
         # Ajanlar Arası Yatırım Komitesi Tartışma Odası Tablosu
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS committee_debates (
@@ -335,6 +358,114 @@ def get_news_feed_db(limit: int = 25) -> List[Dict]:
             LIMIT ?
         """, (limit,))
         return [dict(row) for row in cursor.fetchall()]
+
+def save_coin_news_investigation_db(inv_data: Dict) -> int:
+    """Coine özel haber konseyi araştırma ve kararlandırma sonucunu veritabanına kaydeder."""
+    import json
+    from datetime import datetime, timezone, timedelta
+    tr_tz = timezone(timedelta(hours=3))
+    now_tr = datetime.now(timezone.utc).astimezone(tr_tz)
+    time_str = now_tr.strftime("%H:%M:%S")
+
+    symbol = str(inv_data.get("symbol", "")).upper()
+    direction = str(inv_data.get("direction", "LONG")).upper()
+    news_score = float(inv_data.get("news_score", 50.0))
+    verdict = str(inv_data.get("verdict", "NÖTR"))
+    is_vetoed = 1 if inv_data.get("is_vetoed") else 0
+    veto_reason = str(inv_data.get("veto_reason", ""))
+    pos_multiplier = float(inv_data.get("pos_multiplier", 1.0))
+    funding_rate_pct = float(inv_data.get("funding_rate_pct", 0.0))
+    article_count = int(inv_data.get("article_count", 0))
+    council_debate = inv_data.get("council_debate", [])
+    top_articles = inv_data.get("top_articles", [])
+    summary = str(inv_data.get("summary", ""))
+
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        # Tablonun varlığını garantiye al
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS coin_news_investigations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                time_str TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                direction TEXT NOT NULL,
+                news_score REAL NOT NULL,
+                verdict TEXT NOT NULL,
+                is_vetoed INTEGER DEFAULT 0,
+                veto_reason TEXT DEFAULT '',
+                pos_multiplier REAL DEFAULT 1.0,
+                funding_rate_pct REAL DEFAULT 0.0,
+                article_count INTEGER DEFAULT 0,
+                council_debate_json TEXT DEFAULT '[]',
+                top_articles_json TEXT DEFAULT '[]',
+                summary TEXT DEFAULT ''
+            )
+        """)
+        cursor.execute("""
+            INSERT INTO coin_news_investigations (
+                time_str, symbol, direction, news_score, verdict,
+                is_vetoed, veto_reason, pos_multiplier, funding_rate_pct,
+                article_count, council_debate_json, top_articles_json, summary
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            time_str, symbol, direction, news_score, verdict,
+            is_vetoed, veto_reason, pos_multiplier, funding_rate_pct,
+            article_count,
+            json.dumps(council_debate, ensure_ascii=False) if isinstance(council_debate, (list, dict)) else str(council_debate),
+            json.dumps(top_articles, ensure_ascii=False) if isinstance(top_articles, (list, dict)) else str(top_articles),
+            summary
+        ))
+        conn.commit()
+        return cursor.lastrowid
+
+def get_coin_news_investigations_db(limit: int = 25) -> List[Dict]:
+    """Son coine özel haber konseyi araştırmalarını getirir."""
+    import json
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        # Tablo henüz oluşmamışsa hata vermesin
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS coin_news_investigations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                time_str TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                direction TEXT NOT NULL,
+                news_score REAL NOT NULL,
+                verdict TEXT NOT NULL,
+                is_vetoed INTEGER DEFAULT 0,
+                veto_reason TEXT DEFAULT '',
+                pos_multiplier REAL DEFAULT 1.0,
+                funding_rate_pct REAL DEFAULT 0.0,
+                article_count INTEGER DEFAULT 0,
+                council_debate_json TEXT DEFAULT '[]',
+                top_articles_json TEXT DEFAULT '[]',
+                summary TEXT DEFAULT ''
+            )
+        """)
+        cursor.execute("""
+            SELECT id, created_at, time_str, symbol, direction, news_score,
+                   verdict, is_vetoed, veto_reason, pos_multiplier,
+                   funding_rate_pct, article_count, council_debate_json,
+                   top_articles_json, summary
+            FROM coin_news_investigations
+            ORDER BY id DESC
+            LIMIT ?
+        """, (limit,))
+        rows = []
+        for r in cursor.fetchall():
+            d = dict(r)
+            try:
+                d["council_debate"] = json.loads(d.get("council_debate_json") or "[]")
+            except Exception:
+                d["council_debate"] = []
+            try:
+                d["top_articles"] = json.loads(d.get("top_articles_json") or "[]")
+            except Exception:
+                d["top_articles"] = []
+            rows.append(d)
+        return rows
 
 def save_committee_debate_db(symbol: str, direction: str, verdict: str, score: float, decision_summary: str, debate_dict: Dict) -> int:
     """Yatırım komitesi tartışmasını veritabanına kaydeder."""
