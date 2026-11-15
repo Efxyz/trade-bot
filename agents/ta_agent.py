@@ -724,6 +724,24 @@ class TechnicalAnalysisAgent:
         # --- EŞİK DEĞERLERİ & İŞLEM KARARI (Otonom Kalibre Edilmiş Baraj: target_min_score) ---
         # LONG KONTROLÜ
         if long_score >= target_min_score and long_score > short_score:
+            # 0. KURUMSAL SMC YAPISAL TEYİT KONTROLÜ (Mandatory SMC Confirmation Gate)
+            # Yalnızca indikatör toplamı yetmez; fiyatta somut kurumsal Smart Money yapısı şarttır:
+            has_smc_confirmation_long = (
+                fvg.get("current_in_fvg") == "BULLISH_TEST" or
+                (fvg.get("bullish_fvg") and fvg["bullish_fvg"].get("age_candles", 10) <= 3) or
+                ob.get("current_at_ob") == "BULLISH_OB_RETEST" or
+                (ob.get("bullish_ob") and abs(current_price - ob["bullish_ob"]["high"]) / current_price * 100.0 <= 1.50) or
+                sweeps.get("bullish_sweep") or
+                sfp.get("bullish_sfp") or
+                (fib_gp.get("is_in_golden_pocket") and fib_gp.get("impulse") == "BULLISH_IMPULSE")
+            )
+            if not has_smc_confirmation_long:
+                return None, (
+                    f"📌 <strong>Mevcut Durum:</strong> İndikatör Skoru {long_score}/100 ancak SMC Yapısal Teyidi Yok.<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Kurumsal Bullish FVG testi, Order Block retesti, Likidite Avı (Sweep/SFP) veya Altın Cep bulunmuyor.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> Fiyatın kurumsal destek veya FVG/OB bölgesini test etmesi."
+                )
+
             # 1. SMC Discount Kalkanı: Aşırı Şişkinlik / Tepe Alımını Engelle
             # Sadece aşırı tepe bölgesinde (%88 üzeri) ve taze FVG/OB desteği veya Squeeze kırılımı YOKSA engellenir!
             has_fresh_support = (
@@ -848,7 +866,24 @@ class TechnicalAnalysisAgent:
 
         # SHORT KONTROLÜ (Short Asimetrisi Kalkanı: Baraj 84)
         elif short_score >= short_min_score and short_score > long_score:
-            # 0. FREQTRADE SIDE-SPECIFIC STOPLOSS GUARD (SHORT KİLİDİ)
+            # 0. KURUMSAL SMC YAPISAL TEYİT KONTROLÜ (Mandatory SMC Confirmation Gate)
+            has_smc_confirmation_short = (
+                fvg.get("current_in_fvg") == "BEARISH_TEST" or
+                (fvg.get("bearish_fvg") and fvg["bearish_fvg"].get("age_candles", 10) <= 3) or
+                ob.get("current_at_ob") == "BEARISH_OB_RETEST" or
+                (ob.get("bearish_ob") and abs(current_price - ob["bearish_ob"]["low"]) / current_price * 100.0 <= 1.50) or
+                sweeps.get("bearish_sweep") or
+                sfp.get("bearish_sfp") or
+                (fib_gp.get("is_in_golden_pocket") and fib_gp.get("impulse") == "BEARISH_IMPULSE")
+            )
+            if not has_smc_confirmation_short:
+                return None, (
+                    f"📌 <strong>Mevcut Durum:</strong> İndikatör Skoru {short_score}/100 ancak SMC Yapısal Teyidi Yok.<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Kurumsal Bearish FVG testi, Order Block retesti, Likidite Avı (Sweep/SFP) veya Altın Cep bulunmuyor.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> Fiyatın kurumsal direnç veya Bearish FVG/OB bölgesini test etmesi."
+                )
+
+            # 0b. FREQTRADE SIDE-SPECIFIC STOPLOSS GUARD (SHORT KİLİDİ)
             try:
                 from core.database import check_side_stoploss_guard
                 from config import SIDE_STOPLOSS_GUARD_ENABLED, SIDE_STOPLOSS_MAX_CONSECUTIVE_LOSSES, SIDE_STOPLOSS_COOLDOWN_MINUTES
