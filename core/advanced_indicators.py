@@ -605,3 +605,99 @@ def calculate_supertrend(candles: List[Dict], period: int = 10, multiplier: floa
         "is_bearish": trend == -1,
         "dist_to_supertrend_pct": round(abs(curr_price - curr_st) / curr_price * 100.0, 2)
     }
+
+
+def calculate_vwap_bands(
+    candles: List[Dict],
+    lookback: int = 40,
+    stdev_mult1: float = 1.5,
+    stdev_mult2: float = 2.0
+) -> Dict:
+    """
+    VWAP Standart Sapma Bantları ve Kurumsal Mean-Reversion Katmanı.
+    Fiyatın hacim ağırlıklı ortalamadan (VWAP) ne kadar saptığını (Z-Score)
+    ve kurumsal ortalamaya dönüş (Mean-Reversion) sinyalini hesaplar.
+    """
+    if len(candles) < 15:
+        return {
+            "vwap": 0.0,
+            "stdev": 0.0,
+            "z_score": 0.0,
+            "upper_band_1": 0.0,
+            "lower_band_1": 0.0,
+            "upper_band_2": 0.0,
+            "lower_band_2": 0.0,
+            "is_mean_reversion_long": False,
+            "is_mean_reversion_short": False,
+            "reversion_target": 0.0
+        }
+
+    sub = candles[-lookback:] if len(candles) >= lookback else candles
+    cum_tp_vol = 0.0
+    cum_vol = 0.0
+    tp_list = []
+    vol_list = []
+
+    for c in sub:
+        high = float(c["high"])
+        low = float(c["low"])
+        close = float(c["close"])
+        vol = float(c.get("volume", 1.0)) or 1.0
+        tp = (high + low + close) / 3.0
+        tp_list.append(tp)
+        vol_list.append(vol)
+        cum_tp_vol += tp * vol
+        cum_vol += vol
+
+    vwap = cum_tp_vol / cum_vol if cum_vol > 0 else float(candles[-1]["close"])
+
+    # Hacim Ağırlıklı Standart Sapma (Volume-Weighted Variance)
+    variance_sum = 0.0
+    for tp, vol in zip(tp_list, vol_list):
+        variance_sum += vol * ((tp - vwap) ** 2)
+
+    stdev = math.sqrt(variance_sum / cum_vol) if cum_vol > 0 else 0.0
+
+    upper_band_1 = vwap + (stdev * stdev_mult1)
+    lower_band_1 = vwap - (stdev * stdev_mult1)
+    upper_band_2 = vwap + (stdev * stdev_mult2)
+    lower_band_2 = vwap - (stdev * stdev_mult2)
+
+    curr_close = float(candles[-1]["close"])
+    curr_open = float(candles[-1]["open"])
+    prev_close = float(candles[-2]["close"]) if len(candles) >= 2 else curr_close
+    prev_low = float(candles[-2]["low"]) if len(candles) >= 2 else curr_close
+    prev_high = float(candles[-2]["high"]) if len(candles) >= 2 else curr_close
+
+    z_score = (curr_close - vwap) / stdev if stdev > 0 else 0.0
+
+    # Mean Reversion Long Koşulu:
+    # Fiyat alt bant 2.0'ı test edip yeşil mumla içeri toparlanmış (Z-Score <= -1.4)
+    is_mr_long = (
+        (prev_low <= lower_band_2 or curr_close <= lower_band_1)
+        and curr_close > curr_open
+        and curr_close > prev_close
+        and z_score <= -1.4
+    )
+
+    # Mean Reversion Short Koşulu:
+    # Fiyat üst bant 2.0'ı test edip kırmızı mumla red yemiş (Z-Score >= +1.4)
+    is_mr_short = (
+        (prev_high >= upper_band_2 or curr_close >= upper_band_1)
+        and curr_close < curr_open
+        and curr_close < prev_close
+        and z_score >= 1.4
+    )
+
+    return {
+        "vwap": round(vwap, 6),
+        "stdev": round(stdev, 6),
+        "z_score": round(z_score, 2),
+        "upper_band_1": round(upper_band_1, 6),
+        "lower_band_1": round(lower_band_1, 6),
+        "upper_band_2": round(upper_band_2, 6),
+        "lower_band_2": round(lower_band_2, 6),
+        "is_mean_reversion_long": is_mr_long,
+        "is_mean_reversion_short": is_mr_short,
+        "reversion_target": round(vwap, 6)
+    }
