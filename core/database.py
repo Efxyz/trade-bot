@@ -1823,6 +1823,14 @@ def clear_fast_closed_trades_db():
         cursor.execute("DELETE FROM fast_signals WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')")
         conn.commit()
 
+def reset_fast_bot_db():
+    """FAST bot (1m) tüm açık ve kapalı işlemlerini ve tarama günlüklerini sıfırlar. Kasa $1000'dan temiz başlar."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM fast_signals;")
+        cursor.execute("DELETE FROM fast_scanner_logs;")
+        conn.commit()
+
 def check_fast_side_stoploss_guard(direction: str, max_consecutive_losses: int = 2, cooldown_minutes: int = 30) -> Tuple[bool, str]:
     """FAST bot için yön bazlı seri zarar kalkanı."""
     from datetime import datetime, timezone, timedelta
@@ -2258,6 +2266,15 @@ def clear_super_fast_closed_trades_db():
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM super_fast_signals WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')")
+        conn.commit()
+
+
+def reset_super_fast_bot_db():
+    """Süper FAST bot (1s) tüm açık ve kapalı işlemlerini ve tarama günlüklerini sıfırlar. Kasa $1000'dan temiz başlar."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM super_fast_signals;")
+        cursor.execute("DELETE FROM super_fast_scanner_logs;")
         conn.commit()
 
 
