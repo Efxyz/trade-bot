@@ -117,7 +117,13 @@ def init_db():
             "trailing_stop": "REAL DEFAULT 0.0",
             "ladder_step": "INTEGER DEFAULT 0",
             "ladder_name": "TEXT DEFAULT ''",
-            "debate_json": "TEXT DEFAULT ''"
+            "debate_json": "TEXT DEFAULT ''",
+            "partial_tp_taken": "INTEGER DEFAULT 0",
+            "realized_pnl_usd": "REAL DEFAULT 0.0",
+            "entry_limit_2": "REAL DEFAULT 0.0",
+            "entry_limit_2_hit": "INTEGER DEFAULT 0",
+            "is_pair_trade": "INTEGER DEFAULT 0",
+            "pair_symbol": "TEXT DEFAULT ''"
         }
         for col_name, col_def in new_cols.items():
             if col_name not in existing_cols:
@@ -125,6 +131,25 @@ def init_db():
                     cursor.execute(f"ALTER TABLE signals ADD COLUMN {col_name} {col_def}")
                 except Exception:
                     pass
+
+        # FAST ve SÜPER FAST Tabloları İçin de Taktiksel Sütun Migrasyonu
+        tactical_cols = {
+            "partial_tp_taken": "INTEGER DEFAULT 0",
+            "realized_pnl_usd": "REAL DEFAULT 0.0",
+            "entry_limit_2": "REAL DEFAULT 0.0",
+            "entry_limit_2_hit": "INTEGER DEFAULT 0",
+            "is_pair_trade": "INTEGER DEFAULT 0",
+            "pair_symbol": "TEXT DEFAULT ''"
+        }
+        for tbl in ["fast_signals", "super_fast_signals"]:
+            try:
+                cursor.execute(f"PRAGMA table_info({tbl})")
+                tbl_cols = {row["name"] for row in cursor.fetchall()}
+                for c_name, c_def in tactical_cols.items():
+                    if c_name not in tbl_cols:
+                        cursor.execute(f"ALTER TABLE {tbl} ADD COLUMN {c_name} {c_def}")
+            except Exception:
+                pass
 
         # Geçmiş performans metrikleri için index
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_signals_status ON signals(status)")
@@ -856,7 +881,7 @@ def get_active_positions_count() -> int:
     """Açık ve aktif işlem sayısını döner (Kasa Kalkanı kontrolü için)."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM signals WHERE status IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER')")
+        cursor.execute("SELECT COUNT(*) FROM signals WHERE status IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')")
         return cursor.fetchone()[0]
 
 def get_today_trades_count() -> int:
@@ -885,7 +910,7 @@ def get_today_net_dollar_loss() -> float:
             SELECT 
                 SUM(COALESCE(allocated_margin_usdt, 150.0) * (simulated_pnl_pct / 100.0)) as net_dollar
             FROM signals
-            WHERE status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER')
+            WHERE status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
               AND closed_at >= ?
               AND simulated_pnl_pct IS NOT NULL
         """, (today_start,))
@@ -908,7 +933,7 @@ def get_today_net_dollar_pnl() -> float:
             SELECT 
                 SUM(COALESCE(allocated_margin_usdt, 150.0) * (simulated_pnl_pct / 100.0)) as net_dollar
             FROM signals
-            WHERE status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER')
+            WHERE status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
               AND closed_at >= ?
               AND simulated_pnl_pct IS NOT NULL
         """, (today_start,))
@@ -967,7 +992,7 @@ def is_symbol_locked_by_other_bot(symbol: str, current_bot: str, direction: Opti
     }
 
     current_bot_key = current_bot.lower()
-    active_statuses = "('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER')"
+    active_statuses = "('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')"
     bots_to_check = [
         ("Standard Bot (15m)", "signals"),
         ("FAST Bot (1m)", "fast_signals"),
@@ -1008,7 +1033,7 @@ def get_active_and_pending_signals() -> List[Dict]:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT * FROM signals 
-            WHERE status IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER')
+            WHERE status IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
             ORDER BY created_at DESC
         """)
         return [dict(row) for row in cursor.fetchall()]
@@ -1033,7 +1058,7 @@ def get_last_loss_closed_time() -> Optional[str]:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT closed_at FROM signals
-            WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER')
+            WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
               AND simulated_pnl_pct < 0
               AND closed_at IS NOT NULL
             ORDER BY closed_at DESC
@@ -1085,7 +1110,7 @@ def get_performance_stats() -> Dict:
                 SUM(CASE WHEN simulated_pnl_pct > 0 THEN (COALESCE(allocated_margin_usdt, 200.0) * (simulated_pnl_pct / 100.0)) ELSE 0 END) as sum_dollar_wins,
                 SUM(CASE WHEN simulated_pnl_pct < 0 THEN ABS(COALESCE(allocated_margin_usdt, 200.0) * (simulated_pnl_pct / 100.0)) ELSE 0 END) as sum_dollar_losses
             FROM signals
-            WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER')
+            WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
               AND simulated_pnl_pct IS NOT NULL
         """)
         row = dict(cursor.fetchone() or {})
@@ -1130,7 +1155,7 @@ def get_performance_stats() -> Dict:
                 SUM(simulated_pnl_pct) as today_net_pnl_pct,
                 SUM(COALESCE(allocated_margin_usdt, 200.0) * (simulated_pnl_pct / 100.0)) as today_dollar_gain
             FROM signals
-            WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER')
+            WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
               AND closed_at >= ?
               AND simulated_pnl_pct IS NOT NULL
         """, (today_start,))
@@ -1169,7 +1194,7 @@ def check_and_auto_archive_daily_pnl():
             SELECT DISTINCT substr(closed_at, 1, 10) as c_date
             FROM signals
             WHERE closed_at IS NOT NULL
-              AND status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER')
+              AND status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
         """)
         distinct_dates = [r["c_date"] for r in cursor.fetchall() if r["c_date"]]
 
@@ -1184,7 +1209,7 @@ def check_and_auto_archive_daily_pnl():
                     SUM(simulated_pnl_pct) as net_pct,
                     SUM(COALESCE(allocated_margin_usdt, 200.0) * (simulated_pnl_pct / 100.0)) as net_dollar
                 FROM signals
-                WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER')
+                WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
                   AND closed_at >= ? AND closed_at <= ?
                   AND simulated_pnl_pct IS NOT NULL
             """, (d_start, d_end))
@@ -1358,7 +1383,7 @@ def clear_closed_trades_db():
     """Kapanan tamamlanmış işlem defterini temizler (Aktif pozisyonlara dokunmaz)."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM signals WHERE status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER')")
+        cursor.execute("DELETE FROM signals WHERE status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')")
         conn.commit()
 
 def get_current_equity() -> float:
@@ -1382,7 +1407,7 @@ def generate_daily_summary_report() -> Dict:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT * FROM signals
-            WHERE status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER')
+            WHERE status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
               AND closed_at IS NOT NULL
               AND closed_at >= ?
             ORDER BY closed_at ASC
@@ -1391,7 +1416,7 @@ def generate_daily_summary_report() -> Dict:
 
         cursor.execute("""
             SELECT * FROM signals
-            WHERE status IN ('ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER')
+            WHERE status IN ('ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
             ORDER BY created_at DESC
         """)
         active_trades = [dict(r) for r in cursor.fetchall()]
@@ -1515,7 +1540,7 @@ def check_side_stoploss_guard(
                 SELECT id, symbol, direction, status, simulated_pnl_pct, closed_at
                 FROM signals
                 WHERE direction = ?
-                  AND status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER')
+                  AND status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
                   AND closed_at IS NOT NULL
                 ORDER BY closed_at DESC, id DESC
                 LIMIT 10
@@ -1617,7 +1642,7 @@ def get_fast_active_and_pending_signals() -> List[Dict]:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT * FROM fast_signals
-            WHERE status IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER')
+            WHERE status IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
             ORDER BY id DESC
         """)
         return [dict(row) for row in cursor.fetchall()]
@@ -1651,7 +1676,7 @@ def get_fast_performance_stats() -> Dict:
                 SUM(CASE WHEN simulated_pnl_pct > 0 THEN (COALESCE(allocated_margin_usdt, 75.0) * (simulated_pnl_pct / 100.0)) ELSE 0 END) as sum_dollar_wins,
                 SUM(CASE WHEN simulated_pnl_pct < 0 THEN ABS(COALESCE(allocated_margin_usdt, 75.0) * (simulated_pnl_pct / 100.0)) ELSE 0 END) as sum_dollar_losses
             FROM fast_signals
-            WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER')
+            WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
               AND simulated_pnl_pct IS NOT NULL
         """)
         row = dict(cursor.fetchone() or {})
@@ -1692,7 +1717,7 @@ def get_fast_performance_stats() -> Dict:
                 SUM(fee_pct) as today_fee_pct,
                 SUM(COALESCE(allocated_margin_usdt, 75.0) * (simulated_pnl_pct / 100.0)) as today_dollar_gain
             FROM fast_signals
-            WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER')
+            WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
               AND closed_at >= ?
               AND simulated_pnl_pct IS NOT NULL
         """, (today_start,))
@@ -1745,7 +1770,7 @@ def close_all_fast_positions_db(client=None) -> int:
         cursor.execute("""
             SELECT id, symbol, direction, actual_entry_price, leverage, allocated_margin_usdt
             FROM fast_signals
-            WHERE status IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER')
+            WHERE status IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
         """)
         active_trades = cursor.fetchall()
         if not active_trades:
@@ -1795,7 +1820,7 @@ def clear_fast_closed_trades_db():
     """FAST bot kapanmış geçmiş işlem kayıtlarını temizler."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM fast_signals WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER')")
+        cursor.execute("DELETE FROM fast_signals WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')")
         conn.commit()
 
 def check_fast_side_stoploss_guard(direction: str, max_consecutive_losses: int = 2, cooldown_minutes: int = 30) -> Tuple[bool, str]:
@@ -1808,7 +1833,7 @@ def check_fast_side_stoploss_guard(direction: str, max_consecutive_losses: int =
                 SELECT id, symbol, direction, status, simulated_pnl_pct, closed_at
                 FROM fast_signals
                 WHERE direction = ?
-                  AND status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER')
+                  AND status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
                   AND closed_at IS NOT NULL
                 ORDER BY closed_at DESC, id DESC
                 LIMIT 10
@@ -1855,7 +1880,7 @@ def generate_fast_hourly_summary_report() -> Dict:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT * FROM fast_signals
-            WHERE status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER')
+            WHERE status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
               AND closed_at IS NOT NULL
               AND closed_at >= ?
             ORDER BY closed_at ASC
@@ -1864,7 +1889,7 @@ def generate_fast_hourly_summary_report() -> Dict:
 
         cursor.execute("""
             SELECT * FROM fast_signals
-            WHERE status IN ('ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER')
+            WHERE status IN ('ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
             ORDER BY created_at DESC
         """)
         active_trades = [dict(r) for r in cursor.fetchall()]
@@ -2051,7 +2076,7 @@ def get_super_fast_active_and_pending_signals() -> List[Dict]:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT * FROM super_fast_signals
-            WHERE status IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER')
+            WHERE status IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
             ORDER BY id DESC
         """)
         return [dict(row) for row in cursor.fetchall()]
@@ -2087,7 +2112,7 @@ def get_super_fast_performance_stats() -> Dict:
                 SUM(CASE WHEN simulated_pnl_pct > 0 THEN (COALESCE(allocated_margin_usdt, 35.0) * (simulated_pnl_pct / 100.0)) ELSE 0 END) as sum_dollar_wins,
                 SUM(CASE WHEN simulated_pnl_pct < 0 THEN ABS(COALESCE(allocated_margin_usdt, 35.0) * (simulated_pnl_pct / 100.0)) ELSE 0 END) as sum_dollar_losses
             FROM super_fast_signals
-            WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER')
+            WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
               AND simulated_pnl_pct IS NOT NULL
         """)
         row = dict(cursor.fetchone() or {})
@@ -2128,7 +2153,7 @@ def get_super_fast_performance_stats() -> Dict:
                 SUM(fee_pct) as today_fee_pct,
                 SUM(COALESCE(allocated_margin_usdt, 35.0) * (simulated_pnl_pct / 100.0)) as today_dollar_gain
             FROM super_fast_signals
-            WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER')
+            WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
               AND closed_at >= ?
               AND simulated_pnl_pct IS NOT NULL
         """, (today_start,))
@@ -2180,7 +2205,7 @@ def close_all_super_fast_positions_db(client=None) -> int:
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM super_fast_signals WHERE status IN ('ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER')")
+        cursor.execute("SELECT * FROM super_fast_signals WHERE status IN ('ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')")
         open_trades = [dict(r) for r in cursor.fetchall()]
 
         if not open_trades:
@@ -2232,7 +2257,7 @@ def clear_super_fast_closed_trades_db():
     """Süper FAST bot kapanmış geçmiş işlem kayıtlarını temizler."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM super_fast_signals WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER')")
+        cursor.execute("DELETE FROM super_fast_signals WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')")
         conn.commit()
 
 
@@ -2246,7 +2271,7 @@ def check_super_fast_side_stoploss_guard(direction: str, max_consecutive_losses:
                 SELECT id, symbol, direction, status, simulated_pnl_pct, closed_at
                 FROM super_fast_signals
                 WHERE direction = ?
-                  AND status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER')
+                  AND status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
                   AND closed_at IS NOT NULL
                 ORDER BY closed_at DESC, id DESC
                 LIMIT 10
@@ -2293,7 +2318,7 @@ def generate_super_fast_hourly_summary_report() -> Dict:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT * FROM super_fast_signals
-            WHERE status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER')
+            WHERE status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
               AND closed_at IS NOT NULL
               AND closed_at >= ?
             ORDER BY closed_at ASC
@@ -2302,7 +2327,7 @@ def generate_super_fast_hourly_summary_report() -> Dict:
 
         cursor.execute("""
             SELECT * FROM super_fast_signals
-            WHERE status IN ('ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER')
+            WHERE status IN ('ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
             ORDER BY created_at DESC
         """)
         active_trades = [dict(r) for r in cursor.fetchall()]
