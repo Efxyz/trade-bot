@@ -1081,6 +1081,7 @@ HTML_OFFICE_TEMPLATE = """
             <span>AI Ticaret Ofisi Terminali</span>
             <span style="font-size: 10px; background: rgba(16,185,129,0.15); color: #10b981; padding: 2px 7px; border-radius: 10px; font-weight: 600;">● OFİS CANLI</span>
             <span id="wsBadge" style="font-size: 10px; background: rgba(56,189,248,0.15); color: #38bdf8; padding: 2px 7px; border-radius: 10px; font-weight: 600;">⚡ WSS AKTİF</span>
+            <span id="topTrClock" style="font-size: 10.5px; background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.3); padding: 2px 8px; border-radius: 10px; font-weight: 700; font-family: 'JetBrains Mono', monospace;" title="Türkiye Saati (TSİ / UTC+3)">🇹🇷 TSİ --:--:--</span>
 
             <!-- Bot Modu Seçici (Standart vs FAST vs SÜPER FAST) -->
             <div style="display: flex; gap: 4px; background: rgba(0,0,0,0.5); padding: 3px; border-radius: 20px; border: 1px solid var(--panel-border); margin-left: 14px;">
@@ -1383,7 +1384,7 @@ HTML_OFFICE_TEMPLATE = """
                 <table>
                     <thead>
                         <tr>
-                            <th>Kapanış</th>
+                            <th>Kapanış (TSİ)</th>
                             <th>Parite</th>
                             <th>Yön</th>
                             <th>Kaldıraç</th>
@@ -1721,6 +1722,62 @@ HTML_OFFICE_TEMPLATE = """
             return num.toPrecision(5);
         }
 
+        // 🇹🇷 Türkiye Saati (TSİ / UTC+3) Formatlayıcı
+        // Sunucudaki UTC saat ve tarih damgalarına +3 saat ekleyerek Türkiye saatine uyarlar
+        function formatTurkeyTime(timeStr) {
+            if (!timeStr) return '';
+            try {
+                const s = String(timeStr).trim();
+                // 1. Tam Tarih-Saat (YYYY-MM-DD HH:MM:SS veya YYYY-MM-DD HH:MM)
+                const matchDt = s.match(/^(\\d{4}-\\d{2}-\\d{2})[ T](\\d{1,2}):(\\d{2})(?::(\\d{2}))?/);
+                if (matchDt) {
+                    const [y, m, d] = matchDt[1].split('-').map(Number);
+                    const hh = Number(matchDt[2]);
+                    const mm = Number(matchDt[3]);
+                    const ss = matchDt[4] ? Number(matchDt[4]) : 0;
+                    const utc = new Date(Date.UTC(y, m - 1, d, hh + 3, mm, ss));
+                    const ry = utc.getUTCFullYear();
+                    const rm = String(utc.getUTCMonth() + 1).padStart(2, '0');
+                    const rd = String(utc.getUTCDate()).padStart(2, '0');
+                    const rh = String(utc.getUTCHours()).padStart(2, '0');
+                    const rmin = String(utc.getUTCMinutes()).padStart(2, '0');
+                    const rsec = String(utc.getUTCSeconds()).padStart(2, '0');
+                    return `${ry}-${rm}-${rd} ${rh}:${rmin}:${rsec}`;
+                }
+                // 2. Yalnızca Saat (HH:MM:SS veya HH:MM)
+                const matchTime = s.match(/^(\\d{1,2}):(\\d{2})(?::(\\d{2}))?$/);
+                if (matchTime) {
+                    const hh = Number(matchTime[1]);
+                    const mm = matchTime[2];
+                    const ss = matchTime[3];
+                    const newH = String((hh + 3) % 24).padStart(2, '0');
+                    if (ss !== undefined) {
+                        return `${newH}:${mm}:${ss}`;
+                    }
+                    return `${newH}:${mm}`;
+                }
+            } catch (e) {
+                console.warn('formatTurkeyTime error:', e);
+            }
+            return timeStr;
+        }
+
+        function updateTurkeyClock() {
+            try {
+                const now = new Date();
+                const trDate = new Date(now.getTime() + (3 * 3600 * 1000));
+                const h = String(trDate.getUTCHours()).padStart(2, '0');
+                const m = String(trDate.getUTCMinutes()).padStart(2, '0');
+                const s = String(trDate.getUTCSeconds()).padStart(2, '0');
+                const clockEl = document.getElementById('topTrClock');
+                if (clockEl) {
+                    clockEl.innerText = `🇹🇷 TSİ ${h}:${m}:${s}`;
+                }
+            } catch (e) {}
+        }
+        setInterval(updateTurkeyClock, 1000);
+        setTimeout(updateTurkeyClock, 50);
+
         // SVG Mini Çizgi Grafiği Renderer (Line Chart with Area Gradient & Exact Green TP / Red SL Lines)
         function renderMiniLineChart(candles, entry, live, sl, tp, isLong, symbol) {
             const width = 360;
@@ -2029,7 +2086,7 @@ HTML_OFFICE_TEMPLATE = """
                                         ${protectionBadge}
                                     </div>
                                     <div style="display: flex; align-items: center; gap: 8px;">
-                                        <span class="card-elapsed">⏱️ ${elapsed}</span>
+                                        <span class="card-elapsed" title="Pozisyon Açılış Zamanı (TSİ): ${formatTurkeyTime(pos.entered_at || pos.created_at)}">⏱️ ${elapsed}</span>
                                         <div style="text-align: right;">
                                             <div class="card-pnl ${pos.isProfit ? 'pnl-pos' : 'pnl-neg'}">
                                                 ${pos.isProfit ? '+' : ''}${pos.netPnlPct.toFixed(2)}% Net
@@ -2105,7 +2162,7 @@ HTML_OFFICE_TEMPLATE = """
                             <div class="log-top">
                                 <span class="log-sym">${l.symbol}</span>
                                 ${statusBadge}
-                                <span class="log-time">${l.time}</span>
+                                <span class="log-time">${formatTurkeyTime(l.time)}</span>
                             </div>
                             <div class="log-reason">${reasonTxt} ${l.details ? `<br><span style="font-size:10px; color:#38bdf8; opacity:0.85; font-style:italic;">💡 Mod: ${l.details}</span>` : ''}</div>
                         </div>
@@ -2176,7 +2233,7 @@ HTML_OFFICE_TEMPLATE = """
                                     <div class="debate-sym">
                                         <span>${d.symbol}</span>
                                         <span class="tag ${d.direction === 'LONG' ? 'tag-long' : 'tag-short'}">${d.direction}</span>
-                                        <span style="font-size: 9.5px; color: var(--text-muted); font-family: 'JetBrains Mono';">${d.time_str || ''}</span>
+                                        <span style="font-size: 9.5px; color: var(--text-muted); font-family: 'JetBrains Mono';">${formatTurkeyTime(d.time_str)}</span>
                                     </div>
                                     <span class="debate-score ${isAppr ? 'debate-score-approved' : 'debate-score-rejected'}">
                                         ${isAppr ? '✅ ONAYLANDI' : '🚫 VETO EDİLDİ'} (${score}/10)
@@ -2227,7 +2284,7 @@ HTML_OFFICE_TEMPLATE = """
                                     <div style="display: flex; align-items: center; gap: 6px;">
                                         <span style="font-weight: 700; color: #fff;">${r.symbol}</span>
                                         <span class="tag ${r.direction === 'LONG' ? 'tag-long' : 'tag-short'}">${r.direction}</span>
-                                        <span style="font-size: 9.5px; color: var(--text-muted); font-family: 'JetBrains Mono';">${r.time_str || ''}</span>
+                                        <span style="font-size: 9.5px; color: var(--text-muted); font-family: 'JetBrains Mono';">${formatTurkeyTime(r.time_str)}</span>
                                     </div>
                                     <div style="display: flex; align-items: center; gap: 5px;">
                                         <span style="font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: ${badgeBg}; color: ${badgeColor};">
@@ -2286,7 +2343,8 @@ HTML_OFFICE_TEMPLATE = """
                             • SMC Kalite Barajı: <span style="color:#38bdf8; font-weight:700;">${p.min_confluence_score || 76}/100</span><br>
                             • Fitil Korumalı Stop Mesafesi: <span style="color:#f59e0b; font-weight:700;">%${p.min_scalp_sl_pct || 0.95} - %${p.max_scalp_sl_pct || 1.35}</span><br>
                             • BTC Dead Chop Eşiği: <span style="color:#ef4444; font-weight:700;">4s &lt; %${p.btc_chop_min_range_4h_pct || 0.80}</span><br>
-                            • Değiştirilemez Kasa Kalkanı: <span style="color:#10b981; font-weight:700;">Maks %2.0 Risk (Kilitli 🔒)</span>
+                            • Değiştirilemez Kasa Kalkanı: <span style="color:#10b981; font-weight:700;">Maks %2.0 Risk (Kilitli 🔒)</span><br>
+                            • Son Kalibrasyon: <span style="color:#a78bfa; font-weight:700;">${formatTurkeyTime(tuning.calibrated_at || p.last_calibrated_at || '')} (TSİ)</span>
                         </div>
                         <div style="font-size: 9.5px; color: #94a3b8; margin-top: 4px;">
                             <strong>💡 Son Öğrenme Raporu:</strong> ${tuning.summary || 'Parametreler optimize edildi.'}
@@ -2318,7 +2376,7 @@ HTML_OFFICE_TEMPLATE = """
                             <div class="news-meta">
                                 <span>${n.source || 'RSS'}</span>
                                 <span class="${sentClass}">${n.sentiment}</span>
-                                <span>${n.time}</span>
+                                <span>${formatTurkeyTime(n.time)}</span>
                             </div>
                             <div class="news-title">${n.title}</div>
                         </div>
@@ -2359,7 +2417,7 @@ HTML_OFFICE_TEMPLATE = """
 
                     histHtml += `
                         <tr>
-                            <td style="color: var(--text-muted); font-size: 10px;">${tr.closed_at || tr.created_at}</td>
+                            <td style="color: var(--text-muted); font-size: 10px;">${formatTurkeyTime(tr.closed_at || tr.created_at)}</td>
                             <td><strong>${tr.symbol}</strong></td>
                             <td><span class="tag ${isLong ? 'tag-long' : 'tag-short'}">${tr.direction}</span></td>
                             <td><span class="tag tag-lev">${tr.leverage}x</span></td>
