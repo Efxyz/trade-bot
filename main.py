@@ -48,7 +48,7 @@ class TradingBotOrchestrator:
         self.tracker = CounterfactualTrackerAgent(self.client)
         self.cmd_agent = TelegramCommandAgent(self)
         self.ai_analyst = AIAnalystAgent()
-        self.quant_sim = QuantSimulationAgent(default_simulations=10000, win_threshold_pct=70.0)
+        self.quant_sim = QuantSimulationAgent(default_simulations=10000, win_threshold_pct=48.0)
         self.last_daily_report_date = None
 
         # Canlı WebSocket Veri Boru Hattını Başlat
@@ -258,7 +258,7 @@ class TradingBotOrchestrator:
                     add_scanner_log(
                         symbol,
                         "REJECTED",
-                        f"Kuant Simülasyon Veto Etti (10,000 Yol: TP İhtimali %{win_pct:.1f} < %70.0)",
+                        f"Kuant Simülasyon Veto Etti (10,000 Yol: TP İhtimali %{win_pct:.1f} < %{self.quant_sim.win_threshold_pct:.1f})",
                         f"Stop Loss Riski: %{quant_sim.get('loss_probability_pct', 0.0):.1f}"
                     )
                     continue
