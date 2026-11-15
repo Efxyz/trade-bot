@@ -77,9 +77,32 @@ class CounterfactualTrackerAgent:
             is_long = (direction == "LONG")
             status = sig["status"]
             leverage = sig.get("leverage", 10)
-            entry_price = sig.get("actual_entry_price") or sig["entry_min"]
-            sl = sig.get("stop_loss")
-            tp = sig.get("take_profit_1")
+            entry_price = float(sig.get("actual_entry_price") or sig["entry_min"])
+            sl = float(sig.get("stop_loss"))
+            tp = float(sig.get("take_profit_1"))
+            tp2 = float(sig.get("take_profit_2") or (tp * 1.015 if is_long else tp * 0.985))
+            allocated_margin = float(sig.get("allocated_margin_usdt") or 100.0)
+
+            # 0. 2-KADEMELİ MERDİVEN GİRİŞİ (Equilibrium FVG / OB DCA Retest)
+            entry_limit_2 = float(sig.get("entry_limit_2") or 0.0)
+            entry_limit_2_hit = int(sig.get("entry_limit_2_hit") or 0)
+            partial_tp_taken = int(sig.get("partial_tp_taken") or 0)
+
+            if entry_limit_2 > 0 and entry_limit_2_hit == 0 and partial_tp_taken == 0:
+                is_hit_limit2 = (is_long and current_price <= entry_limit_2) or (not is_long and current_price >= entry_limit_2)
+                if is_hit_limit2:
+                    # İkinci kademe limit emir doldu! Maliyeti dengede iyileştir
+                    new_avg_entry = round((entry_price + entry_limit_2) / 2.0, 8)
+                    new_margin = allocated_margin * 1.5  # %50 ek marjin doldu
+                    update_signal_status(sig_id, {
+                        "actual_entry_price": new_avg_entry,
+                        "entry_limit_2_hit": 1,
+                        "allocated_margin_usdt": new_margin,
+                        "ladder_name": "🪜 2. Kademe Giriş Eklendi (DCA)"
+                    })
+                    entry_price = new_avg_entry
+                    allocated_margin = new_margin
+                    print(f"🪜 [{symbol}] 2. Kademe Giriş Doldu! Ortalama Maliyet İyileştirildi: {entry_price} (Marjin: ${allocated_margin})")
 
             # 1. ZİRVE / DİP FİYAT VE ANLIK KÂR TAKİBİ
             highest_price = sig.get("highest_price") or entry_price
@@ -187,20 +210,60 @@ class CounterfactualTrackerAgent:
 
             # 4. HEDEF (TP) VE MERDİVEN STOP KONTROLLERİ (BİRİNCİL ÖNCELİK)
             if not is_closed:
-                # Hedefe (TP) ulaştı mı?
-                if (is_long and current_price >= tp) or (not is_long and current_price <= tp):
+                # Hedefe (TP1 / TP2) ulaştı mı?
+                is_hit_tp1 = (is_long and current_price >= tp) or (not is_long and current_price <= tp)
+                is_hit_tp2 = (is_long and current_price >= tp2) or (not is_long and current_price <= tp2)
+
+                # 4a. PARÇALI MERDİVEN ÇIKIŞI & FREE-TRADE RUNNER (Partial TP1 Scaling-Out)
+                if is_hit_tp1 and partial_tp_taken == 0:
+                    # Pozisyonun %50'sini realize et, kârı kilitle ve kalanını 'FREE-TRADE RUNNER' yap!
+                    partial_raw_gain = ((tp - entry_price) / entry_price) if is_long else ((entry_price - tp) / entry_price)
+                    partial_gross = partial_raw_gain * leverage * 100
+                    partial_fee = BINANCE_ROUNDTRIP_FEE_PCT * leverage
+                    partial_net_pct = round(partial_gross - partial_fee, 2)
+                    half_margin = allocated_margin * 0.5
+                    realized_usd = round(half_margin * (partial_net_pct / 100.0), 2)
+
+                    # Stop-Loss'u hemen giriş fiyatına (Break-Even) çek:
+                    be_sl = round(entry_price * (1.0005 if is_long else 0.9995), 8)
+                    current_sl = be_sl
+                    current_ladder_step = max(current_ladder_step, 2)
+                    ladder_name = f"🎯 TP1 %50 Kilit (+${realized_usd}) | 🏃 Free-Trade Runner"
+
+                    update_signal_status(sig_id, {
+                        "partial_tp_taken": 1,
+                        "realized_pnl_usd": realized_usd,
+                        "stop_loss": current_sl,
+                        "allocated_margin_usdt": half_margin,
+                        "status": "ACTIVE_PARTIAL_TP1",
+                        "ladder_step": current_ladder_step,
+                        "ladder_name": ladder_name
+                    })
+                    partial_tp_taken = 1
+                    allocated_margin = half_margin
+                    print(f"🎯 [{symbol}] TP1 Vuruldu! %50 Kâr Alındı (+${realized_usd}). Stop girişe çekildi, Free-Trade Runner TP2'ye koşuyor!")
+
+                elif partial_tp_taken == 1 and is_hit_tp2:
+                    # Runner hedefe (TP2) ulaştı! Kalan %50 de devasa kârla kapatıldı!
                     is_closed = True
-                    final_status = "HIT_TP"
-                    exit_price = tp
-                    raw_change = ((tp - entry_price) / entry_price) if is_long else ((entry_price - tp) / entry_price)
+                    final_status = "HIT_TP2_RUNNER"
+                    exit_price = tp2
+                    raw_change = ((tp2 - entry_price) / entry_price) if is_long else ((entry_price - tp2) / entry_price)
+                    print(f"🚀 [{symbol}] Runner TP2 Vuruldu! Kalan %50 işlem de tepe fiyattan kapatıldı!")
+
+                elif not is_hit_tp1 and partial_tp_taken == 0:
+                    # Henüz TP1'e varılmadı
+                    pass
 
                 # Stop veya Merdiven Kâr Stopuna çarptı mı?
-                elif (is_long and current_price <= current_sl) or (not is_long and current_price >= current_sl):
+                if not is_closed and ((is_long and current_price <= current_sl) or (not is_long and current_price >= current_sl)):
                     is_closed = True
                     exit_price = current_sl
                     raw_change = ((current_sl - entry_price) / entry_price) if is_long else ((entry_price - current_sl) / entry_price)
-                    
-                    if current_ladder_step >= 2 or peak_profit_pct >= 0.55:
+
+                    if partial_tp_taken == 1:
+                        final_status = "RUNNER_BE_EXIT"  # Free-trade sıfır riskle kapandı, TP1 kârı cepte!
+                    elif current_ladder_step >= 2 or peak_profit_pct >= 0.55:
                         final_status = f"LADDER_STEP_{current_ladder_step}_EXIT" if current_ladder_step > 0 else "LADDER_PROFIT_EXIT"
                     elif current_ladder_step == 1 or (status in ("ACTIVE_BE", "ACTIVE_LADDER") and raw_change >= 0):
                         final_status = "CLOSED_BE"
@@ -243,6 +306,15 @@ class CounterfactualTrackerAgent:
                 # Borsa komisyon kesintisi: Giriş (%0.05) + Çıkış (%0.05) = %0.10 raw price * kaldıraç
                 fee_pct = round(BINANCE_ROUNDTRIP_FEE_PCT * leverage, 2)
                 net_pnl_pct = round(gross_pnl_pct - fee_pct, 2)
+
+                prev_realized_usd = float(sig.get("realized_pnl_usd") or 0.0)
+                if partial_tp_taken == 1:
+                    # Kalan runner kârı ile TP1'de realize edilen kârın birleşimi
+                    runner_usd = allocated_margin * (net_pnl_pct / 100.0)
+                    total_dollar_pnl = prev_realized_usd + runner_usd
+                    orig_margin = allocated_margin * 2.0
+                    net_pnl_pct = round((total_dollar_pnl / orig_margin) * 100.0, 2)
+                    gross_pnl_pct = round(net_pnl_pct + fee_pct, 2)
 
                 candles = self.client.get_klines(symbol, interval="15m", limit=40)
                 exit_png_path = self.generate_outcome_chart(sig, candles, final_status, exit_price, net_pnl_pct, leverage)
