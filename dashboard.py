@@ -2223,7 +2223,9 @@ HTML_OFFICE_TEMPLATE = """
                         const elapsed = pos.elapsed_str || '1 dk';
 
                         let protectionBadge = '';
-                        if (pos.ladder_name) {
+                        if (pos.status === 'ACTIVE_PARTIAL_TP1') {
+                            protectionBadge = '<span class="tag" style="background:rgba(16,185,129,0.25); color:#10b981; font-weight:800; border:1px solid #10b981;">🎯 %50 TP1 KİLİTLİ (FREE-TRADE)</span>';
+                        } else if (pos.ladder_name) {
                             protectionBadge = `<span class="tag" style="background:rgba(245,158,11,0.22); color:#f59e0b; font-weight:700;">${pos.ladder_name}</span>`;
                         } else if (pos.ladder_step > 0) {
                             protectionBadge = `<span class="tag" style="background:rgba(245,158,11,0.22); color:#f59e0b; font-weight:700;">🪜 Basamak ${pos.ladder_step}</span>`;
@@ -5756,7 +5758,7 @@ try:
     _terminal_cache["coin_news_investigations"] = get_coin_news_investigations_db(limit=25) or []
     _terminal_cache["learning_reports"] = get_learning_reports_db(limit=15) or []
     _all_init = get_all_signals(limit=40) or []
-    _terminal_cache["trade_history"] = [s for s in _all_init if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER")]
+    _terminal_cache["trade_history"] = [s for s in _all_init if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER", "ACTIVE_PARTIAL_TP1")]
     _terminal_cache["active_positions"] = get_active_and_pending_signals() or []
     _terminal_cache["committee_debates"] = get_latest_debates_db(limit=8) or []
     _terminal_cache["trade_reflections"] = get_recent_reflections_db(limit=15) or []
@@ -5766,7 +5768,7 @@ try:
     _terminal_cache["fast_stats"] = get_fast_performance_stats() or {}
     _terminal_cache["fast_scanner_logs"] = get_fast_scanner_logs_db(limit=40) or []
     _all_fast_init = get_fast_all_signals(limit=40) or []
-    _terminal_cache["fast_trade_history"] = [s for s in _all_fast_init if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER")]
+    _terminal_cache["fast_trade_history"] = [s for s in _all_fast_init if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER", "ACTIVE_PARTIAL_TP1")]
     _terminal_cache["fast_active_positions"] = get_fast_active_and_pending_signals() or []
     _terminal_cache["fast_total_unrealized_pnl"] = 0.0
     _terminal_cache["fast_max_concurrent_trades"] = FAST_MAX_CONCURRENT_TRADES
@@ -5780,7 +5782,7 @@ try:
     _terminal_cache["super_fast_stats"] = get_super_fast_performance_stats() or {}
     _terminal_cache["super_fast_scanner_logs"] = get_super_fast_scanner_logs_db(limit=40) or []
     _all_super_init = get_super_fast_all_signals(limit=40) or []
-    _terminal_cache["super_fast_trade_history"] = [s for s in _all_super_init if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER")]
+    _terminal_cache["super_fast_trade_history"] = [s for s in _all_super_init if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER", "ACTIVE_PARTIAL_TP1")]
     _terminal_cache["super_fast_active_positions"] = get_super_fast_active_and_pending_signals() or []
     _terminal_cache["super_fast_total_unrealized_pnl"] = 0.0
     _terminal_cache["super_fast_max_concurrent_trades"] = SUPER_FAST_MAX_CONCURRENT_TRADES
@@ -5819,7 +5821,7 @@ def update_terminal_cache_loop():
                 stats = get_performance_stats()
                 active_signals = get_active_and_pending_signals()
                 all_sigs = get_all_signals(limit=40)
-                history = [s for s in all_sigs if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER")]
+                history = [s for s in all_sigs if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER", "ACTIVE_PARTIAL_TP1")]
                 scanner_logs = get_scanner_logs()
                 news_feed = get_live_news_feed()
                 if not news_feed:
@@ -5871,7 +5873,7 @@ def update_terminal_cache_loop():
                 fast_stats = get_fast_performance_stats()
                 fast_active_signals = get_fast_active_and_pending_signals()
                 fast_all_sigs = get_fast_all_signals(limit=40)
-                fast_history = [s for s in fast_all_sigs if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER")]
+                fast_history = [s for s in fast_all_sigs if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER", "ACTIVE_PARTIAL_TP1")]
                 fast_scanner_logs = get_fast_scanner_logs_db(limit=40)
             except Exception:
                 with _cache_lock:
@@ -6025,7 +6027,7 @@ def update_terminal_cache_loop():
                 super_fast_stats = get_super_fast_performance_stats()
                 super_fast_active_signals = get_super_fast_active_and_pending_signals()
                 super_fast_all_sigs = get_super_fast_all_signals(limit=50)
-                super_fast_history = [s for s in super_fast_all_sigs if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER")]
+                super_fast_history = [s for s in super_fast_all_sigs if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER", "ACTIVE_PARTIAL_TP1")]
                 super_fast_scanner_logs = get_super_fast_scanner_logs_db(limit=50)
             except Exception:
                 with _cache_lock:
@@ -6237,7 +6239,7 @@ def api_close_all_positions():
         _terminal_cache["total_unrealized_pnl"] = 0.0
         _terminal_cache["stats"] = get_performance_stats()
         _all_init = get_all_signals(limit=40) or []
-        _terminal_cache["trade_history"] = [s for s in _all_init if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER")]
+        _terminal_cache["trade_history"] = [s for s in _all_init if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER", "ACTIVE_PARTIAL_TP1")]
     return jsonify({"status": "closed", "count": count})
 
 @app.route("/api/clear-history", methods=["POST"])
@@ -6293,7 +6295,7 @@ def api_fast_close_all_positions():
         _terminal_cache["fast_total_unrealized_pnl"] = 0.0
         _terminal_cache["fast_stats"] = get_fast_performance_stats()
         _all_fast = get_fast_all_signals(limit=40) or []
-        _terminal_cache["fast_trade_history"] = [s for s in _all_fast if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER")]
+        _terminal_cache["fast_trade_history"] = [s for s in _all_fast if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER", "ACTIVE_PARTIAL_TP1")]
     return jsonify({"status": "closed", "count": count})
 
 @app.route("/api/fast/clear-history", methods=["POST"])
@@ -6349,7 +6351,7 @@ def api_super_fast_close_all_positions():
         _terminal_cache["super_fast_total_unrealized_pnl"] = 0.0
         _terminal_cache["super_fast_stats"] = get_super_fast_performance_stats()
         _all_super = get_super_fast_all_signals(limit=50) or []
-        _terminal_cache["super_fast_trade_history"] = [s for s in _all_super if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER")]
+        _terminal_cache["super_fast_trade_history"] = [s for s in _all_super if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER", "ACTIVE_PARTIAL_TP1")]
     return jsonify({"status": "closed", "count": count})
 
 @app.route("/api/superfast/clear-history", methods=["POST"])
