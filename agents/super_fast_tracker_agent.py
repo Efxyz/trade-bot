@@ -33,13 +33,8 @@ class SuperFastCounterfactualTrackerAgent:
         if not active_signals:
             return []
 
-        # Tüm vadeli çiftlerin fiyatlarını tek seferde güvenle çek (REST Fallback)
-        cached_tickers = {}
-        try:
-            cached_tickers = self.client.get_24hr_tickers() or {}
-        except Exception:
-            pass
-
+        # Lazy REST Fallback: Sadece WebSocket verisi gelmeyen semboller için ihtiyaç halinde çekilir
+        cached_tickers = None
         resolved_signals = []
         now = datetime.now()
 
@@ -53,7 +48,7 @@ class SuperFastCounterfactualTrackerAgent:
             leverage = int(sig.get("leverage") or 10)
             allocated_margin = float(sig.get("allocated_margin_usdt") or 35.0)
 
-            # 1. Anlık Fiyat (Önce WebSocket, yoksa 24hr ticker, yoksa tekil REST API)
+            # 1. Anlık Fiyat (Önce WebSocket, yoksa lazy 24hr ticker, yoksa tekil REST API)
             live_price = None
             try:
                 add_stream_symbol(symbol)
@@ -62,6 +57,11 @@ class SuperFastCounterfactualTrackerAgent:
                 live_price = None
 
             if not live_price or live_price <= 0:
+                if cached_tickers is None:
+                    try:
+                        cached_tickers = self.client.get_24hr_tickers() or {}
+                    except Exception:
+                        cached_tickers = {}
                 ticker_data = cached_tickers.get(symbol, {})
                 live_price = ticker_data.get("lastPrice")
 
