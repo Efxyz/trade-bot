@@ -42,12 +42,14 @@ from core.database import (
 from agents.fast_ta_agent import FastTechnicalAnalysisAgent
 from agents.fast_tracker_agent import FastCounterfactualTrackerAgent
 from agents.notifier_agent import NotifierAgent
+from agents.news_agent import NewsAgent
 
 class FastTradingBotOrchestrator:
     def __init__(self):
         print("⚡ [FAST Motoru Başlatılıyor] 1-Dakikalık Hızlı Scalping Çoklu-Ajan Sistemi ($1000 Bağımsız Kasa)...")
         self.client = BinanceFuturesClient()
         self.ta_agent = FastTechnicalAnalysisAgent()
+        self.news_agent = NewsAgent()
         self.notifier = NotifierAgent()
         self.tracker = FastCounterfactualTrackerAgent(self.client, notifier=self.notifier)
         self.cooldown_until: Dict[str, float] = {}
@@ -140,6 +142,12 @@ class FastTradingBotOrchestrator:
                     continue
                 if direction == "SHORT" and short_count >= FAST_MAX_POSITIONS_PER_DIRECTION:
                     add_fast_scanner_log_db(symbol, "BLOCKED", f"Maksimum SHORT Sınırı ({FAST_MAX_POSITIONS_PER_DIRECTION}) Dolu")
+                    continue
+
+                # Haber Kararlandırma Konseyi Veto Denetimi (Kara Kuğu / Hack Koruması)
+                news_analysis = self.news_agent.analyze_catalyst(symbol, direction)
+                if news_analysis and news_analysis.get("is_vetoed"):
+                    add_fast_scanner_log_db(symbol, "BLOCKED", f"Haber Konseyi Veto: {news_analysis.get('verdict')}")
                     continue
 
                 # Freqtrade FAST Yön Bazlı Seri Zarar Kalkanı
