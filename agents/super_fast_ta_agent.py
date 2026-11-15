@@ -17,6 +17,7 @@ from super_fast_config import (
     SUPER_FAST_STOP_LOSS_PCT,
     SUPER_FAST_LEVERAGE
 )
+from core.advanced_indicators import calculate_linear_regression_channel, calculate_camarilla_pivots
 
 class SuperFastTechnicalAnalysisAgent:
     def __init__(self):
@@ -115,6 +116,50 @@ class SuperFastTechnicalAnalysisAgent:
             short_score += 15
             ta_reasons.append("🩸 Mikro Dip Kırılımı")
 
+        # Kural 5: Mikro Linear Regression Trend Kanalı (15 Periyotluk Regresyon Eğimi)
+        lr_channel = None
+        if len(candles_1m) >= 12:
+            lr_channel = calculate_linear_regression_channel(candles_1m, period=min(len(candles_1m), 20))
+            if lr_channel:
+                slope_pct = lr_channel.get("slope_pct", 0.0)
+                pos_pct = lr_channel.get("pos_pct", 50.0)
+                if slope_pct > 0.01:
+                    if pos_pct < 85.0:
+                        long_score += 12
+                        ta_reasons.append(f"📐 Mikro LR Kanalı Yukarı (+%{slope_pct:.2f}, Pos:%{pos_pct:.0f})")
+                    else:
+                        # Aşırı tavan - hacim patlaması yoksa tepe alımını frenle
+                        if vol_ratio < 1.6:
+                            long_score -= 10
+                            ta_reasons.append(f"⚠️ LR Üst Band Aşırı Alım (Pos:%{pos_pct:.0f})")
+                elif slope_pct < -0.01:
+                    if pos_pct > 15.0:
+                        short_score += 12
+                        ta_reasons.append(f"📐 Mikro LR Kanalı Aşağı (%{slope_pct:.2f}, Pos:%{pos_pct:.0f})")
+                    else:
+                        # Aşırı taban - hacim patlaması yoksa dip satışını frenle
+                        if vol_ratio < 1.6:
+                            short_score -= 10
+                            ta_reasons.append(f"⚠️ LR Alt Band Aşırı Satım (Pos:%{pos_pct:.0f})")
+
+        # Kural 6: Camarilla Intraday Seviye Teyidi
+        camarilla = None
+        if len(candles_1m) >= 10:
+            camarilla = calculate_camarilla_pivots(candles_1m)
+            if camarilla:
+                if c_close >= camarilla["r4"]:
+                    long_score += 10
+                    ta_reasons.append(f"⚡ Camarilla R4 Mikro Patlama ({camarilla['r4']:.4f})")
+                elif c_close <= camarilla["s4"]:
+                    short_score += 10
+                    ta_reasons.append(f"⚡ Camarilla S4 Mikro Kırılım ({camarilla['s4']:.4f})")
+                elif current_price >= camarilla["s3"] and c_close > c_open:
+                    long_score += 8
+                    ta_reasons.append(f"🛡️ Camarilla S3 Desteğinden Dönüş")
+                elif current_price <= camarilla["r3"] and c_close < c_open:
+                    short_score += 8
+                    ta_reasons.append(f"🛡️ Camarilla R3 Direncinden Red")
+
         # Karar ve Kurulum Üretimi
         direction = None
         confluence_score = 0
@@ -153,7 +198,9 @@ class SuperFastTechnicalAnalysisAgent:
             "risk_reward": round(tp_pct / sl_pct, 2),
             "confluence_score": confluence_score,
             "risk_grade": f"⚡⚡ SÜPER FAST ({confluence_score}/100)",
-            "ta_reasons": " | ".join(ta_reasons)
+            "ta_reasons": " | ".join(ta_reasons),
+            "lr_channel": lr_channel,
+            "camarilla": camarilla
         }
 
         return setup, f"Süper FAST {direction} Kurulumu Onaylandı (Skor: {confluence_score})"
