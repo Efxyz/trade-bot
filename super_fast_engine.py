@@ -22,8 +22,6 @@ from super_fast_config import (
     SUPER_FAST_DAILY_MAX_DRAWDOWN_USDT,
     SUPER_FAST_MAX_DAILY_TRADES,
     SUPER_FAST_MAX_DAILY_FEE_USDT,
-    SUPER_FAST_MAX_DAILY_TRADES,
-    SUPER_FAST_MAX_DAILY_FEE_USDT,
     SUPER_FAST_POST_LOSS_COOLDOWN_MINUTES,
     SUPER_FAST_BLOCK_DEAD_CHOP,
     SUPER_FAST_SIDE_GUARD_ENABLED,
@@ -37,7 +35,8 @@ from core.database import (
     get_super_fast_active_and_pending_signals,
     get_super_fast_performance_stats,
     add_super_fast_scanner_log_db,
-    check_super_fast_side_stoploss_guard
+    check_super_fast_side_stoploss_guard,
+    is_symbol_locked_by_other_bot
 )
 from agents.super_fast_ta_agent import SuperFastTechnicalAnalysisAgent
 from agents.super_fast_tracker_agent import SuperFastCounterfactualTrackerAgent
@@ -159,6 +158,12 @@ class SuperFastTradingBotOrchestrator:
                 if direction == "LONG" and long_count >= SUPER_FAST_MAX_POSITIONS_PER_DIRECTION:
                     continue
                 if direction == "SHORT" and short_count >= SUPER_FAST_MAX_POSITIONS_PER_DIRECTION:
+                    continue
+
+                # Multi-Bot Anti-Collision & Anti-Hedging Kalkanı (Standard veya FAST çakışması)
+                is_other_locked, lock_reason = is_symbol_locked_by_other_bot(symbol, "super_fast", direction)
+                if is_other_locked:
+                    add_super_fast_scanner_log_db(symbol, "BLOCKED", lock_reason)
                     continue
 
                 # Haber Kararlandırma Konseyi Veto Denetimi (Kara Kuğu / Hack Koruması)
