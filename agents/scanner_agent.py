@@ -22,6 +22,26 @@ _ROTATION_INDEX = 0
 # Son 1 saat içindeki kontrol sıklığı takibi
 _HOURLY_CHECK_TIMESTAMPS: Dict[str, List[float]] = {}
 
+def cleanup_stale_cooldowns(max_age_seconds: float = 3600.0):
+    """Bellek sızıntısı ve süresiz büyüme kalkanı: Eski soğuma ve saatlik kontrol geçmişlerini temizler."""
+    global _SCANNED_COOLDOWN, _HOURLY_CHECK_TIMESTAMPS
+    now = time.time()
+    # 1. Soğuma kayıtlarını temizle
+    stale_cooldown_keys = [k for k, v in _SCANNED_COOLDOWN.items() if (now - v) > max_age_seconds]
+    for k in stale_cooldown_keys:
+        del _SCANNED_COOLDOWN[k]
+
+    # 2. Saatlik kontrol zaman damgalarını buda
+    stale_hourly_keys = []
+    for k, timestamps in list(_HOURLY_CHECK_TIMESTAMPS.items()):
+        valid = [t for t in timestamps if (now - t) <= max_age_seconds]
+        if valid:
+            _HOURLY_CHECK_TIMESTAMPS[k] = valid
+        else:
+            stale_hourly_keys.append(k)
+    for k in stale_hourly_keys:
+        del _HOURLY_CHECK_TIMESTAMPS[k]
+
 def record_check_and_get_hourly_count(symbol: str) -> int:
     """Belirtilen coinin son 1 saat içindeki kontrol edilme sayısını günceller ve döner."""
     now = time.time()
@@ -92,6 +112,7 @@ class MarketScannerAgent:
         - Her döngüde 25 parite (10 Volatilite Lideri + 15 Rotasyon) taranır.
         """
         global _ROTATION_INDEX, _SCANNED_COOLDOWN
+        cleanup_stale_cooldowns()
         now = time.time()
         exclude_symbols = exclude_symbols or set()
 
