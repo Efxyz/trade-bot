@@ -42,12 +42,14 @@ from core.database import (
 from agents.super_fast_ta_agent import SuperFastTechnicalAnalysisAgent
 from agents.super_fast_tracker_agent import SuperFastCounterfactualTrackerAgent
 from agents.notifier_agent import NotifierAgent
+from agents.news_agent import NewsAgent
 
 class SuperFastTradingBotOrchestrator:
     def __init__(self):
         print("⚡⚡ [SÜPER FAST Motoru Başlatılıyor] Saniyelik HFT Scalping Çoklu-Ajan Sistemi ($1000 Bağımsız Kasa)...")
         self.client = BinanceFuturesClient()
         self.ta_agent = SuperFastTechnicalAnalysisAgent()
+        self.news_agent = NewsAgent()
         self.notifier = NotifierAgent()
         self.tracker = SuperFastCounterfactualTrackerAgent(self.client, notifier=self.notifier)
         self.cooldown_until: Dict[str, float] = {}
@@ -157,6 +159,12 @@ class SuperFastTradingBotOrchestrator:
                 if direction == "LONG" and long_count >= SUPER_FAST_MAX_POSITIONS_PER_DIRECTION:
                     continue
                 if direction == "SHORT" and short_count >= SUPER_FAST_MAX_POSITIONS_PER_DIRECTION:
+                    continue
+
+                # Haber Kararlandırma Konseyi Veto Denetimi (Kara Kuğu / Hack Koruması)
+                news_analysis = self.news_agent.analyze_catalyst(symbol, direction)
+                if news_analysis and news_analysis.get("is_vetoed"):
+                    add_super_fast_scanner_log_db(symbol, "BLOCKED", f"Haber Konseyi Veto: {news_analysis.get('verdict')}")
                     continue
 
                 # Seri Zarar Kalkanı Denetimi
