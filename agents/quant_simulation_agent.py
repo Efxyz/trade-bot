@@ -20,11 +20,11 @@ from typing import Dict, List, Optional
 
 
 class QuantSimulationAgent:
-    def __init__(self, default_simulations: int = 10000, horizon_steps: int = 48, win_threshold_pct: float = 70.0):
+    def __init__(self, default_simulations: int = 10000, horizon_steps: int = 48, win_threshold_pct: float = 48.0):
         """
         :param default_simulations: Koşturulacak stokastik fiyat yolu sayısı (Varsayılan: 10.000 yol)
         :param horizon_steps: 15 dakikalık periyot adımı (48 adım = 12 saatlik projeksiyon)
-        :param win_threshold_pct: Ortak oya sunulması ve onay için gereken asgari kazanma ihtimali (%70.0)
+        :param win_threshold_pct: Ortak oya sunulması ve onay için gereken asgari kazanma ihtimali (1:1.8 R:R için %48.0)
         """
         self.default_simulations = default_simulations
         self.horizon_steps = horizon_steps
@@ -259,10 +259,13 @@ class QuantSimulationAgent:
         empirical_approved = empirical_data.get("is_approved", True)
 
         # 4. Karar Kuralı (Ortak Oya Sunulma ve Onay Kriteri)
-        # Hem 10,000 Stokastik Monte Carlo yolu (win_prob >= %70)
-        # HEM DE paritenin gerçek geçmiş ampirik rezonansı onay vermelidir!
+        # 10,000 Stokastik Monte Carlo yolu (win_prob >= %48 ve expected_r > 0.05)
+        # Ampirik geçmiş testi sadece yeterli örneklemde (>=12) ve aşırı çöküşte (<%20) veto uygular.
         mc_approved = (win_prob >= self.win_threshold_pct) and (expected_r > 0.05)
-        is_approved = mc_approved and empirical_approved
+        if empirical_data.get("samples", 0) >= 12 and empirical_data.get("side_win_rate", 50.0) < 20.0:
+            is_approved = False
+        else:
+            is_approved = mc_approved
         vote = "APPROVED" if is_approved else "REJECTED"
 
         # Temsili Fan Grafiği Örneklemeleri (10., 50. medyan ve 90. persentil yolları)
