@@ -4,14 +4,63 @@ Tracks real performance if the trade had been taken, without risking real funds.
 """
 import sqlite3
 import json
+import threading
+import time
+import random
 from datetime import datetime
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any, Callable
 from config import DB_PATH
 
+_THREAD_LOCAL = threading.local()
+
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH, timeout=30.0)
+    """
+    Thread-safe bağlantı havuzu ve optimize edilmiş SQLite konfigürasyonu.
+    Her thread için connection'ı yeniden kullanır, PRAGMA busy_timeout=60000 ve WAL modunu zorlar.
+    """
+    conn = getattr(_THREAD_LOCAL, 'conn', None)
+    if conn is not None:
+        try:
+            conn.execute("SELECT 1;")
+            return conn
+        except (sqlite3.ProgrammingError, sqlite3.OperationalError):
+            try:
+                conn.close()
+            except Exception:
+                pass
+            conn = None
+            _THREAD_LOCAL.conn = None
+
+    conn = sqlite3.connect(DB_PATH, timeout=60.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA busy_timeout=60000;")
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA synchronous=NORMAL;")
+    except Exception:
+        pass
+    _THREAD_LOCAL.conn = conn
     return conn
+
+def execute_with_retry(func: Callable[[], Any], max_retries: int = 5, base_delay: float = 0.05) -> Any:
+    """
+    Veritabanı işlemlerini 'database is locked' / 'busy' hatalarına karşı
+    exponential backoff ve jitter ile otomatik olarak yeniden dener.
+    """
+    last_err = None
+    for attempt in range(max_retries):
+        try:
+            return func()
+        except sqlite3.OperationalError as e:
+            last_err = e
+            err_msg = str(e).lower()
+            if "locked" in err_msg or "busy" in err_msg:
+                sleep_sec = base_delay * (2 ** attempt) + random.uniform(0.01, 0.05)
+                time.sleep(sleep_sec)
+            else:
+                raise e
+    if last_err:
+        raise last_err
 
 def init_db():
     """Veritabanı tablolarını oluşturur, WAL modunu aktif eder ve eksik sütunları günceller."""
@@ -900,6 +949,58 @@ def get_and_update_today_peak_profit(current_pnl: float):
 
     is_locked = (peak >= 30.0 and current_pnl <= floor)
     return round(peak, 2), round(floor, 2), is_locked
+
+def is_symbol_locked_by_other_bot(symbol: str, current_bot: str, direction: Optional[str] = None) -> Tuple[bool, str]:
+    """
+    Multi-Bot Anti-Collision & Anti-Hedging Kalkanı (Kurumsal Çoklu-Motor Protokolü).
+    Diğer botların (Standard, FAST, SÜPER FAST) bu sembol üzerinde aktif pozisyonu olup olmadığını denetler:
+    1. Zıt Yönlü Kilit (Anti-Hedging): Bir bot LONG iken diğer bot SHORT açamaz (çift komisyon yakımı ve nötr delta önlenir).
+    2. Çift Maruziyet Kilidi (Anti-Collision): Başka bir motor aynı sembolde pozisyondaysa yeni işlem engellenir (aynı varlığa yığılma riski önlenir).
+    Returns: (is_locked: bool, reason: str)
+    """
+    bot_tables = {
+        "standard": "signals",
+        "main": "signals",
+        "fast": "fast_signals",
+        "super_fast": "super_fast_signals",
+        "superfast": "super_fast_signals"
+    }
+
+    current_bot_key = current_bot.lower()
+    active_statuses = "('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER')"
+    bots_to_check = [
+        ("Standard Bot (15m)", "signals"),
+        ("FAST Bot (1m)", "fast_signals"),
+        ("SÜPER FAST Bot (1s)", "super_fast_signals")
+    ]
+
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            for b_name, tbl in bots_to_check:
+                # Kendi tablosunu atla
+                if bot_tables.get(current_bot_key) == tbl:
+                    continue
+
+                cursor.execute(f"""
+                    SELECT id, symbol, direction, status, created_at 
+                    FROM {tbl} 
+                    WHERE symbol = ? AND status IN {active_statuses}
+                    LIMIT 1
+                """, (symbol,))
+                row = cursor.fetchone()
+                if row:
+                    other_dir = row["direction"]
+                    # 1. Zıt yönlü pozisyon: Kesinlikle engelle
+                    if direction and direction.upper() != other_dir.upper():
+                        return True, f"Anti-Hedging Kilidi: {symbol} üzerinde {b_name} zıt yönlü ({other_dir}) işlemde! Çapraz komisyon yakımı engellendi."
+                    # 2. Aynı varlıkta çakışma: Başka bir bot zaten devrede
+                    return True, f"Anti-Collision Kilidi: {symbol} üzerinde {b_name} zaten açık bir ({other_dir}) pozisyona sahip! Çift risk engellendi."
+    except Exception as e:
+        print(f"⚠️ [is_symbol_locked_by_other_bot Hata]: {e}")
+        return False, ""
+
+    return False, ""
 
 def get_active_and_pending_signals() -> List[Dict]:
     """Halen takip edilmesi gereken aktif veya giriş bekleyen sinyalleri getirir."""
