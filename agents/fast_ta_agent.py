@@ -14,7 +14,8 @@ from fast_config import (
     FAST_TARGET_PROFIT_PCT,
     FAST_STOP_LOSS_PCT,
     FAST_MIN_CONFLUENCE_SCORE,
-    FAST_MIN_RR_RATIO
+    FAST_MIN_RR_RATIO,
+    BINANCE_ROUNDTRIP_FEE_PCT
 )
 from core.advanced_indicators import (
     calculate_linear_regression_channel,
@@ -254,6 +255,11 @@ class FastTechnicalAnalysisAgent:
         atr_pct = (atr / current_price) * 100.0 if current_price > 0 else 0.40
         sl_pct = max(0.30, min(atr_pct * 1.2, FAST_STOP_LOSS_PCT))
         tp_pct = max(sl_pct * FAST_MIN_RR_RATIO, FAST_TARGET_PROFIT_PCT)
+
+        # Kurumsal Komisyon Kalkanı: Beklenen kâr oranı, iki yönlü taker komisyonunun en az 3 katı olmalıdır (Net kâr garantisi)
+        min_fee_hurdle = BINANCE_ROUNDTRIP_FEE_PCT * 3.0  # %0.30
+        if tp_pct < min_fee_hurdle:
+            return None, f"Komisyon Kalkanı: Beklenen hedef (+%{tp_pct:.2f}) komisyon maliyet eşiğinin (+%{min_fee_hurdle:.2f}) altında."
 
         if direction == "LONG":
             stop_loss = round(current_price * (1.0 - sl_pct / 100.0), 6)
