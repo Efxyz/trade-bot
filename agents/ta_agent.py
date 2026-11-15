@@ -338,12 +338,12 @@ class TechnicalAnalysisAgent:
         prior_vols = [c["volume"] for c in candles[-12:-2]]
         avg_vol = sum(prior_vols) / len(prior_vols) if prior_vols else 1.0
 
-        # Kriter 1: Son tamamlanan mum sağlıklı hacimli mi kapattı? (Kalibre edildi: %85+)
+        # Kriter 1: Son tamamlanan mum sağlıklı hacimli mi kapattı? (Dengeli Eşik: %55+)
         prev_vol = candles[-2]["volume"]
-        if prev_vol >= (avg_vol * 0.85):
+        if prev_vol >= (avg_vol * 0.55):
             return True
 
-        # Kriter 2: Canlı mumun dakikalık projeksiyonu hacimli mi? (Kalibre edildi: %95+)
+        # Kriter 2: Canlı mumun dakikalık projeksiyonu hacimli mi? (Dengeli Eşik: %70+)
         curr_c = candles[-1]
         curr_vol = curr_c["volume"]
         now_ms = time.time() * 1000
@@ -351,11 +351,11 @@ class TechnicalAnalysisAgent:
         elapsed_sec = max(30.0, min(900.0, (now_ms - candle_open_ms) / 1000.0))
         projected_vol = curr_vol * (900.0 / elapsed_sec)
 
-        if projected_vol >= (avg_vol * 0.95):
+        if projected_vol >= (avg_vol * 0.70):
             return True
 
-        # Kriter 3: Canlı mum henüz kapanmadan tek başına ortalamanın %50'sine ulaştıysa
-        if curr_vol >= (avg_vol * 0.50):
+        # Kriter 3: Canlı mum henüz kapanmadan tek başına ortalamanın %35'ine ulaştıysa
+        if curr_vol >= (avg_vol * 0.35):
             return True
 
         return False
