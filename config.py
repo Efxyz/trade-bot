@@ -89,7 +89,7 @@ MAX_HOLD_MINUTES = 90           # Hareketsiz pozisyonlara 90 dakika (6 mum) nefe
 EARLY_INVALIDATION_ENABLED = True      # Toparlanamayan negatif pozisyonları -$20 beklemeden erken kes
 EARLY_INVALIDATION_MINUTES = 20        # Hızlı kontrol süresi (dakika) - 20 dk (15m mum kapanışı + 5m teyit)
 EARLY_INVALIDATION_LOSS_PCT = 0.35     # Fiyat %-0.35 altındaysa erken çıkış tetiklenir (Kaybı -$5-$7'de keser)
-MAX_VWAP_DISTANCE_PCT = 1.30           # 15m VWAP'tan %1.30'dan fazla uzaktaki fiyatlarda aşırı uzama filtresi (Mean-Reversion Kalkanı)
+MAX_VWAP_DISTANCE_PCT = 3.20           # 15m VWAP'tan %3.20'den fazla uzaktaki fiyatlarda aşırı uzama filtresi (Mean-Reversion Kalkanı)
 SMC_PREMIUM_DISCOUNT_FILTER = True     # SMC Premium/Discount Kalkanı (Dipten Short / Tepeden Long Engeli)
 
 # Freqtrade Side-Specific Stoploss Guard (Yön Bazlı Seri Zarar Kalkanı)
@@ -108,8 +108,8 @@ DAILY_MAX_DRAWDOWN_USDT = 50.0         # Günlük Acil Durum Sigortası (Circuit
 DAILY_TRAILING_PROFIT_LOCK_ENABLED = True # Günlük Zirve Kâr Kilidi (Kazanılan kârı asla geri vermeme kalkanı)
 
 # SMC & Confluence Kalite Eşiği (Dengeli Kurumsal SMC Kalibrasyonu - 15 Kasım Canlı Saha Ayarı)
-MIN_CONFLUENCE_SCORE = 65            # 65+ Grade A fırsatlar için optimize edildi (Eski: 68/72/82)
-MIN_CONFLUENCE_SCORE_SHORT = 68      # Short Kalite Eşiği: 68+ (Eski: 70/74/84)
+MIN_CONFLUENCE_SCORE = 60            # 60+ Grade A fırsatlar için optimize edildi (Eski: 65/68/72/82)
+MIN_CONFLUENCE_SCORE_SHORT = 64      # Short Kalite Eşiği: 64+ (Eski: 68/70/74/84)
 
 # Likidite ve Slippage / Spread Koruması (Jesse & Hummingbot Standartları)
 MAX_ORDERBOOK_SPREAD_PCT = 0.12     # En iyi alış/satış makası %0.12'den genişse likidite tuzağı kabul edilir
