@@ -15,7 +15,8 @@ import numpy as np
 from super_fast_config import (
     SUPER_FAST_TARGET_PROFIT_PCT,
     SUPER_FAST_STOP_LOSS_PCT,
-    SUPER_FAST_LEVERAGE
+    SUPER_FAST_LEVERAGE,
+    BINANCE_ROUNDTRIP_FEE_PCT
 )
 from core.advanced_indicators import calculate_linear_regression_channel, calculate_camarilla_pivots
 
@@ -176,6 +177,11 @@ class SuperFastTechnicalAnalysisAgent:
         # Dar & Hızlı TP / SL Hesaplama
         tp_pct = SUPER_FAST_TARGET_PROFIT_PCT
         sl_pct = SUPER_FAST_STOP_LOSS_PCT
+
+        # Kurumsal Komisyon Kalkanı: Beklenen kâr oranı, iki yönlü taker komisyonunun en az 3 katı olmalıdır (Net kâr garantisi)
+        min_fee_hurdle = BINANCE_ROUNDTRIP_FEE_PCT * 3.0  # %0.30
+        if tp_pct < min_fee_hurdle:
+            return None, f"Komisyon Kalkanı: Saniyelik hedef (+%{tp_pct:.2f}) komisyon maliyet eşiğinin (+%{min_fee_hurdle:.2f}) altında."
 
         if direction == "LONG":
             tp_price = round(current_price * (1.0 + tp_pct / 100.0), 6)
