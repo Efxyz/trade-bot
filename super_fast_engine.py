@@ -42,6 +42,7 @@ from agents.super_fast_ta_agent import SuperFastTechnicalAnalysisAgent
 from agents.super_fast_tracker_agent import SuperFastCounterfactualTrackerAgent
 from agents.notifier_agent import NotifierAgent
 from agents.news_agent import NewsAgent
+from agents.pairs_stat_arb_agent import StatisticalArbitrageAgent
 
 class SuperFastTradingBotOrchestrator:
     def __init__(self):
@@ -50,6 +51,7 @@ class SuperFastTradingBotOrchestrator:
         self.ta_agent = SuperFastTechnicalAnalysisAgent()
         self.news_agent = NewsAgent()
         self.notifier = NotifierAgent()
+        self.stat_arb = StatisticalArbitrageAgent()
         self.tracker = SuperFastCounterfactualTrackerAgent(self.client, notifier=self.notifier)
         self.cooldown_until: Dict[str, float] = {}
         self.last_reported_hour: Optional[str] = None
@@ -109,6 +111,82 @@ class SuperFastTradingBotOrchestrator:
         long_count = sum(1 for p in active_positions if p["direction"] == "LONG")
         short_count = sum(1 for p in active_positions if p["direction"] == "SHORT")
         slots_left = SUPER_FAST_MAX_CONCURRENT_TRADES - active_count
+
+        # 2.6. STATISTICAL ARBITRAGE & PAIRS TRADING (Market-Neutral Çiftler)
+        if slots_left >= 2:
+            try:
+                pair_opps = self.stat_arb.evaluate_all_pairs(self.client)
+                for opp in pair_opps:
+                    sym_a = opp["sym_a"]
+                    sym_b = opp["sym_b"]
+                    if sym_a in active_symbols or sym_b in active_symbols:
+                        continue
+                    if slots_left < 2:
+                        break
+
+                    locked_a, _ = is_symbol_locked_by_other_bot(sym_a, "super_fast", opp["leg_a_direction"])
+                    locked_b, _ = is_symbol_locked_by_other_bot(sym_b, "super_fast", opp["leg_b_direction"])
+                    if locked_a or locked_b:
+                        continue
+
+                    p_a = opp["price_a"]
+                    p_b = opp["price_b"]
+                    sl_pct = 0.80
+                    tp_pct = 0.65
+
+                    sl_a = round(p_a * (1.0 - sl_pct/100.0 if opp["leg_a_direction"] == "LONG" else 1.0 + sl_pct/100.0), 6)
+                    tp_a = round(p_a * (1.0 + tp_pct/100.0 if opp["leg_a_direction"] == "LONG" else 1.0 - tp_pct/100.0), 6)
+                    sig_a = {
+                        "symbol": sym_a,
+                        "direction": opp["leg_a_direction"],
+                        "leverage": SUPER_FAST_LEVERAGE,
+                        "entry_min": p_a, "entry_max": p_a,
+                        "actual_entry_price": p_a,
+                        "stop_loss": sl_a, "take_profit_1": tp_a, "take_profit_2": tp_a,
+                        "risk_reward": 1.4,
+                        "risk_grade": "🎯 Stat-Arb Leg A",
+                        "news_summary": f"🎯 Stat-Arb Çift ({opp['pair_name']}) Z:{opp['z_score']}",
+                        "ta_reasons": opp["reason"],
+                        "allocated_margin_usdt": SUPER_FAST_ALLOCATED_MARGIN_PER_TRADE,
+                        "risk_usd": SUPER_FAST_RISK_PER_TRADE_USDT,
+                        "is_pair_trade": 1,
+                        "pair_symbol": sym_b,
+                        "super_fast_meta": {"type": "stat_arb", "pair": opp["pair_name"], "leg": "A", "z_score": opp["z_score"]}
+                    }
+                    save_super_fast_signal(sig_a)
+                    active_symbols.add(sym_a)
+
+                    sl_b = round(p_b * (1.0 - sl_pct/100.0 if opp["leg_b_direction"] == "LONG" else 1.0 + sl_pct/100.0), 6)
+                    tp_b = round(p_b * (1.0 + tp_pct/100.0 if opp["leg_b_direction"] == "LONG" else 1.0 - tp_pct/100.0), 6)
+                    sig_b = {
+                        "symbol": sym_b,
+                        "direction": opp["leg_b_direction"],
+                        "leverage": SUPER_FAST_LEVERAGE,
+                        "entry_min": p_b, "entry_max": p_b,
+                        "actual_entry_price": p_b,
+                        "stop_loss": sl_b, "take_profit_1": tp_b, "take_profit_2": tp_b,
+                        "risk_reward": 1.4,
+                        "risk_grade": "🎯 Stat-Arb Leg B",
+                        "news_summary": f"🎯 Stat-Arb Çift ({opp['pair_name']}) Z:{opp['z_score']}",
+                        "ta_reasons": opp["reason"],
+                        "allocated_margin_usdt": SUPER_FAST_ALLOCATED_MARGIN_PER_TRADE,
+                        "risk_usd": SUPER_FAST_RISK_PER_TRADE_USDT,
+                        "is_pair_trade": 1,
+                        "pair_symbol": sym_a,
+                        "super_fast_meta": {"type": "stat_arb", "pair": opp["pair_name"], "leg": "B", "z_score": opp["z_score"]}
+                    }
+                    save_super_fast_signal(sig_b)
+                    active_symbols.add(sym_b)
+                    slots_left -= 2
+
+                    add_super_fast_scanner_log_db(
+                        "STAT_ARB",
+                        "APPROVED",
+                        f"🎯 {opp['pair_name']} Piyasa-Nötr Stat-Arb Çift Açıldı! (Z: {opp['z_score']})",
+                        f"Leg A ({sym_a}): {opp['leg_a_direction']} | Leg B ({sym_b}): {opp['leg_b_direction']}"
+                    )
+            except Exception:
+                pass
 
         for symbol in SUPER_FAST_COINS_UNIVERSE:
             if slots_left <= 0:
