@@ -334,7 +334,7 @@ class NewsAgent:
         elif bullish_catalyst_detected:
             summary_title = f"🚀 {bullish_reasons[0]}"
 
-        return {
+        res = {
             "symbol": symbol,
             "coin_name": full_name,
             "direction": direction,
@@ -350,6 +350,15 @@ class NewsAgent:
             "council_debate": council_debate,
             "summary": f"🏛️ Haber Konseyi ({news_score}/100): {verdict} | {summary_title[:75]}"
         }
+
+        # Veritabanına ve Sağ Alt Haber Sekmesine otomatik kaydet
+        try:
+            from core.database import save_coin_news_investigation_db
+            save_coin_news_investigation_db(res)
+        except Exception as e:
+            logger.debug(f"Haber konseyi DB kayıt hatası: {e}")
+
+        return res
 
     # Geriye dönük uyumluluk için alias
     def analyze_catalyst(self, symbol: str, direction: str, funding_data: Optional[Dict] = None) -> Dict:
