@@ -14,7 +14,8 @@ import webbrowser
 import threading
 from datetime import datetime
 from pathlib import Path
-from flask import Flask, jsonify, render_template_string, send_from_directory
+from flask import Flask, jsonify, render_template_string, send_from_directory, request
+import functools
 
 from config import (
     CHARTS_DIR,
@@ -35,6 +36,23 @@ from agents.news_agent import get_live_news_feed, NewsAgent
 app = Flask(__name__)
 client = BinanceFuturesClient()
 news_agent = NewsAgent()
+
+ADMIN_PIN = os.getenv("ADMIN_PIN", "1923")
+
+def require_admin_pin(func):
+    """
+    Kritik yönetim ve silme endpointlerini yetkisiz web tarayıcıları ve botlardan korur.
+    """
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        pin = request.headers.get("X-Admin-Pin") or request.args.get("pin") or (request.get_json(silent=True) or {}).get("pin")
+        if not pin or str(pin).strip() != str(ADMIN_PIN).strip():
+            return jsonify({
+                "status": "error",
+                "message": "🔒 Yetkisiz Erişim: Bu kritik işlemi gerçekleştirmek için geçerli Yönetici Güvenlik PIN kodu gereklidir!"
+            }), 401
+        return func(*args, **kwargs)
+    return wrapper
 
 _orchestrator = None
 
@@ -2466,6 +2484,15 @@ HTML_OFFICE_TEMPLATE = """
             if (btn) btn.innerText = '⚡ Tara';
         }
 
+        async function getAdminPin() {
+            let pin = sessionStorage.getItem('admin_pin');
+            if (!pin) {
+                pin = prompt("🛡️ Yönetici Güvenlik PIN Kodunu Giriniz (Varsayılan: 1923):");
+                if (pin) sessionStorage.setItem('admin_pin', pin.trim());
+            }
+            return pin;
+        }
+
         async function closeAllPositions() {
             let botName = 'Standart';
             let url = '/api/close-all-positions';
@@ -2478,11 +2505,21 @@ HTML_OFFICE_TEMPLATE = """
             }
             const msg = `Tüm ${botName} açık pozisyonlarını anlık piyasa fiyatından kapatmak istediğinize emin misiniz?`;
             if (!confirm(msg)) return;
+            const pin = await getAdminPin();
+            if (!pin) return;
             const btn = document.querySelector('.btn-panic');
             if (btn) btn.innerText = '⏳ Kapatılıyor...';
             try {
-                await fetch(url, { method: 'POST' });
-                await fetchTerminal();
+                const res = await fetch(url, { 
+                    method: 'POST',
+                    headers: { 'X-Admin-Pin': pin }
+                });
+                if (res.status === 401) {
+                    sessionStorage.removeItem('admin_pin');
+                    alert('🔒 Hata: Geçersiz Yönetici Güvenlik PIN Kodu!');
+                } else {
+                    await fetchTerminal();
+                }
             } catch(e) {}
             if (btn) btn.innerText = '🚫 Tümünü Kapat';
         }
@@ -2499,29 +2536,49 @@ HTML_OFFICE_TEMPLATE = """
             }
             const msg = `${botName} işlem defterini temizlemek istediğinize emin misiniz? (Aktif işlemler korunur)`;
             if (!confirm(msg)) return;
+            const pin = await getAdminPin();
+            if (!pin) return;
             const btn = document.querySelector('.btn-clear');
             if (btn) btn.innerText = '⏳...';
             try {
-                await fetch(url, { method: 'POST' });
-                prevHistHtml = '';
-                const historyBody = document.getElementById('historyBody');
-                if (historyBody) historyBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 20px;">${botName} kapanan işlem kaydı yok.</td></tr>`;
-                const histCountEl = document.getElementById('historyCount');
-                if (histCountEl) histCountEl.innerText = '0 İşlem';
-                await fetchTerminal();
+                const res = await fetch(url, { 
+                    method: 'POST',
+                    headers: { 'X-Admin-Pin': pin }
+                });
+                if (res.status === 401) {
+                    sessionStorage.removeItem('admin_pin');
+                    alert('🔒 Hata: Geçersiz Yönetici Güvenlik PIN Kodu!');
+                } else {
+                    prevHistHtml = '';
+                    const historyBody = document.getElementById('historyBody');
+                    if (historyBody) historyBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 20px;">${botName} kapanan işlem kaydı yok.</td></tr>`;
+                    const histCountEl = document.getElementById('historyCount');
+                    if (histCountEl) histCountEl.innerText = '0 İşlem';
+                    await fetchTerminal();
+                }
             } catch(e) {}
             if (btn) btn.innerText = '🗑️ Geçmişi Temizle';
         }
 
         async function runCalibrationNow() {
+            const pin = await getAdminPin();
+            if (!pin) return;
             const btn = document.querySelector('.btn-clear[onclick*="runCalibrationNow"]') || event?.target;
             if (btn) btn.innerText = '⏳ Analiz Ediliyor...';
             try {
-                const res = await fetch('/api/tuning/calibrate', { method: 'POST' });
-                const json = await res.json();
-                const sumMsg = json.summary || 'Parametreler optimize edildi.';
-                alert('🧬 Otonom Kalibrasyon Tamamlandı: ' + sumMsg);
-                await fetchTerminal();
+                const res = await fetch('/api/tuning/calibrate', { 
+                    method: 'POST',
+                    headers: { 'X-Admin-Pin': pin }
+                });
+                if (res.status === 401) {
+                    sessionStorage.removeItem('admin_pin');
+                    alert('🔒 Hata: Geçersiz Yönetici Güvenlik PIN Kodu!');
+                } else {
+                    const json = await res.json();
+                    const sumMsg = json.summary || 'Parametreler optimize edildi.';
+                    alert('🧬 Otonom Kalibrasyon Tamamlandı: ' + sumMsg);
+                    await fetchTerminal();
+                }
             } catch(e) {
                 alert('Kalibrasyon hatası: ' + e);
             }
@@ -5654,6 +5711,7 @@ def api_tuning():
     return jsonify(SelfTuningEngine.run_calibration_cycle(min_trades_required=5))
 
 @app.route("/api/tuning/calibrate", methods=["POST"])
+@require_admin_pin
 def api_tuning_calibrate():
     global _terminal_cache
     from core.self_tuning_engine import SelfTuningEngine
@@ -5675,6 +5733,7 @@ def api_scan():
         return jsonify({"status": "Scan triggered"})
 
 @app.route("/api/close-all-positions", methods=["POST"])
+@require_admin_pin
 def api_close_all_positions():
     from core.database import close_all_active_signals_db, get_performance_stats, get_all_signals
     count = close_all_active_signals_db(client=client)
@@ -5687,6 +5746,7 @@ def api_close_all_positions():
     return jsonify({"status": "closed", "count": count})
 
 @app.route("/api/clear-history", methods=["POST"])
+@require_admin_pin
 def api_clear_history():
     from core.database import clear_closed_trades_db, get_performance_stats
     clear_closed_trades_db()
@@ -5729,6 +5789,7 @@ def api_fast_scan():
     return jsonify({"status": "FAST 1m scan started in background"})
 
 @app.route("/api/fast/close-all-positions", methods=["POST"])
+@require_admin_pin
 def api_fast_close_all_positions():
     from core.database import close_all_fast_positions_db, get_fast_performance_stats, get_fast_all_signals
     count = close_all_fast_positions_db(client=client)
@@ -5741,6 +5802,7 @@ def api_fast_close_all_positions():
     return jsonify({"status": "closed", "count": count})
 
 @app.route("/api/fast/clear-history", methods=["POST"])
+@require_admin_pin
 def api_fast_clear_history():
     from core.database import clear_fast_closed_trades_db, get_fast_performance_stats
     clear_fast_closed_trades_db()
@@ -5783,6 +5845,7 @@ def api_super_fast_scan():
     return jsonify({"status": "Super FAST scan started in background"})
 
 @app.route("/api/superfast/close-all-positions", methods=["POST"])
+@require_admin_pin
 def api_super_fast_close_all_positions():
     from core.database import close_all_super_fast_positions_db, get_super_fast_performance_stats, get_super_fast_all_signals
     count = close_all_super_fast_positions_db(client=client)
@@ -5795,6 +5858,7 @@ def api_super_fast_close_all_positions():
     return jsonify({"status": "closed", "count": count})
 
 @app.route("/api/superfast/clear-history", methods=["POST"])
+@require_admin_pin
 def api_super_fast_clear_history():
     from core.database import clear_super_fast_closed_trades_db, get_super_fast_performance_stats
     clear_super_fast_closed_trades_db()
