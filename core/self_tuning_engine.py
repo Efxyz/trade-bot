@@ -41,7 +41,7 @@ SAFETY_GUARDRAILS = {
     "MAX_DAILY_DRAWDOWN_PCT": 6.0,       # Günlük %6 kayıpta sistem otomatik kilitlenir
     "MIN_SL_FLOOR_PCT": 0.80,            # Stop mesafesi gürültüye ezilmemek için %0.80'den dar olamaz
     "MAX_SL_CEILING_PCT": 1.60,          # Stop mesafesi %1.60'tan geniş olamaz
-    "MIN_CONFLUENCE_FLOOR": 62,          # Confluence tabanı felç olmamak için 62'den düşük olamaz
+    "MIN_CONFLUENCE_FLOOR": 58,          # Confluence tabanı felç olmamak için 58'den düşük olamaz
     "MAX_CONFLUENCE_CEILING": 68,        # Confluence tavanı felç olmamak için 68'den yüksek olamaz
     "MAX_BTC_CHOP_CEILING": 0.85         # BTC Chop tavanı kilitlenmeyi önlemek için %0.85'ten yüksek olamaz
 }
