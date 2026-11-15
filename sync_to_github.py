@@ -29,6 +29,16 @@ def get_token():
     return token
 
 def sync_file_to_github(rel_path: str, commit_msg: str = None) -> bool:
+    norm_path = rel_path.replace("\\", "/").strip("/")
+    
+    # 🛑 GÜVENLİK KALKANI: Hassas ve gizli dosyaların GitHub'a sızmasını engelle
+    blocked_patterns = [".env", ".db", ".key", ".pem", "id_rsa", "secret"]
+    for pat in blocked_patterns:
+        if norm_path == pat or norm_path.endswith(f".{pat}") or norm_path.endswith(pat):
+            if not norm_path.endswith(".example") and not norm_path.endswith(".md"):
+                print(f"🛑 GÜVENLİK ENGELİ: '{norm_path}' dosyası hassas veri/gizli anahtar içerdiğinden GitHub'a ASLA yüklenemez!")
+                return False
+
     token = get_token()
     if not token:
         print("❌ HATA: GITHUB_TOKEN bulunamadı! .env içine GITHUB_TOKEN=ghp_... ekleyin.")
