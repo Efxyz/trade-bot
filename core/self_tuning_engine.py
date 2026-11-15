@@ -41,8 +41,8 @@ SAFETY_GUARDRAILS = {
     "MAX_DAILY_DRAWDOWN_PCT": 6.0,       # Günlük %6 kayıpta sistem otomatik kilitlenir
     "MIN_SL_FLOOR_PCT": 0.80,            # Stop mesafesi gürültüye ezilmemek için %0.80'den dar olamaz
     "MAX_SL_CEILING_PCT": 1.60,          # Stop mesafesi %1.60'tan geniş olamaz
-    "MIN_CONFLUENCE_FLOOR": 65,          # Confluence tabanı felç olmamak için 65'ten düşük olamaz
-    "MAX_CONFLUENCE_CEILING": 74,        # Confluence tavanı felç olmamak için 74'ten yüksek olamaz
+    "MIN_CONFLUENCE_FLOOR": 62,          # Confluence tabanı felç olmamak için 62'den düşük olamaz
+    "MAX_CONFLUENCE_CEILING": 68,        # Confluence tavanı felç olmamak için 68'den yüksek olamaz
     "MAX_BTC_CHOP_CEILING": 0.85         # BTC Chop tavanı kilitlenmeyi önlemek için %0.85'ten yüksek olamaz
 }
 
@@ -73,8 +73,8 @@ class SelfTuningEngine:
                 pass
 
         # 🛡️ Eski sunucu kalıntılarını temizleme ve Güvenlik Tavanı Koruması
-        if defaults.get("min_confluence_score", 68) > 74:
-            defaults["min_confluence_score"] = 68
+        if defaults.get("min_confluence_score", 65) > 68:
+            defaults["min_confluence_score"] = 65
         if defaults.get("btc_chop_min_range_4h_pct", 0.70) > 0.85:
             defaults["btc_chop_min_range_4h_pct"] = 0.70
 
@@ -138,17 +138,17 @@ class SelfTuningEngine:
         tuned = dict(current)
         changes = []
 
-        # A) Confluence Barajı Kalibrasyonu (Dengeli Kurumsal Taban: 65 - 74)
+        # A) Confluence Barajı Kalibrasyonu (Dengeli Kurumsal Taban: 62 - 68)
         if win_rate < 52.0 or expectancy < 0.0:
             # Kazanma oranı zayıfsa barajı yükselt (Sadece kusursuz sinyaller)
-            new_score = min(SAFETY_GUARDRAILS.get("MAX_CONFLUENCE_CEILING", 74), current.get("min_confluence_score", 68) + 2)
+            new_score = min(SAFETY_GUARDRAILS.get("MAX_CONFLUENCE_CEILING", 68), current.get("min_confluence_score", 65) + 2)
             if new_score != current.get("min_confluence_score"):
                 tuned["min_confluence_score"] = new_score
                 changes.append(f"Zayıf win-rate (%{win_rate:.1f}) nedeniyle SMC kalite barajı {new_score}/100 seviyesine yükseltildi.")
         elif win_rate >= 60.0 and expectancy >= 0.50:
-            # Yüksek başarı ve pozitif beklentide fırsat akışını aç (66-70 arası ideal)
-            curr_score = current.get("min_confluence_score", 68)
-            new_score = max(SAFETY_GUARDRAILS.get("MIN_CONFLUENCE_FLOOR", 65), curr_score - 1 if curr_score <= 72 else 68)
+            # Yüksek başarı ve pozitif beklentide fırsat akışını aç (62-66 arası ideal)
+            curr_score = current.get("min_confluence_score", 65)
+            new_score = max(SAFETY_GUARDRAILS.get("MIN_CONFLUENCE_FLOOR", 62), curr_score - 1 if curr_score <= 68 else 65)
             if new_score != curr_score:
                 tuned["min_confluence_score"] = new_score
                 changes.append(f"Yüksek win-rate (%{win_rate:.1f}) ve pozitif beklenti (E: {expectancy:.2f}): SMC barajı {new_score}/100 seviyesine optimize edildi.")
