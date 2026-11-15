@@ -16,6 +16,11 @@ from fast_config import (
     FAST_MIN_CONFLUENCE_SCORE,
     FAST_MIN_RR_RATIO
 )
+from core.advanced_indicators import (
+    calculate_linear_regression_channel,
+    calculate_volume_profile,
+    detect_swing_failure_pattern
+)
 
 class FastTechnicalAnalysisAgent:
     @staticmethod
@@ -184,6 +189,53 @@ class FastTechnicalAnalysisAgent:
         elif macro_bias == "BEARISH":
             short_score += 10
             reasons.append("5m Makro Ayı Desteği")
+
+        # Kural F: 1m Linear Regression Trend Kanalı (15 Puan)
+        lr_1m = calculate_linear_regression_channel(candles_1m, period=30, num_std=2.0)
+        if lr_1m["is_support_test"]:
+            long_score += 15
+            reasons.append(f"1m Kanal Tabanı Desteği (%{lr_1m['position_pct']})")
+        elif lr_1m["is_upper_breakout"]:
+            long_score += 15
+            reasons.append("1m Kanal Üstü Hızlı Kırılım")
+        elif lr_1m["trend"] == "BULLISH_CHANNEL":
+            long_score += 8
+            reasons.append("1m Yükselen Trend Kanalı")
+
+        if lr_1m["is_resistance_test"]:
+            short_score += 15
+            reasons.append(f"1m Kanal Tavanı Direnci (%{lr_1m['position_pct']})")
+        elif lr_1m["is_lower_breakdown"]:
+            short_score += 15
+            reasons.append("1m Kanal Altı Hızlı Çöküş")
+        elif lr_1m["trend"] == "BEARISH_CHANNEL":
+            short_score += 8
+            reasons.append("1m Düşen Trend Kanalı")
+
+        # Kural G: 1m Volume Profile POC & Value Area (10 Puan)
+        vp_1m = calculate_volume_profile(candles_1m, lookback=30, bins=20)
+        if vp_1m.get("is_above_poc") and current_price >= vp_1m.get("poc", 0):
+            long_score += 10
+            reasons.append(f"1m POC Üzeri Tutunma (${vp_1m.get('poc', 0)})")
+        elif vp_1m.get("is_val_support"):
+            long_score += 8
+            reasons.append("1m VAL Bölgesi Desteği")
+
+        if not vp_1m.get("is_above_poc") and current_price <= vp_1m.get("poc", 0):
+            short_score += 10
+            reasons.append(f"1m POC Altı Baskı (${vp_1m.get('poc', 0)})")
+        elif vp_1m.get("interaction") == "BELOW_VAL_BREAKDOWN":
+            short_score += 8
+            reasons.append("1m VAL Bölgesi Altı Kırılım")
+
+        # Kural H: 1m SFP (Swing Failure Pattern) Likidite Süpürme Teyidi (15 Puan)
+        sfp_1m = detect_swing_failure_pattern(candles_1m, lookback=20, swing_window=2)
+        if sfp_1m.get("bullish_sfp"):
+            long_score += 15
+            reasons.append(f"🔥 1m SFP Dip Likidite Süpürme (${sfp_1m.get('sweep_level')})")
+        if sfp_1m.get("bearish_sfp"):
+            short_score += 15
+            reasons.append(f"🔥 1m SFP Tepe Likidite Süpürme (${sfp_1m.get('sweep_level')})")
 
         # 6. Yön Kararı
         direction = None
