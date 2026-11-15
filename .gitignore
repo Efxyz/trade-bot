@@ -14,6 +14,13 @@ ENV/
 *.env
 !.env.example
 
+# Databases & local data
+*.db
+*.sqlite
+*.sqlite3
+data/*.db
+data/charts/*.png
+
 # Local tools & downloads
 data/tools/
 data/simulations/
