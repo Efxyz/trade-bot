@@ -19,7 +19,13 @@ from config import (
     MAX_CONCURRENT_TRADES
 )
 from core.binance_client import BinanceFuturesClient
-from core.database import init_db, save_signal, get_performance_stats, get_active_positions_count
+from core.database import (
+    init_db,
+    save_signal,
+    get_performance_stats,
+    get_active_positions_count,
+    is_symbol_locked_by_other_bot
+)
 from agents.scanner_agent import MarketScannerAgent, add_scanner_log
 from agents.ta_agent import TechnicalAnalysisAgent
 from agents.news_agent import NewsAgent, get_live_news_feed
@@ -228,6 +234,12 @@ class TradingBotOrchestrator:
                 ta_setup, ta_reason = self.ta_agent.analyze_setup(symbol, candles_15m, candles_1h)
                 if not ta_setup:
                     add_scanner_log(symbol, "REJECTED", ta_reason)
+                    continue
+
+                # Multi-Bot Anti-Collision & Anti-Hedging Kalkanı (Çapraz Bot Koruması)
+                is_other_locked, lock_reason = is_symbol_locked_by_other_bot(symbol, "standard", ta_setup["direction"])
+                if is_other_locked:
+                    add_scanner_log(symbol, "REJECTED", lock_reason)
                     continue
 
                 # Ajan 2: Fonlama Oranı, Derinlik (Spread) ve Haber Analizi (Haber Kararlandırma Konseyi)
