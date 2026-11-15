@@ -72,6 +72,13 @@ class RiskOfficerAgent:
                 )
             }
 
+        # 1.1. HABER KARARLANDIRMA KONSEYİ VETO KALKANI (News Intelligence Veto)
+        if news_analysis and news_analysis.get("is_vetoed"):
+            return False, {
+                "decision": "REJECT",
+                "reason": news_analysis.get("veto_reason", "Haber Kararlandırma Konseyi Veto Etti")
+            }
+
         # 1.1 FREQTRADE YÖN BAZLI STOPLOSS GUARD (SIDE-SPECIFIC SERİ ZARAR KALKANI)
         if SIDE_STOPLOSS_GUARD_ENABLED:
             try:
@@ -204,6 +211,12 @@ class RiskOfficerAgent:
         # Dinamik marjin tavanı: 5 pozisyon için kasanın en fazla %20'si tek bir işleme ayrılabilir
         dynamic_max_margin = round(active_equity * 0.20, 1)
         allocated_margin = round(max(30.0, min(dynamic_max_margin, calculated_margin)), 1)
+
+        # 5.1. Haber Kararlandırma Konseyi Pozisyon Büyüklüğü & Yüzdelik Kararı (News Council Multiplier)
+        news_multiplier = float(news_analysis.get("pos_multiplier", 1.0)) if news_analysis else 1.0
+        if news_multiplier > 0 and news_multiplier != 1.0:
+            allocated_margin = round(max(25.0, min(dynamic_max_margin * 1.25, allocated_margin * news_multiplier)), 1)
+
         actual_risk_usd = round(allocated_margin * total_sl_loss_fraction, 2)
 
         # 6. RİSK SINIFLANDIRMASI (GRADE A+, A, B, C)
