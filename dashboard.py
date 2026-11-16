@@ -98,29 +98,71 @@ HTML_OFFICE_TEMPLATE = """
 
         /* Top Header */
         .topbar {
-            height: 50px;
+            min-height: 52px;
+            height: 52px;
             background: var(--panel-bg);
             border-bottom: 1px solid var(--panel-border);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0 16px;
+            padding: 0 14px;
             flex-shrink: 0;
+            gap: 10px;
         }
-        .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 700;
+            font-size: 13.5px;
+            flex-shrink: 0;
+            white-space: nowrap;
+        }
         .brand-badge {
             background: linear-gradient(135deg, #0284c7, #2563eb);
-            color: #fff; width: 26px; height: 26px; border-radius: 6px;
-            display: flex; align-items: center; justify-content: center; font-size: 14px;
+            color: #fff; width: 24px; height: 24px; border-radius: 6px;
+            display: flex; align-items: center; justify-content: center; font-size: 13px;
+            flex-shrink: 0;
         }
-        .topbar-stats { display: flex; align-items: center; gap: 18px; font-size: 12px; }
-        .top-stat { display: flex; align-items: center; gap: 6px; }
-        .top-stat .lbl { color: var(--text-muted); font-size: 10px; text-transform: uppercase; }
-        .top-stat .val { font-family: 'JetBrains Mono', monospace; font-weight: 700; }
+        .topbar-stats {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 11.5px;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+            padding: 2px 0;
+        }
+        .topbar-stats::-webkit-scrollbar { display: none; }
+        .top-stat {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .top-stat .lbl {
+            color: var(--text-muted);
+            font-size: 9.5px;
+            text-transform: uppercase;
+            white-space: nowrap;
+            letter-spacing: 0.2px;
+        }
+        .top-stat .val {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            white-space: nowrap;
+            font-size: 11px;
+        }
         .btn-scan {
-            background: #2563eb; color: #fff; border: none; padding: 5px 12px;
+            background: #2563eb; color: #fff; border: none; padding: 4px 10px;
             border-radius: 5px; font-size: 11px; font-weight: 600; cursor: pointer;
             transition: 0.15s;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
         .btn-scan:hover { background: #1d4ed8; }
 
@@ -1219,11 +1261,11 @@ HTML_OFFICE_TEMPLATE = """
             <span id="topTrClock" style="font-size: 10.5px; background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.3); padding: 2px 8px; border-radius: 10px; font-weight: 700; font-family: 'JetBrains Mono', monospace;" title="Türkiye Saati (TSİ / UTC+3)">🇹🇷 TSİ --:--:--</span>
 
             <!-- 3-Zaman Dilimli Çoklu-Vade Durum Rozeti (Tek Panel) -->
-            <div style="display: flex; align-items: center; gap: 6px; background: rgba(15,23,42,0.85); padding: 3px 10px; border-radius: 20px; border: 1px solid rgba(56,189,248,0.3); margin-left: 14px;">
-                <span style="font-size: 10.5px; font-weight: 800; color: #e2e8f0;">🏛️ ÇOKLU-VADE:</span>
-                <span style="background:rgba(56,189,248,0.2); color:#38bdf8; border:1px solid #38bdf8; padding: 1px 7px; border-radius: 6px; font-size: 10px; font-weight: 700;">⚡ 15m Kısa</span>
-                <span style="background:rgba(168,85,247,0.2); color:#c084fc; border:1px solid #a855f7; padding: 1px 7px; border-radius: 6px; font-size: 10px; font-weight: 700;">🎯 30m Orta</span>
-                <span style="background:rgba(245,158,11,0.2); color:#fbbf24; border:1px solid #f59e0b; padding: 1px 7px; border-radius: 6px; font-size: 10px; font-weight: 700;">👑 1h Uzun</span>
+            <div style="display: flex; align-items: center; gap: 4px; background: rgba(15,23,42,0.85); padding: 2px 7px; border-radius: 20px; border: 1px solid rgba(56,189,248,0.25); margin-left: 6px; white-space: nowrap;">
+                <span style="font-size: 9px; font-weight: 800; color: #94a3b8;">VADELER:</span>
+                <span style="background:rgba(56,189,248,0.2); color:#38bdf8; border:1px solid rgba(56,189,248,0.4); padding: 1px 5px; border-radius: 4px; font-size: 9.5px; font-weight: 700;">15m</span>
+                <span style="background:rgba(168,85,247,0.2); color:#c084fc; border:1px solid rgba(168,85,247,0.4); padding: 1px 5px; border-radius: 4px; font-size: 9.5px; font-weight: 700;">30m</span>
+                <span style="background:rgba(245,158,11,0.2); color:#fbbf24; border:1px solid rgba(245,158,11,0.4); padding: 1px 5px; border-radius: 4px; font-size: 9.5px; font-weight: 700;">1h</span>
             </div>
         </div>
 
@@ -1232,13 +1274,13 @@ HTML_OFFICE_TEMPLATE = """
                 <span class="lbl">BTC Rejimi:</span>
                 <span class="val" id="topBtc" style="color: var(--yellow);">TARANIYOR</span>
             </div>
-            <div class="top-stat" title="Anlık Açık Pozisyon Kotası">
+            <div class="top-stat" title="Anlık Eşzamanlı Açık Pozisyon Slotu (Azami 8 Slot)">
                 <span class="lbl">Kasa Kalkanı:</span>
-                <span class="val" id="topShieldQuota" style="color: var(--green);">0/8 Pozisyon</span>
+                <span class="val" id="topShieldQuota" style="color: var(--green);">0/8 Slot</span>
             </div>
-            <div class="top-stat" title="Bugünkü Zaman Dilimi Kotaları (Kısa • Orta • Uzun)">
-                <span class="lbl">Vade Kotaları:</span>
-                <span class="val" id="topTimelineQuota" style="color: #c084fc; font-weight: 700; font-size: 11px;">⚡0/5 • 🎯0/4 • 👑0/3</span>
+            <div class="top-stat" style="border: 1px solid rgba(168, 85, 247, 0.35); background: rgba(168, 85, 247, 0.08); border-radius: 6px; padding: 2px 7px;" title="Bugünkü Toplam İşlem Kotası ve Vade Dağılımı (TSİ 00:00 - 23:59 Sıfırlanır)">
+                <span class="lbl">Günlük Kota:</span>
+                <span class="val" id="topTimelineQuota" style="color: #c084fc; font-weight: 700; font-size: 11px; white-space: nowrap;">0/12 Toplam (⚡0/5 • 🎯0/4 • 👑0/3)</span>
             </div>
             <div class="top-stat">
                 <span class="lbl">Fon Kasası:</span>
@@ -1248,7 +1290,7 @@ HTML_OFFICE_TEMPLATE = """
                 <span class="lbl">Genel Kâr:</span>
                 <span class="val" id="topRealized" style="color: var(--green);">+0.0%</span>
             </div>
-            <div class="top-stat" style="border: 1px solid rgba(16, 185, 129, 0.35); background: rgba(16, 185, 129, 0.08); border-radius: 6px; padding: 2px 8px;">
+            <div class="top-stat" style="border: 1px solid rgba(16, 185, 129, 0.35); background: rgba(16, 185, 129, 0.08); border-radius: 6px; padding: 2px 7px;">
                 <span class="lbl" title="Türkiye Saati (TRT 00:00 - 23:59 arası). 23:59:59'da otomatik sıfırlanır ve arşivlenir.">Bugünkü PnL:</span>
                 <span class="val" id="topTodayPnl" style="color: var(--green); font-weight: 700;">+$0.00 (%0.0)</span>
             </div>
@@ -1257,7 +1299,7 @@ HTML_OFFICE_TEMPLATE = """
                 <span class="val" id="topUnrealized" style="color: var(--text-muted);">+$0.00 (%0.0)</span>
             </div>
             <div class="top-stat">
-                <span class="lbl">Ödenen Komisyon:</span>
+                <span class="lbl">Komisyon:</span>
                 <span class="val" id="topFees" style="color: #f59e0b;">-%0.0</span>
             </div>
             <div class="top-stat">
@@ -1268,12 +1310,13 @@ HTML_OFFICE_TEMPLATE = """
                 <span class="lbl">Kâr Faktörü:</span>
                 <span class="val" id="topProfitFactor" style="color: #38bdf8;">0.0</span>
             </div>
-            <div style="display: flex; gap: 6px; align-items: center;">
+            <div style="display: flex; gap: 5px; align-items: center; flex-shrink: 0;">
                 <button class="btn-scan" style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(168, 85, 247, 0.25)); color: #facc15; border: 1px solid rgba(245, 158, 11, 0.5); font-weight: 700;" onclick="switchLeftView('office')" title="Sims Tarzı 3D Yapay Zeka İşlem Ofisi">🎮 3D Ofis</button>
                 <button class="btn-scan" style="background: rgba(245,158,11,0.18); color: #f59e0b; border: 1px solid rgba(245,158,11,0.4);" onclick="switchLeftView('btc')" title="Canlı BTC Vadeli Mum Grafiğini Aç">📈 BTC Grafik</button>
                 <button class="btn-scan" onclick="triggerScan()">⚡ Tara</button>
             </div>
         </div>
+    </div>
     </div>
 
     <!-- ⚡ FAST Modu Bilgilendirme ve Kasa Ayrım Şeridi -->
@@ -1334,7 +1377,13 @@ HTML_OFFICE_TEMPLATE = """
             <div id="positionsContainer" style="display: none; flex-direction: column; flex: 1; overflow: hidden;">
                 <!-- En Üst: Ne kadar aktif işlem olduğu özeti -->
                 <div class="active-summary-bar">
-                    <span class="sum-badge all">🎯 Toplam: <strong id="totalActiveCount">0</strong> Aktif (<strong id="totalActiveDollar">$0.00</strong>)</span>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <span class="sum-badge all">🎯 Toplam: <strong id="totalActiveCount">0</strong> Aktif (<strong id="totalActiveDollar">$0.00</strong>)</span>
+                        <span class="sum-badge quota" style="background: rgba(168,85,247,0.15); border: 1px solid rgba(168,85,247,0.35); color: #c084fc;" title="Bugünkü Toplam İşlem Kotası ve Vade Dağılımı">
+                            📊 Günlük Kota: <strong id="barDailyQuota" style="color: #38bdf8;">0/12 İşlem</strong> 
+                            <span id="barDailyQuotaDetails" style="font-size: 10px; color: var(--text-muted); margin-left: 4px;">(⚡0/5 • 🎯0/4 • 👑0/3)</span>
+                        </span>
+                    </div>
                     <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
                         <span class="sum-badge green">🟢 Kârda: <strong id="greenActiveCount">0</strong> (<strong id="greenActiveDollar">+$0.00</strong>)</span>
                         <span class="sum-badge red">🔴 Zararda: <strong id="redActiveCount">0</strong> (<strong id="redActiveDollar">-$0.00</strong>)</span>
@@ -2187,18 +2236,45 @@ HTML_OFFICE_TEMPLATE = """
             const shieldEl = document.getElementById('topShieldQuota');
             const currentTrades = activeList.length;
             if (shieldEl) {
-                shieldEl.innerText = `${currentTrades}/${maxTrades} Pozisyon`;
+                shieldEl.innerText = `${currentTrades}/${maxTrades} Slot`;
                 shieldEl.style.color = currentTrades >= maxTrades ? 'var(--red)' : (currentTrades >= 2 ? 'var(--yellow)' : 'var(--green)');
             }
 
-            // Vade Kotaları (15m • 30m • 1h)
+            // Vade Kotaları & Toplam Günlük Kota (15m • 30m • 1h ve Toplam Tavan)
             const tlQuotaEl = document.getElementById('topTimelineQuota');
             if (tlQuotaEl && data.timeline_quotas) {
                 const tq = data.timeline_quotas;
                 const q15 = tq['15m'] || { used: 0, max: 5 };
                 const q30 = tq['30m'] || { used: 0, max: 4 };
                 const q1h = tq['1h'] || { used: 0, max: 3 };
-                tlQuotaEl.innerHTML = `⚡${q15.used}/${q15.max} • 🎯${q30.used}/${q30.max} • 👑${q1h.used}/${q1h.max}`;
+                const qTot = tq['total'] || { used: (q15.used + q30.used + q1h.used), max: 12 };
+
+                const is15Full = q15.used >= q15.max;
+                const is30Full = q30.used >= q30.max;
+                const is1hFull = q1h.used >= q1h.max;
+                const isTotFull = qTot.used >= qTot.max;
+
+                const c15 = is15Full ? 'color: #ef4444; font-weight:800;' : 'color: #38bdf8;';
+                const c30 = is30Full ? 'color: #ef4444; font-weight:800;' : 'color: #c084fc;';
+                const c1h = is1hFull ? 'color: #ef4444; font-weight:800;' : 'color: #fbbf24;';
+                const cTot = isTotFull ? 'color: #ef4444; font-weight:800;' : 'color: #38bdf8; font-weight:800;';
+
+                tlQuotaEl.innerHTML = `<span style="${cTot}">${qTot.used}/${qTot.max} Toplam</span> <span style="color: var(--text-muted); font-size: 10px; margin-left: 3px;">(<span style="${c15}">⚡${q15.used}/${q15.max}</span> • <span style="${c30}">🎯${q30.used}/${q30.max}</span> • <span style="${c1h}">👑${q1h.used}/${q1h.max}</span>)</span>`;
+            }
+
+            const barQuotaEl = document.getElementById('barDailyQuota');
+            const barQuotaDetails = document.getElementById('barDailyQuotaDetails');
+            if (barQuotaEl && data.timeline_quotas) {
+                const tq = data.timeline_quotas;
+                const q15 = tq['15m'] || { used: 0, max: 5 };
+                const q30 = tq['30m'] || { used: 0, max: 4 };
+                const q1h = tq['1h'] || { used: 0, max: 3 };
+                const qTot = tq['total'] || { used: (q15.used + q30.used + q1h.used), max: 12 };
+                barQuotaEl.innerText = `${qTot.used}/${qTot.max} İşlem`;
+                barQuotaEl.style.color = (qTot.used >= qTot.max) ? 'var(--red)' : '#38bdf8';
+                if (barQuotaDetails) {
+                    barQuotaDetails.innerHTML = `(⚡${q15.used}/${q15.max} • 🎯${q30.used}/${q30.max} • 👑${q1h.used}/${q1h.max})`;
+                }
             }
 
             // Fon Kasası ($)
@@ -5992,7 +6068,7 @@ _terminal_cache = {
     "trade_reflections": [],
     "learning_reports": [],
     "tuning_info": {},
-    "timeline_quotas": {"15m": {"used": 0, "max": 5}, "30m": {"used": 0, "max": 4}, "1h": {"used": 0, "max": 3}}
+    "timeline_quotas": {"total": {"used": 0, "max": 12}, "15m": {"used": 0, "max": 5}, "30m": {"used": 0, "max": 4}, "1h": {"used": 0, "max": 3}}
 }
 
 # İlk açılışta ekranın boş kalmaması veya gidip gelmemesi için DB'den anında besle
@@ -6375,16 +6451,21 @@ def update_terminal_cache_loop():
 
             # Vade Kotaları Bilgisini Derle
             try:
-                from core.database import get_today_trades_count_by_timeframe
-                from config import DAILY_MAX_TRADES_15M, DAILY_MAX_TRADES_30M, DAILY_MAX_TRADES_1H
+                from core.database import get_today_trades_count_by_timeframe, get_today_trades_count
+                from config import DAILY_MAX_TRADES_15M, DAILY_MAX_TRADES_30M, DAILY_MAX_TRADES_1H, DAILY_BASE_MAX_TRADES
                 t_counts = get_today_trades_count_by_timeframe()
+                t_total = get_today_trades_count()
+                sum_used = t_counts.get("15m", 0) + t_counts.get("30m", 0) + t_counts.get("1h", 0)
+                used_final = max(t_total, sum_used)
                 timeline_quotas = {
+                    "total": {"used": used_final, "max": DAILY_BASE_MAX_TRADES},
                     "15m": {"used": t_counts.get("15m", 0), "max": DAILY_MAX_TRADES_15M},
                     "30m": {"used": t_counts.get("30m", 0), "max": DAILY_MAX_TRADES_30M},
                     "1h": {"used": t_counts.get("1h", 0), "max": DAILY_MAX_TRADES_1H}
                 }
             except Exception:
                 timeline_quotas = _terminal_cache.get("timeline_quotas", {
+                    "total": {"used": 0, "max": 12},
                     "15m": {"used": 0, "max": 5},
                     "30m": {"used": 0, "max": 4},
                     "1h": {"used": 0, "max": 3}
