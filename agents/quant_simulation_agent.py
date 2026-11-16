@@ -32,7 +32,7 @@ class QuantSimulationAgent:
 
     @staticmethod
     def run_empirical_replay(
-        candles_15m: List[Dict],
+        candles: List[Dict],
         direction: str,
         tp_pct: float,
         sl_pct: float,
@@ -40,12 +40,12 @@ class QuantSimulationAgent:
     ) -> Dict:
         """
         trader-timemachine'den uyarlanan Ampirik Geçmiş Rezonans Algoritması:
-        Teorik matematiksel formüller yerine, paritenin son dönem gerçek 15m mumları taranır.
+        Teorik matematiksel formüller yerine, paritenin ilgili periyot geçmiş mumları taranır.
         Benzer yönlü momentum / kırılım şartının oluştuğu her geçmiş mumda:
-        Sonraki horizon_bars (24 bar = 6 saat) içinde fiyatın önce TP'ye mi yoksa SL'e mi vurduğu test edilir.
+        Sonraki horizon_bars içinde fiyatın önce TP'ye mi yoksa SL'e mi vurduğu test edilir.
         """
-        n = len(candles_15m)
-        if n < 30:
+        n = len(candles)
+        if n < 20:
             return {
                 "samples": 0,
                 "tp_count": 0,
@@ -59,17 +59,19 @@ class QuantSimulationAgent:
                 "summary": "Ampirik örneklem sınırlı (yetersiz mum)"
             }
 
-        avg_vol = sum(float(c.get("volume", 0.0)) for c in candles_15m) / max(n, 1)
+        avg_vol = sum(float(c.get("volume", 0.0)) for c in candles) / max(n, 1)
         tp_count = 0
         sl_count = 0
         neither_green = 0
         neither_red = 0
         samples = 0
 
-        # Son 8 mum henüz olgunlaşamayacağı için geçmişi tararız
-        for i in range(15, n - 8):
-            c = candles_15m[i]
-            prev = candles_15m[i - 1]
+        # Son mumlar olgunlaşamayacağı için geçmişi tararız
+        start_idx = min(10, n // 3)
+        end_idx = max(start_idx + 1, n - 5)
+        for i in range(start_idx, end_idx):
+            c = candles[i]
+            prev = candles[i - 1]
 
             c_open = float(c.get("open", 0.0))
             c_close = float(c.get("close", 0.0))
@@ -96,7 +98,7 @@ class QuantSimulationAgent:
             resolved = False
             max_look = min(i + horizon_bars + 1, n)
             for k in range(i + 1, max_look):
-                ck = candles_15m[k]
+                ck = candles[k]
                 h = float(ck.get("high", 0.0))
                 l = float(ck.get("low", 0.0))
 
@@ -121,7 +123,7 @@ class QuantSimulationAgent:
                         break
 
             if not resolved and max_look > i + 1:
-                last_c = float(candles_15m[max_look - 1].get("close", entry))
+                last_c = float(candles[max_look - 1].get("close", entry))
                 pnl = ((last_c - entry) / entry) if direction == "LONG" else ((entry - last_c) / entry)
                 if pnl > 0:
                     neither_green += 1
@@ -166,13 +168,14 @@ class QuantSimulationAgent:
         symbol: str,
         ta_setup: Dict,
         candles_15m: List[Dict],
-        num_simulations: Optional[int] = None
+        num_simulations: Optional[int] = None,
+        horizon_bars: Optional[int] = None
     ) -> Dict:
         """
         Aday parite üzerinde 10.000 Monte Carlo stokastik fiyat simülasyonu çalıştırır.
         """
         n_sims = num_simulations or self.default_simulations
-        steps = self.horizon_steps
+        steps = horizon_bars or self.horizon_steps
 
         current_price = float(ta_setup.get("current_price", 0.0))
         direction = ta_setup.get("direction", "LONG").upper()
@@ -184,7 +187,7 @@ class QuantSimulationAgent:
         if current_price <= 0 or tp1 <= 0 or sl <= 0 or len(candles_15m) < 15:
             return self._fallback_result(symbol, direction, n_sims)
 
-        # 1. 15m Mumlarından Tarihsel Volatilite ve Drift Hesapla
+        # 1. Mum Verisinden Tarihsel Volatilite ve Drift Hesapla
         closes = [float(c["close"]) for c in candles_15m if "close" in c]
         if len(closes) < 15:
             return self._fallback_result(symbol, direction, n_sims)
@@ -203,7 +206,7 @@ class QuantSimulationAgent:
         drift_bias = ((confluence_score - 50.0) / 100.0) * (sigma * 0.15)
         drift = (base_drift + drift_bias) if direction == "LONG" else (base_drift - drift_bias)
 
-        # 2. Vektörize Monte Carlo Simülasyonu (NumPy Matrisi: 10000 x 48)
+        # 2. Vektörize Monte Carlo Simülasyonu (NumPy Matrisi: 10000 x steps)
         # Z: Standart normal dağılım şokları
         Z = np.random.standard_normal((n_sims, steps))
         # Kripto piyasasına özgü mikro sıçramalar (Jump-diffusion: %4 ihtimalle ani fitil)
@@ -216,7 +219,7 @@ class QuantSimulationAgent:
 
         # 10.000 simüle edilmiş fiyat patikası
         sim_paths = current_price * np.exp(cum_returns)
-        # t=0 başlangıç fiyatını ekle (10000 x 49)
+        # t=0 başlangıç fiyatını ekle
         paths = np.hstack([np.full((n_sims, 1), current_price), sim_paths])
 
         # 3. First-Hit (İlk Çarpan Kazanır) Mantığı ile TP ve SL Analizi
@@ -238,7 +241,7 @@ class QuantSimulationAgent:
         wins = (first_tp_idx < first_sl_idx) & tp_any
         # Kaybetme: SL'ye TP'den ÖNCE ulaşılan yollar
         losses = (first_sl_idx < first_tp_idx) & sl_any
-        # İkisine de çarpmadan 48 adım (12 saat) süren yollar
+        # İkisine de çarpmadan steps adım süren yollar
         neither = ~wins & ~losses
 
         win_count = int(np.sum(wins))
@@ -286,7 +289,7 @@ class QuantSimulationAgent:
             arg = (
                 f"{symbol} paritesi üzerinde 10,000 Monte Carlo simülasyonu olumlu görünse bile, "
                 f"Time Machine ampirik geçmiş testi VETO ETTİ! "
-                f"Bu paritenin son dönem gerçek 15m verisinde oluşan {empirical_data['samples']} benzer kırılımın "
+                f"Bu paritenin son dönem gerçek verisinde oluşan {empirical_data['samples']} benzer kırılımın "
                 f"yalnızca %{empirical_data['green_rate']:.1f}'i kazandırdı (Kronik Testere / Stop-Hunt Tuzağı)! "
                 f"Sermayeyi korumak için OYUM: VETO / RED (İŞLEMDEN UZAK DURULMALI)!"
             )
@@ -299,11 +302,15 @@ class QuantSimulationAgent:
                 f"OYUM: VETO / RED (İŞLEMDEN UZAK DURULMALI)!"
             )
 
+        tf = ta_setup.get("timeframe", "15m")
+        step_mins = 60 if tf == "1h" else (30 if tf == "30m" else 15)
+        calc_hours = round((steps * step_mins) / 60, 1)
+
         return {
             "symbol": symbol,
             "direction": direction,
             "num_simulations": n_sims,
-            "horizon_hours": steps * 15 // 60,
+            "horizon_hours": calc_hours,
             "win_probability_pct": round(win_prob, 1),
             "loss_probability_pct": round(loss_prob, 1),
             "neither_probability_pct": round(neither_prob, 1),
