@@ -109,13 +109,22 @@ SIDE_STOPLOSS_GUARD_ENABLED = True
 SIDE_STOPLOSS_MAX_CONSECUTIVE_LOSSES = 2   # Peş peşe 2 zarar eden yön kilitlenir
 SIDE_STOPLOSS_COOLDOWN_MINUTES = 120       # Kilitlenen yön 120 dakika boyunca yeni işleme kapatılır
 
-# Dinamik Günlük Kota & Zirve Kâr Koruma Kalkanı (House-Money & Trailing Profit Lock)
-DAILY_BASE_MAX_TRADES = 4              # Taban Keskin Nişancı Kotası: Zor/testere piyasada günde en fazla 4 işlem
-PROFIT_STEP_FOR_BONUS_TRADES = 15.0     # Her +$15 net kârda kota genişlemesi
-BONUS_TRADES_PER_STEP = 2              # Her +$15 kârda +2 ekstra işlem hakkı (Kârlı günde sınırsız avlanma)
-DAILY_MAX_NEW_TRADES = 4               # Geriye dönük uyumluluk için alias
-ENABLE_CIRCUIT_BREAKER = True           # Güvenlik Kalkanı: Günlük -$50 kayıpta taramayı 24s dondur
-DAILY_MAX_DRAWDOWN_USDT = 50.0         # Günlük Acil Durum Sigortası (Circuit Breaker): -$50 kayıpta taramayı 24s dondur
+# ========================================================
+# VADEYE / ZAMAN DİLİMİNE ÖZEL GÜNLÜK İŞLEM KOTALARI
+# (Timeline-Specific Independent Daily Quotas & House-Money Bonus)
+# ========================================================
+# Her zaman diliminin bağımsız günlük kotası vardır.
+# Bir vadenin (örneğin 15m) kotası dolduğunda diğer vadeler (30m ve 1h) fırsat aramaya kesintisiz devam eder!
+DAILY_MAX_TRADES_15M = 5              # ⚡ 15m (Kısa Vade): Günde azami 5 işlem
+DAILY_MAX_TRADES_30M = 4              # 🎯 30m (Orta Vade): Günde azami 4 işlem
+DAILY_MAX_TRADES_1H = 3               # 👑 1h (Uzun Vade): Günde azami 3 işlem
+
+DAILY_BASE_MAX_TRADES = 12            # Toplam tavan referansı (5 + 4 + 3)
+DAILY_MAX_NEW_TRADES = 12             # Geriye dönük uyumluluk aliası
+PROFIT_STEP_FOR_BONUS_TRADES = 15.0   # Her +$15 net kârda her vadeye +1 ekstra kota slotu eklenir
+BONUS_TRADES_PER_STEP = 1             # Her kâr adımında her vade kotasına ilave hak
+ENABLE_CIRCUIT_BREAKER = True         # Güvenlik Kalkanı: Günlük -$50 kayıpta taramayı 24s dondur
+DAILY_MAX_DRAWDOWN_USDT = 50.0       # Günlük Acil Durum Sigortası (Circuit Breaker): -$50 kayıpta taramayı 24s dondur
 DAILY_TRAILING_PROFIT_LOCK_ENABLED = True # Günlük Zirve Kâr Kilidi (Kazanılan kârı asla geri vermeme kalkanı)
 
 # SMC & Confluence Kalite Eşiği (Dengeli Kurumsal SMC Kalibrasyonu - 15 Kasım Canlı Saha Ayarı)
