@@ -175,9 +175,10 @@ class AIAnalystAgent:
         # ----------------------------------------------------
         # 🟢 1. BOĞA ANALİSTİ (Alpha Hunter - Argümanı Savunan Ajan)
         # ----------------------------------------------------
+        horizon_desc = ta_setup.get("trade_horizon") or "15m Kısa Vade"
         bull_points = []
         if direction == "LONG":
-            bull_points.append(f"15m grafikte kurumsal alıcı desteği çok net ({score}/100 SMC skoru)")
+            bull_points.append(f"{horizon_desc} grafiğinde kurumsal alıcı desteği çok net ({score}/100 SMC skoru)")
             if current_price >= curr_vwap:
                 bull_points.append(f"Fiyat VWAP (${curr_vwap:.4f}) üzerinde kalarak alıcıların tahtayı koruduğunu gösteriyor")
             bull_points.append(f"RSI ({curr_rsi:.1f}) pozitif ivme bölgesinde, aşırı alıma girmeden sağlıklı ilerliyor")
@@ -189,7 +190,7 @@ class AIAnalystAgent:
                 f"Alıcılar satış bloklarını emiyor, hacim desteğiyle yukarı patlama bekliyorum."
             )
         else:
-            bull_points.append(f"15m grafikte kurumsal satıcı baskısı ve arz boşluğu net ({score}/100 SMC skoru)")
+            bull_points.append(f"{horizon_desc} grafiğinde kurumsal satıcı baskısı ve arz boşluğu net ({score}/100 SMC skoru)")
             if current_price <= curr_vwap:
                 bull_points.append(f"Fiyat VWAP (${curr_vwap:.4f}) altında kalarak satıcıların piyasayı ezdiğini kanıtlıyor")
             bull_points.append(f"RSI ({curr_rsi:.1f}) aşağı yönlü baskıyı teyit ediyor, satış dalgası taze")
