@@ -8,7 +8,7 @@ import threading
 import time
 import random
 from datetime import datetime
-from typing import List, Dict, Optional, Tuple, Any, Callable
+from typing import List, Dict, Optional, Tuple, Any, Callable, Union
 from config import DB_PATH
 
 _THREAD_LOCAL = threading.local()
