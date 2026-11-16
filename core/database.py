@@ -1414,6 +1414,67 @@ def close_single_signal_db(symbol_or_id: Union[str, int], client=None) -> Option
 
     return sig
 
+def close_positions_by_outcome_db(outcome: str, client=None) -> Dict:
+    """
+    Kârda veya zararda olan tüm aktif pozisyonları anlık piyasa fiyatından kapatır.
+    outcome: 'profit' / 'kar' (kârdakiler) veya 'loss' / 'zarar' (zarardakiler)
+    """
+    from core.binance_streamer import get_live_price
+    target_group = (outcome or "").lower().strip()
+    active_signals = get_active_and_pending_signals()
+    if not active_signals:
+        return {"status": "success", "group": target_group, "count": 0, "closed": [], "message": "Aktif pozisyon bulunamadı"}
+
+    tickers = {}
+    if client:
+        try:
+            tickers = client.get_24hr_tickers()
+        except Exception:
+            pass
+
+    target_group = outcome.lower().strip()
+    closed_list = []
+
+    for sig in active_signals:
+        sig_id = sig["id"]
+        symbol = sig["symbol"]
+        direction = sig["direction"]
+        leverage = sig.get("leverage") or 10
+        entry_price = float(sig.get("actual_entry_price") or sig.get("entry_min") or 0.0)
+
+        # Anlık canlı fiyatı al
+        exit_price = entry_price
+        ws_p = get_live_price(symbol)
+        if ws_p and float(ws_p) > 0:
+            exit_price = float(ws_p)
+        elif tickers and symbol in tickers:
+            exit_price = float(tickers[symbol].get("lastPrice", entry_price))
+
+        raw_change = ((exit_price - entry_price) / entry_price) if direction == "LONG" else ((entry_price - exit_price) / entry_price) if entry_price > 0 else 0.0
+        gross_pnl_pct = round(raw_change * leverage * 100, 2)
+        fee_pct = round(0.10 * leverage, 2)
+        net_pnl_pct = round(gross_pnl_pct - fee_pct, 2)
+
+        is_candidate = False
+        if target_group in ("profit", "green", "kar"):
+            if net_pnl_pct > 0:
+                is_candidate = True
+        elif target_group in ("loss", "red", "zarar"):
+            if net_pnl_pct < 0:
+                is_candidate = True
+
+        if is_candidate:
+            closed_res = close_single_signal_db(sig_id, client=client)
+            if closed_res:
+                closed_list.append(closed_res)
+
+    return {
+        "status": "success",
+        "group": target_group,
+        "count": len(closed_list),
+        "closed": closed_list
+    }
+
 def close_all_active_signals_db(client=None) -> int:
     """Açık olan tüm aktif pozisyonları anlık piyasa fiyatıyla kapatır ve PnL defterine kaydeder."""
     active_signals = get_active_and_pending_signals()
