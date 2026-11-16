@@ -1142,16 +1142,17 @@ HTML_OFFICE_TEMPLATE = """
     <div class="topbar">
         <div class="brand">
             <div class="brand-badge">⚡</div>
-            <span>AI Ticaret Ofisi Terminali</span>
-            <span style="font-size: 10px; background: rgba(16,185,129,0.15); color: #10b981; padding: 2px 7px; border-radius: 10px; font-weight: 600;">● OFİS CANLI</span>
+            <span>3-Vadeli Quant Terminali</span>
+            <span style="font-size: 10px; background: rgba(16,185,129,0.15); color: #10b981; padding: 2px 7px; border-radius: 10px; font-weight: 600;">● CANLI</span>
             <span id="wsBadge" style="font-size: 10px; background: rgba(56,189,248,0.15); color: #38bdf8; padding: 2px 7px; border-radius: 10px; font-weight: 600;">⚡ WSS AKTİF</span>
             <span id="topTrClock" style="font-size: 10.5px; background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.3); padding: 2px 8px; border-radius: 10px; font-weight: 700; font-family: 'JetBrains Mono', monospace;" title="Türkiye Saati (TSİ / UTC+3)">🇹🇷 TSİ --:--:--</span>
 
-            <!-- Bot Modu Seçici (Standart vs FAST vs SÜPER FAST) -->
-            <div style="display: flex; gap: 4px; background: rgba(0,0,0,0.5); padding: 3px; border-radius: 20px; border: 1px solid var(--panel-border); margin-left: 14px;">
-                <button id="btnModeStandard" class="bot-mode-btn active" onclick="switchBotMode('standard')">🏛️ Standart SMC (15m)</button>
-                <button id="btnModeFast" class="bot-mode-btn" onclick="switchBotMode('fast')">⚡ FAST Scalper (1m)</button>
-                <button id="btnModeSuperFast" class="bot-mode-btn" onclick="switchBotMode('superfast')">⚡⚡ SÜPER FAST (Saniyelik)</button>
+            <!-- 3-Zaman Dilimli Çoklu-Vade Durum Rozeti (Tek Panel) -->
+            <div style="display: flex; align-items: center; gap: 6px; background: rgba(15,23,42,0.85); padding: 3px 10px; border-radius: 20px; border: 1px solid rgba(56,189,248,0.3); margin-left: 14px;">
+                <span style="font-size: 10.5px; font-weight: 800; color: #e2e8f0;">🏛️ ÇOKLU-VADE:</span>
+                <span style="background:rgba(56,189,248,0.2); color:#38bdf8; border:1px solid #38bdf8; padding: 1px 7px; border-radius: 6px; font-size: 10px; font-weight: 700;">⚡ 15m Kısa</span>
+                <span style="background:rgba(168,85,247,0.2); color:#c084fc; border:1px solid #a855f7; padding: 1px 7px; border-radius: 6px; font-size: 10px; font-weight: 700;">🎯 30m Orta</span>
+                <span style="background:rgba(245,158,11,0.2); color:#fbbf24; border:1px solid #f59e0b; padding: 1px 7px; border-radius: 6px; font-size: 10px; font-weight: 700;">👑 1h Uzun</span>
             </div>
         </div>
 
@@ -1493,6 +1494,7 @@ HTML_OFFICE_TEMPLATE = """
                             <th>Parite</th>
                             <th>Yön</th>
                             <th>Kaldıraç</th>
+                            <th>Vade / Grafik</th>
                             <th>Giriş Fiyatı</th>
                             <th>Çıkış Fiyatı</th>
                             <th>Sonuç</th>
@@ -1500,7 +1502,7 @@ HTML_OFFICE_TEMPLATE = """
                         </tr>
                     </thead>
                     <tbody id="historyBody">
-                        <tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 20px;">Kapanan işlem kaydı yok.</td></tr>
+                        <tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 20px;">Kapanan işlem kaydı yok.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -2224,7 +2226,7 @@ HTML_OFFICE_TEMPLATE = """
 
                         let protectionBadge = '';
                         if (pos.status === 'ACTIVE_PARTIAL_TP1') {
-                            protectionBadge = '<span class="tag" style="background:rgba(16,185,129,0.25); color:#10b981; font-weight:800; border:1px solid #10b981;">🎯 %50 TP1 KİLİTLİ (FREE-TRADE)</span>';
+                            protectionBadge = '<span class="tag" style="background:rgba(160,185,129,0.25); color:#10b981; font-weight:800; border:1px solid #10b981;">🎯 %50 TP1 KİLİTLİ (FREE-TRADE)</span>';
                         } else if (pos.ladder_name) {
                             protectionBadge = `<span class="tag" style="background:rgba(245,158,11,0.22); color:#f59e0b; font-weight:700;">${pos.ladder_name}</span>`;
                         } else if (pos.ladder_step > 0) {
@@ -2235,6 +2237,14 @@ HTML_OFFICE_TEMPLATE = """
                             protectionBadge = '<span class="tag" style="background:rgba(245,158,11,0.2); color:#f59e0b; font-weight:700;">⚡ Dinamik Kanal</span>';
                         }
 
+                        let horizonBadge = '<span class="tag" style="background:rgba(56,189,248,0.25); color:#38bdf8; border:1px solid #38bdf8; font-weight:800;">⚡ Kısa (15m)</span>';
+                        const tf = pos.timeframe || (pos.trade_horizon && pos.trade_horizon.includes('1h') ? '1h' : (pos.trade_horizon && pos.trade_horizon.includes('30m') ? '30m' : '15m'));
+                        if (tf === '1h' || (pos.trade_horizon && pos.trade_horizon.includes('Uzun'))) {
+                            horizonBadge = '<span class="tag" style="background:rgba(245,158,11,0.25); color:#fbbf24; border:1px solid #f59e0b; font-weight:800;">👑 Uzun (1h)</span>';
+                        } else if (tf === '30m' || (pos.trade_horizon && pos.trade_horizon.includes('Orta'))) {
+                            horizonBadge = '<span class="tag" style="background:rgba(168,85,247,0.25); color:#c084fc; border:1px solid #a855f7; font-weight:800;">🎯 Orta (30m)</span>';
+                        }
+
                         return `
                             <div class="pos-card" id="card-${pos.symbol}">
                                 <div class="card-header">
@@ -2242,6 +2252,7 @@ HTML_OFFICE_TEMPLATE = """
                                         <span>${pos.symbol}</span>
                                         <span class="tag ${pos.isLong ? 'tag-long' : 'tag-short'}">${pos.direction}</span>
                                         <span class="tag tag-lev">${pos.lev}x</span>
+                                        ${horizonBadge}
                                         ${protectionBadge}
                                     </div>
                                     <div style="display: flex; align-items: center; gap: 8px;">
@@ -2830,12 +2841,21 @@ HTML_OFFICE_TEMPLATE = """
                     else if (tr.status === 'MANUAL_CLOSE') resBadge = '<span style="color:#a855f7; font-weight:700;">🛑 El İle Kapatıldı</span>';
                     else if (tr.status === 'HIT_SL') resBadge = '<span style="color:var(--red); font-weight:700;">🛑 Stop Loss</span>';
 
+                    let tfBadge = '<span class="tag" style="background:rgba(56,189,248,0.2); color:#38bdf8; font-weight:700;">⚡ 15m Kısa</span>';
+                    const trTf = tr.timeframe || (tr.trade_horizon && tr.trade_horizon.includes('1h') ? '1h' : (tr.trade_horizon && tr.trade_horizon.includes('30m') ? '30m' : '15m'));
+                    if (trTf === '1h' || (tr.trade_horizon && tr.trade_horizon.includes('Uzun'))) {
+                        tfBadge = '<span class="tag" style="background:rgba(245,158,11,0.22); color:#fbbf24; border:1px solid #f59e0b; font-weight:700;">👑 1h Uzun</span>';
+                    } else if (trTf === '30m' || (tr.trade_horizon && tr.trade_horizon.includes('Orta'))) {
+                        tfBadge = '<span class="tag" style="background:rgba(168,85,247,0.22); color:#c084fc; border:1px solid #a855f7; font-weight:700;">🎯 30m Orta</span>';
+                    }
+
                     histHtml += `
                         <tr>
                             <td style="color: var(--text-muted); font-size: 10px;">${formatTurkeyTime(tr.closed_at || tr.created_at)}</td>
                             <td><strong>${tr.symbol}</strong></td>
                             <td><span class="tag ${isLong ? 'tag-long' : 'tag-short'}">${tr.direction}</span></td>
                             <td><span class="tag tag-lev">${tr.leverage}x</span></td>
+                            <td>${tfBadge}</td>
                             <td class="mono">$${tr.actual_entry_price || tr.entry_min}</td>
                             <td class="mono">$${tr.exit_price || '-'}</td>
                             <td>${resBadge}</td>
@@ -2855,7 +2875,7 @@ HTML_OFFICE_TEMPLATE = """
                     prevHistHtml = histHtml;
                 }
             } else if (historyBody) {
-                const emptyMsg = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 25px; font-size: 11px;">Henüz tamamlanmış ${isFast ? 'FAST 1m' : 'standart'} işlem kaydı yok.</td></tr>`;
+                const emptyMsg = `<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 25px; font-size: 11px;">Henüz tamamlanmış işlem kaydı yok.</td></tr>`;
                 if (historyBody.innerHTML !== emptyMsg) {
                     historyBody.innerHTML = emptyMsg;
                     prevHistHtml = '';
@@ -6400,7 +6420,13 @@ def start_dashboard(orchestrator=None, port=5000, auto_open=True):
     global _orchestrator, _fast_orchestrator, _super_fast_orchestrator, _updater_started
     _orchestrator = orchestrator
 
-    if _fast_orchestrator is None:
+    try:
+        from config import ENABLE_FAST_ENGINE, ENABLE_SUPER_FAST_ENGINE
+    except Exception:
+        ENABLE_FAST_ENGINE = False
+        ENABLE_SUPER_FAST_ENGINE = False
+
+    if ENABLE_FAST_ENGINE and _fast_orchestrator is None:
         try:
             from fast_engine import FastTradingBotOrchestrator
             _fast_orchestrator = FastTradingBotOrchestrator()
@@ -6408,8 +6434,10 @@ def start_dashboard(orchestrator=None, port=5000, auto_open=True):
             print("⚡ [FAST Scalper 1m] Bağımsız Fon Kasalı Motor Arka Planda Başlatıldı (Kasa: $1000 USDT).")
         except Exception as fast_err:
             print(f"⚠️ FAST Scalper başlatılamadı: {fast_err}")
+    elif not ENABLE_FAST_ENGINE:
+        print("⏸️ [FAST Motoru] Uyku modunda (Tüm API bant genişliği 3-Vadeli Ana Motora ayrıldı).")
 
-    if _super_fast_orchestrator is None:
+    if ENABLE_SUPER_FAST_ENGINE and _super_fast_orchestrator is None:
         try:
             from super_fast_engine import SuperFastTradingBotOrchestrator
             _super_fast_orchestrator = SuperFastTradingBotOrchestrator()
@@ -6417,6 +6445,8 @@ def start_dashboard(orchestrator=None, port=5000, auto_open=True):
             print("⚡⚡ [SÜPER FAST Saniyelik HFT] Bağımsız Fon Kasalı Motor Arka Planda Başlatıldı (Kasa: $1000 USDT | Limit: 20).")
         except Exception as sfast_err:
             print(f"⚠️ SÜPER FAST başlatılamadı: {sfast_err}")
+    elif not ENABLE_SUPER_FAST_ENGINE:
+        print("⏸️ [SÜPER FAST Motoru] Uyku modunda (Tüm API bant genişliği 3-Vadeli Ana Motora ayrıldı).")
 
     # Bulut ve Yerel Ortam Dinamik Port ve Host Desteği (Railway, Render, VPS uyumlu)
     port = int(os.environ.get("PORT", port))
