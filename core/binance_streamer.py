@@ -14,6 +14,7 @@ import websocket
 
 # Thread-safe in-memory tick cache
 _LIVE_PRICES: Dict[str, float] = {}
+_LIVE_TIMESTAMPS: Dict[str, float] = {}
 _PRICE_LOCK = threading.Lock()
 
 # Volume and whale trade tracker
@@ -95,6 +96,7 @@ def _run_streamer():
 
                     with _PRICE_LOCK:
                         _LIVE_PRICES[sym] = price
+                        _LIVE_TIMESTAMPS[sym] = now
 
                     # 1 Dakikalık ani balina işlem hacmini takip et (>50.000$ tek işlem veya hızlı akış)
                     trades = _RECENT_TRADES[sym]
@@ -133,10 +135,14 @@ def start_streamer():
     _STREAMER_THREAD = threading.Thread(target=_run_streamer, daemon=True, name="BinanceWsStreamer")
     _STREAMER_THREAD.start()
 
-def get_live_price(symbol: str) -> Optional[float]:
-    """Milisaniyelik canlı fiyatı döner."""
+def get_live_price(symbol: str, max_age_sec: float = 5.0) -> Optional[float]:
+    """Milisaniyelik canlı fiyatı döner; veri bayatsa (> max_age_sec) None döner."""
     with _PRICE_LOCK:
-        return _LIVE_PRICES.get(symbol)
+        price = _LIVE_PRICES.get(symbol)
+        ts = _LIVE_TIMESTAMPS.get(symbol, 0.0)
+        if price is not None and (time.time() - ts) <= max_age_sec:
+            return price
+        return None
 
 def get_all_live_prices() -> Dict[str, float]:
     """Tüm canlı fiyat sözlüğünün kopyasını döner."""
