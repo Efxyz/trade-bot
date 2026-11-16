@@ -1120,7 +1120,8 @@ class TechnicalAnalysisAgent:
         symbol: str,
         candles_15m: List[Dict],
         candles_30m: Optional[List[Dict]] = None,
-        candles_1h: Optional[List[Dict]] = None
+        candles_1h: Optional[List[Dict]] = None,
+        allowed_timeframes: Optional[List[str]] = None
     ) -> Tuple[Optional[Dict], str]:
         """
         3-Zaman Dilimli Çoklu-Vade (Triple-Horizon) Analiz Motoru:
@@ -1128,21 +1129,23 @@ class TechnicalAnalysisAgent:
         - 🎯 Orta Vade (30m): Likidite süpürmeleri ve dengeli salınım
         - 👑 Uzun Vade (1h): Makro kurumsal trend kırılımı ve büyük dalga koşucusu
         
+        allowed_timeframes: Günlük kotası dolmamış aktif vadeler (Örn: ['15m', '30m', '1h']).
         En yüksek güven skoruna ve kurumsal SMC teyidine sahip vadenin işlemini seçer.
         """
         candidates_setups = []
-        last_rejection_reason = "3 zaman diliminde de geçerli SMC kurulumu bulunamadı"
+        active_tfs = [t.lower() for t in allowed_timeframes] if allowed_timeframes is not None else ["15m", "30m", "1h"]
+        last_rejection_reason = "Aktif vadelerin hiçbirinde geçerli SMC kurulumu bulunamadı"
 
-        # 1. 15m Kısa Vade İncelemesi
-        if candles_15m and len(candles_15m) >= 35:
+        # 1. 15m Kısa Vade İncelemesi (Kotası açıksa)
+        if "15m" in active_tfs and candles_15m and len(candles_15m) >= 35:
             setup_15m, reason_15m = self.analyze_setup(symbol, candles_15m, candles_macro=candles_1h, timeframe="15m")
             if setup_15m:
                 candidates_setups.append((setup_15m["confluence_score"], setup_15m, reason_15m))
             else:
                 last_rejection_reason = f"15m: {reason_15m}"
 
-        # 2. 30m Orta Vade İncelemesi
-        if candles_30m and len(candles_30m) >= 35:
+        # 2. 30m Orta Vade İncelemesi (Kotası açıksa)
+        if "30m" in active_tfs and candles_30m and len(candles_30m) >= 35:
             setup_30m, reason_30m = self.analyze_setup(symbol, candles_30m, candles_macro=candles_1h, timeframe="30m")
             if setup_30m:
                 effective_score = setup_30m["confluence_score"] + 2
@@ -1151,8 +1154,8 @@ class TechnicalAnalysisAgent:
                 if not candidates_setups:
                     last_rejection_reason = f"30m: {reason_30m}"
 
-        # 3. 1h Uzun Vade İncelemesi
-        if candles_1h and len(candles_1h) >= 35:
+        # 3. 1h Uzun Vade İncelemesi (Kotası açıksa)
+        if "1h" in active_tfs and candles_1h and len(candles_1h) >= 20:
             setup_1h, reason_1h = self.analyze_setup(symbol, candles_1h, candles_macro=None, timeframe="1h")
             if setup_1h:
                 effective_score = setup_1h["confluence_score"] + 3
