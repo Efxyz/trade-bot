@@ -1245,42 +1245,92 @@ def get_daily_pnl_archive_db(limit: int = 30) -> List[Dict]:
         cursor.execute("SELECT * FROM daily_pnl_archive ORDER BY date_str DESC LIMIT ?", (limit,))
         return [dict(r) for r in cursor.fetchall()]
 
-def close_single_signal_db(symbol: str, client=None) -> Optional[Dict]:
-    """Belirtilen paritedeki açık pozisyonu anlık piyasa fiyatıyla manuel olarak kapatır."""
-    clean_sym = symbol.upper().strip()
-    if not clean_sym.endswith("USDT") and not clean_sym.endswith("USDT.P"):
-        clean_sym = f"{clean_sym}USDT"
+def close_single_signal_db(symbol_or_id: Union[str, int], client=None) -> Optional[Dict]:
+    """Belirtilen sinyal ID veya paritedeki açık pozisyonu anlık piyasa fiyatıyla manuel olarak kapatır."""
+    is_id = False
+    sig_id_target = None
+    clean_sym = ""
+
+    if isinstance(symbol_or_id, int):
+        is_id = True
+        sig_id_target = symbol_or_id
+    elif isinstance(symbol_or_id, str) and symbol_or_id.strip().isdigit() and int(symbol_or_id.strip()) > 0:
+        is_id = True
+        sig_id_target = int(symbol_or_id.strip())
+    else:
+        clean_sym = str(symbol_or_id).upper().strip()
+        if not clean_sym.endswith("USDT") and not clean_sym.endswith("USDT.P"):
+            clean_sym = f"{clean_sym}USDT"
+
+    active_statuses = ('ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'PENDING_ENTRY', 'ACTIVE_PARTIAL_TP1')
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT * FROM signals 
-            WHERE symbol = ? AND status IN ('ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'PENDING_ENTRY')
-            ORDER BY id DESC LIMIT 1
-        """, (clean_sym,))
+        if is_id:
+            cursor.execute("""
+                SELECT * FROM signals 
+                WHERE id = ? AND status IN ('ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'PENDING_ENTRY', 'ACTIVE_PARTIAL_TP1')
+                LIMIT 1
+            """, (sig_id_target,))
+        else:
+            cursor.execute("""
+                SELECT * FROM signals 
+                WHERE symbol = ? AND status IN ('ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'PENDING_ENTRY', 'ACTIVE_PARTIAL_TP1')
+                ORDER BY id DESC LIMIT 1
+            """, (clean_sym,))
         row = cursor.fetchone()
         if not row:
             return None
         sig = dict(row)
 
     sig_id = sig["id"]
+    clean_sym = sig["symbol"]
     direction = sig["direction"]
     leverage = sig.get("leverage") or 10
-    entry_price = sig.get("actual_entry_price") or sig["entry_min"]
+    entry_price = float(sig.get("actual_entry_price") or sig.get("entry_min") or 0.0)
     exit_price = entry_price
 
-    if client:
+    # 1. En hızlı ve hassas: WebSocket canlı fiyatı
+    try:
+        from core.binance_streamer import get_live_price
+        ws_p = get_live_price(clean_sym)
+        if ws_p and float(ws_p) > 0:
+            exit_price = float(ws_p)
+    except Exception:
+        pass
+
+    # 2. WebSocket yoksa veya sıfırsa REST API fiyatı
+    if exit_price == entry_price and client:
         try:
             tickers = client.get_24hr_tickers()
             if clean_sym in tickers:
-                exit_price = tickers[clean_sym].get("lastPrice", entry_price)
+                exit_price = float(tickers[clean_sym].get("lastPrice", entry_price))
         except Exception:
-            pass
+            try:
+                t = client.get_ticker(clean_sym)
+                if t and "lastPrice" in t:
+                    exit_price = float(t["lastPrice"])
+            except Exception:
+                pass
 
-    raw_change = ((exit_price - entry_price) / entry_price) if direction == "LONG" else ((entry_price - exit_price) / entry_price)
+    raw_change = ((exit_price - entry_price) / entry_price) if direction == "LONG" else ((entry_price - exit_price) / entry_price) if entry_price > 0 else 0.0
     gross_pnl_pct = round(raw_change * leverage * 100, 2)
     fee_pct = round(0.10 * leverage, 2)
     net_pnl_pct = round(gross_pnl_pct - fee_pct, 2)
+
+    # TP1 alınmışsa (FREE-TRADE RUNNER) birleşik kâr ve marjini koru
+    partial_tp_taken = sig.get("partial_tp_taken") or 0
+    allocated_margin = float(sig.get("allocated_margin_usdt") or 200.0)
+    final_margin_to_save = allocated_margin
+    if partial_tp_taken == 1:
+        prev_realized_usd = float(sig.get("realized_pnl_usd") or 0.0)
+        runner_usd = allocated_margin * (net_pnl_pct / 100.0)
+        total_dollar_pnl = prev_realized_usd + runner_usd
+        orig_margin = allocated_margin * 2.0
+        net_pnl_pct = round((total_dollar_pnl / orig_margin) * 100.0, 2)
+        gross_pnl_pct = round(net_pnl_pct + fee_pct, 2)
+        final_margin_to_save = orig_margin
+
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     with get_db_connection() as conn:
@@ -1292,9 +1342,10 @@ def close_single_signal_db(symbol: str, client=None) -> Optional[Dict]:
                 exit_price = ?,
                 simulated_pnl_pct = ?,
                 gross_pnl_pct = ?,
-                fee_pct = ?
+                fee_pct = ?,
+                allocated_margin_usdt = ?
             WHERE id = ?
-        """, (now_str, exit_price, net_pnl_pct, gross_pnl_pct, fee_pct, sig_id))
+        """, (now_str, exit_price, net_pnl_pct, gross_pnl_pct, fee_pct, final_margin_to_save, sig_id))
         conn.commit()
 
     sig["status"] = "MANUAL_CLOSE"
@@ -1303,6 +1354,7 @@ def close_single_signal_db(symbol: str, client=None) -> Optional[Dict]:
     sig["simulated_pnl_pct"] = net_pnl_pct
     sig["gross_pnl_pct"] = gross_pnl_pct
     sig["fee_pct"] = fee_pct
+    sig["allocated_margin_usdt"] = final_margin_to_save
 
     # Tauric Reflection kaydı
     try:
@@ -1317,6 +1369,25 @@ def close_single_signal_db(symbol: str, client=None) -> Optional[Dict]:
             "fee_pct": fee_pct,
             "leverage": leverage
         })
+    except Exception:
+        pass
+
+    # Telegram Anlık Bildirimi
+    try:
+        from agents.notifier_agent import NotifierAgent
+        notifier = NotifierAgent()
+        if notifier.has_telegram:
+            sign_char = "+" if net_pnl_pct >= 0 else ""
+            dollar_gain = round(final_margin_to_save * (net_pnl_pct / 100.0), 2)
+            dollar_str = f"+${dollar_gain:.2f}" if dollar_gain >= 0 else f"-${abs(dollar_gain):.2f}"
+            msg = (
+                f"👤 <b>[MANUEL KAPATMA - PİYASA EMRİ]</b>\n\n"
+                f"🪙 <b>Parite:</b> <code>{clean_sym}</code> ({direction} {leverage}x)\n"
+                f"💵 <b>Giriş:</b> <code>{entry_price}</code> ➡️ <b>Çıkış:</b> <code>{exit_price}</code>\n"
+                f"📊 <b>Net Getiri:</b> <b>{sign_char}{net_pnl_pct:.2f}% ({dollar_str})</b>\n"
+                f"📌 <b>Durum:</b> İşlem kullanıcı tarafından market fiyatından kapatıldı."
+            )
+            notifier.send_text_message(msg)
     except Exception:
         pass
 
