@@ -123,7 +123,9 @@ def init_db():
             "entry_limit_2": "REAL DEFAULT 0.0",
             "entry_limit_2_hit": "INTEGER DEFAULT 0",
             "is_pair_trade": "INTEGER DEFAULT 0",
-            "pair_symbol": "TEXT DEFAULT ''"
+            "pair_symbol": "TEXT DEFAULT ''",
+            "timeframe": "TEXT DEFAULT '15m'",
+            "trade_horizon": "TEXT DEFAULT 'Kısa Vade (15m)'"
         }
         for col_name, col_def in new_cols.items():
             if col_name not in existing_cols:
@@ -852,6 +854,10 @@ def save_signal(data: Dict) -> int:
         elif not debate_json_str:
             debate_json_str = ""
 
+        timeframe = data.get("timeframe", "15m")
+        trade_horizon = data.get("trade_horizon", "Kısa Vade (15m)")
+        entry_limit_2 = data.get("entry_limit_2", 0.0)
+
         cursor.execute("""
             INSERT INTO signals (
                 symbol, direction, leverage, entry_min, entry_max,
@@ -859,8 +865,8 @@ def save_signal(data: Dict) -> int:
                 stop_loss, take_profit_1, take_profit_2, risk_reward,
                 risk_grade, news_summary, ta_reasons, chart_entry_png, status,
                 allocated_margin_usdt, risk_usd, highest_price, lowest_price,
-                debate_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?)
+                debate_json, entry_limit_2, timeframe, trade_horizon
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             data["symbol"], data["direction"], data.get("leverage", 10),
             data["entry_min"], data["entry_max"],
@@ -872,7 +878,10 @@ def save_signal(data: Dict) -> int:
             data.get("allocated_margin_usdt", 100.0),
             data.get("risk_usd", 20.0),
             entry_price, entry_price,
-            debate_json_str
+            debate_json_str,
+            entry_limit_2,
+            timeframe,
+            trade_horizon
         ))
         conn.commit()
         return cursor.lastrowid
