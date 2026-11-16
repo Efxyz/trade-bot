@@ -1112,12 +1112,12 @@ def update_signal_status(signal_id: int, updates: Dict):
         conn.commit()
 
 def get_all_signals(limit: int = 50) -> List[Dict]:
-    """Tüm sinyalleri (aktif ve geçmiş) sıralı olarak getirir."""
+    """Tüm sinyalleri (aktif ve geçmiş) son kapatılan en üstte olacak şekilde getirir."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT * FROM signals 
-            ORDER BY created_at DESC 
+            ORDER BY COALESCE(closed_at, created_at) DESC, id DESC 
             LIMIT ?
         """, (limit,))
         return [dict(row) for row in cursor.fetchall()]
@@ -1810,12 +1810,12 @@ def get_fast_active_and_pending_signals() -> List[Dict]:
         return [dict(row) for row in cursor.fetchall()]
 
 def get_fast_all_signals(limit: int = 50) -> List[Dict]:
-    """FAST bot tüm geçmiş ve aktif işlemlerini getirir."""
+    """FAST bot tüm geçmiş ve aktif işlemlerini son kapatılan en üstte olacak şekilde getirir."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT * FROM fast_signals
-            ORDER BY id DESC
+            ORDER BY COALESCE(closed_at, created_at) DESC, id DESC
             LIMIT ?
         """, (limit,))
         return [dict(row) for row in cursor.fetchall()]
@@ -2253,12 +2253,12 @@ def get_super_fast_active_and_pending_signals() -> List[Dict]:
 
 
 def get_super_fast_all_signals(limit: int = 50) -> List[Dict]:
-    """Süper FAST bot son sinyallerini ve işlemlerini getirir."""
+    """Süper FAST bot son sinyallerini ve işlemlerini son kapatılan en üstte olacak şekilde getirir."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT * FROM super_fast_signals
-            ORDER BY id DESC
+            ORDER BY COALESCE(closed_at, created_at) DESC, id DESC
             LIMIT ?
         """, (limit,))
         return [dict(row) for row in cursor.fetchall()]
