@@ -227,6 +227,50 @@ HTML_OFFICE_TEMPLATE = """
             transform: translateY(0);
         }
 
+        .btn-group-close {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 3px 9px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-family: 'Inter', sans-serif;
+            white-space: nowrap;
+        }
+        .btn-close-profit {
+            background: rgba(34, 197, 94, 0.15);
+            color: #22c55e;
+            border: 1px solid rgba(34, 197, 94, 0.45);
+        }
+        .btn-close-profit:hover {
+            background: #22c55e;
+            color: #ffffff;
+            border-color: #22c55e;
+            box-shadow: 0 0 10px rgba(34, 197, 94, 0.45);
+            transform: translateY(-1px);
+        }
+        .btn-close-profit:active {
+            transform: translateY(0);
+        }
+        .btn-close-loss {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.45);
+        }
+        .btn-close-loss:hover {
+            background: #ef4444;
+            color: #ffffff;
+            border-color: #ef4444;
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.45);
+            transform: translateY(-1px);
+        }
+        .btn-close-loss:active {
+            transform: translateY(0);
+        }
+
         /* Aktif İşlemler İki Kısımlı Bölüm ve Özet Barı */
         .active-summary-bar {
             display: flex;
@@ -1210,7 +1254,7 @@ HTML_OFFICE_TEMPLATE = """
             </div>
             <div class="top-stat">
                 <span class="lbl">Canlı PnL:</span>
-                <span class="val" id="topUnrealized" style="color: var(--text-muted);">%0.0</span>
+                <span class="val" id="topUnrealized" style="color: var(--text-muted);">+$0.00 (%0.0)</span>
             </div>
             <div class="top-stat">
                 <span class="lbl">Ödenen Komisyon:</span>
@@ -1290,10 +1334,12 @@ HTML_OFFICE_TEMPLATE = """
             <div id="positionsContainer" style="display: none; flex-direction: column; flex: 1; overflow: hidden;">
                 <!-- En Üst: Ne kadar aktif işlem olduğu özeti -->
                 <div class="active-summary-bar">
-                    <span class="sum-badge all">🎯 Toplam: <strong id="totalActiveCount">0</strong> Aktif</span>
-                    <div style="display: flex; gap: 6px; align-items: center;">
-                        <span class="sum-badge green">🟢 Kârda: <strong id="greenActiveCount">0</strong></span>
-                        <span class="sum-badge red">🔴 Zararda: <strong id="redActiveCount">0</strong></span>
+                    <span class="sum-badge all">🎯 Toplam: <strong id="totalActiveCount">0</strong> Aktif (<strong id="totalActiveDollar">$0.00</strong>)</span>
+                    <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                        <span class="sum-badge green">🟢 Kârda: <strong id="greenActiveCount">0</strong> (<strong id="greenActiveDollar">+$0.00</strong>)</span>
+                        <span class="sum-badge red">🔴 Zararda: <strong id="redActiveCount">0</strong> (<strong id="redActiveDollar">-$0.00</strong>)</span>
+                        <button class="btn-group-close btn-close-profit" onclick="closePositionsGroup('profit')" title="KÂRDAKİ tüm açık pozisyonları anında piyasa fiyatından kapat">💰 Kârdakileri Kapat</button>
+                        <button class="btn-group-close btn-close-loss" onclick="closePositionsGroup('loss')" title="ZARARDAKİ tüm açık pozisyonları anında piyasa fiyatından kapat">🛑 Zarardakileri Kapat</button>
                         <button class="btn-panic" onclick="closeAllPositions()" title="Tüm açık işlemleri anlık fiyattan kapat">🚫 Tümünü Kapat</button>
                     </div>
                 </div>
@@ -1301,9 +1347,14 @@ HTML_OFFICE_TEMPLATE = """
                 <div class="active-two-cols">
                     <!-- SOL SÜTUN: 🟢 KÂRDAKİ POZİSYONLAR -->
                     <div class="active-sub-col">
-                        <div class="pos-section-header green-sec">
-                            <span>🟢 KÂRDAKİLER (<span id="profitColCount">0</span>)</span>
-                            <span class="pos-section-sub">En çok kârdan aza doğru ↓</span>
+                        <div class="pos-section-header green-sec" style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <span>🟢 KÂRDAKİLER (<span id="profitColCount">0</span>)</span>
+                                <span class="pos-section-sub" id="profitColTotalDollar" style="margin-left: 6px; font-weight: 700; color: #22c55e;">+$0.00</span>
+                            </div>
+                            <button class="btn-group-close btn-close-profit" onclick="closePositionsGroup('profit')" title="KÂRDAKİ tüm açık pozisyonları piyasa fiyatından hemen kapat">
+                                💰 Kârdakileri Kapat
+                            </button>
                         </div>
                         <div class="cards-sub-list" id="profitList">
                             <div style="text-align: center; color: var(--text-muted); padding: 30px 10px; font-size: 11px;">
@@ -1314,9 +1365,14 @@ HTML_OFFICE_TEMPLATE = """
 
                     <!-- SAĞ SÜTUN: 🔴 ZARARDAKİ POZİSYONLAR -->
                     <div class="active-sub-col">
-                        <div class="pos-section-header red-sec">
-                            <span>🔴 ZARARDAKİLER (<span id="lossColCount">0</span>)</span>
-                            <span class="pos-section-sub">En çok zarardan aza doğru ↓</span>
+                        <div class="pos-section-header red-sec" style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <span>🔴 ZARARDAKİLER (<span id="lossColCount">0</span>)</span>
+                                <span class="pos-section-sub" id="lossColTotalDollar" style="margin-left: 6px; font-weight: 700; color: #ef4444;">-$0.00</span>
+                            </div>
+                            <button class="btn-group-close btn-close-loss" onclick="closePositionsGroup('loss')" title="ZARARDAKİ tüm açık pozisyonları piyasa fiyatından hemen kapat">
+                                🛑 Zarardakileri Kapat
+                            </button>
                         </div>
                         <div class="cards-sub-list" id="lossList">
                             <div style="text-align: center; color: var(--text-muted); padding: 30px 10px; font-size: 11px;">
@@ -2090,6 +2146,7 @@ HTML_OFFICE_TEMPLATE = """
             const historyList = isSuperFast ? (data.super_fast_trade_history || []) : (isFast ? (data.fast_trade_history || []) : (data.trade_history || []));
             const logsList = isSuperFast ? (data.super_fast_scanner_logs || []) : (isFast ? (data.fast_scanner_logs || []) : (data.scanner_logs || []));
             const unPnlVal = isSuperFast ? (data.super_fast_total_unrealized_pnl !== undefined ? data.super_fast_total_unrealized_pnl : 0.0) : (isFast ? (data.fast_total_unrealized_pnl !== undefined ? data.fast_total_unrealized_pnl : 0.0) : (data.total_unrealized_pnl !== undefined ? data.total_unrealized_pnl : 0.0));
+            const unDollarVal = isSuperFast ? (data.super_fast_total_unrealized_dollar !== undefined ? data.super_fast_total_unrealized_dollar : 0.0) : (isFast ? (data.fast_total_unrealized_dollar !== undefined ? data.fast_total_unrealized_dollar : 0.0) : (data.total_unrealized_dollar !== undefined ? data.total_unrealized_dollar : 0.0));
             const maxTrades = isSuperFast ? (data.super_fast_max_concurrent_trades || 20) : (isFast ? (data.fast_max_concurrent_trades || 10) : (data.max_concurrent_trades || 5));
 
             // 1. Topbar
@@ -2117,10 +2174,12 @@ HTML_OFFICE_TEMPLATE = """
             const unPnlEl = document.getElementById('topUnrealized');
             if (unPnlEl) {
                 const unPnl = Number(unPnlVal).toFixed(1);
-                const unTxt = (unPnl >= 0 ? '+' : '') + unPnl + '%';
+                const unDol = Number(unDollarVal);
+                const unDolSign = unDol >= 0 ? '+$' : '-$';
+                const unTxt = `${unDolSign}${Math.abs(unDol).toFixed(2)} (${unPnl >= 0 ? '+' : ''}${unPnl}%)`;
                 if (unPnlEl.innerText !== unTxt) {
                     unPnlEl.innerText = unTxt;
-                    unPnlEl.className = 'val ' + (unPnl >= 0 ? 'pnl-pos' : 'pnl-neg');
+                    unPnlEl.className = 'val ' + (unDol >= 0 ? 'pnl-pos' : 'pnl-neg');
                 }
             }
 
@@ -2216,6 +2275,16 @@ HTML_OFFICE_TEMPLATE = """
                     if (rdEl) rdEl.innerText = '0';
                     if (pColEl) pColEl.innerText = '0';
                     if (lColEl) lColEl.innerText = '0';
+                    const totDolEl = document.getElementById('totalActiveDollar');
+                    const grDolEl = document.getElementById('greenActiveDollar');
+                    const rdDolEl = document.getElementById('redActiveDollar');
+                    const pColDolEl = document.getElementById('profitColTotalDollar');
+                    const lColDolEl = document.getElementById('lossColTotalDollar');
+                    if (totDolEl) totDolEl.innerText = '$0.00';
+                    if (grDolEl) grDolEl.innerText = '+$0.00';
+                    if (rdDolEl) rdDolEl.innerText = '-$0.00';
+                    if (pColDolEl) pColDolEl.innerText = '+$0.00';
+                    if (lColDolEl) lColDolEl.innerText = '-$0.00';
                 } else {
                     // Pozisyonların net ve brüt PnL ve mesafe hesaplamaları
                     const processed = activeList.map(pos => {
@@ -2232,13 +2301,17 @@ HTML_OFFICE_TEMPLATE = """
                         const netPnlPct = grossPnlPct - feePct;
                         const isProfit = netPnlPct >= 0;
 
+                        const posMargin = Number(pos.allocated_margin_usdt || 200.0);
+                        const posDollarGain = (pos.unrealized_pnl_dollar !== undefined) ? Number(pos.unrealized_pnl_dollar) : (posMargin * (netPnlPct / 100.0));
+
                         const distTp = isLong ? ((tp - live) / live) * 100 : ((live - tp) / live) * 100;
                         const distSl = isLong ? ((live - sl) / live) * 100 : ((sl - live) / live) * 100;
 
                         return {
                             ...pos,
                             isLong, entry, live, sl, tp, lev,
-                            grossPnlPct, feePct, netPnlPct, isProfit, distTp, distSl
+                            grossPnlPct, feePct, netPnlPct, isProfit, distTp, distSl,
+                            posMargin, posDollarGain
                         };
                     });
 
@@ -2252,6 +2325,14 @@ HTML_OFFICE_TEMPLATE = """
                         .filter(p => !p.isProfit)
                         .sort((a, b) => a.netPnlPct - b.netPnlPct);
 
+                    let sumProfitDollar = 0.0;
+                    profitPositions.forEach(p => { sumProfitDollar += p.posDollarGain; });
+
+                    let sumLossDollar = 0.0;
+                    lossPositions.forEach(p => { sumLossDollar += p.posDollarGain; });
+
+                    const sumTotalDollar = sumProfitDollar + sumLossDollar;
+
                     const grEl = document.getElementById('greenActiveCount');
                     const rdEl = document.getElementById('redActiveCount');
                     const pColEl = document.getElementById('profitColCount');
@@ -2260,6 +2341,18 @@ HTML_OFFICE_TEMPLATE = """
                     if (rdEl) rdEl.innerText = lossPositions.length;
                     if (pColEl) pColEl.innerText = profitPositions.length;
                     if (lColEl) lColEl.innerText = lossPositions.length;
+
+                    const totDolEl = document.getElementById('totalActiveDollar');
+                    const grDolEl = document.getElementById('greenActiveDollar');
+                    const rdDolEl = document.getElementById('redActiveDollar');
+                    const pColDolEl = document.getElementById('profitColTotalDollar');
+                    const lColDolEl = document.getElementById('lossColTotalDollar');
+
+                    if (totDolEl) totDolEl.innerText = (sumTotalDollar >= 0 ? '+$' : '-$') + Math.abs(sumTotalDollar).toFixed(2);
+                    if (grDolEl) grDolEl.innerText = '+$' + Math.abs(sumProfitDollar).toFixed(2);
+                    if (rdDolEl) rdDolEl.innerText = '-$' + Math.abs(sumLossDollar).toFixed(2);
+                    if (pColDolEl) pColDolEl.innerText = '+$' + Math.abs(sumProfitDollar).toFixed(2);
+                    if (lColDolEl) lColDolEl.innerText = '-$' + Math.abs(sumLossDollar).toFixed(2);
 
                     function renderCardHtml(pos) {
                         const lineSvg = renderMiniLineChart(pos.recent_candles || [], pos.entry, pos.live, pos.sl, pos.tp, pos.isLong, pos.symbol);
@@ -2300,7 +2393,7 @@ HTML_OFFICE_TEMPLATE = """
                                         <span class="card-elapsed" title="Pozisyon Açılış Zamanı (TSİ): ${formatTurkeyTime(pos.entered_at || pos.created_at)}">⏱️ ${elapsed}</span>
                                         <div style="text-align: right;">
                                             <div class="card-pnl ${pos.isProfit ? 'pnl-pos' : 'pnl-neg'}">
-                                                ${pos.isProfit ? '+' : ''}${pos.netPnlPct.toFixed(2)}% Net
+                                                ${pos.isProfit ? '+' : ''}${pos.netPnlPct.toFixed(2)}% Net (${pos.posDollarGain >= 0 ? '+$' : '-$'}${Math.abs(pos.posDollarGain).toFixed(2)})
                                             </div>
                                             <div style="font-size: 8.5px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace;">
                                                 Brüt: ${(pos.grossPnlPct >= 0 ? '+' : '') + pos.grossPnlPct.toFixed(2)}% | Kom: -${pos.feePct.toFixed(2)}%
@@ -2320,7 +2413,7 @@ HTML_OFFICE_TEMPLATE = """
                                 <!-- Mesafe ve Kasa Marjin Bilgileri -->
                                 <div class="proximity-row">
                                     <span class="prox-sl">🛑 SL: %${pos.distSl.toFixed(2)}</span>
-                                    <span style="color: var(--text-muted); font-size: 10px; font-family: 'JetBrains Mono';">💵 Marjin: $${pos.allocated_margin_usdt || 200}</span>
+                                    <span style="color: var(--text-muted); font-size: 10px; font-family: 'JetBrains Mono';">💵 Marjin: $${pos.posMargin.toFixed(0)}</span>
                                     <span class="prox-tp">🎯 TP: %${pos.distTp.toFixed(2)}</span>
                                 </div>
                             </div>
@@ -2998,6 +3091,54 @@ HTML_OFFICE_TEMPLATE = """
                     btn.innerHTML = oldHtml;
                     btn.disabled = false;
                 }
+            }
+        }
+
+        async function closePositionsGroup(group) {
+            const isProfitGroup = (group === 'profit' || group === 'green' || group === 'kar');
+            const groupName = isProfitGroup ? 'KÂRDAKİ' : 'ZARARDAKİ';
+            const msg = `⚡ Tüm ${groupName} açık pozisyonları anlık piyasa fiyatından kapatmak istediğinize emin misiniz?`;
+            if (!confirm(msg)) return;
+            const pin = await getAdminPin();
+            if (!pin) return;
+
+            const btns = document.querySelectorAll(isProfitGroup ? '.btn-close-profit' : '.btn-close-loss');
+            btns.forEach(b => {
+                b.setAttribute('data-old-text', b.innerHTML);
+                b.innerHTML = '⏳ Kapatılıyor...';
+                b.disabled = true;
+            });
+
+            try {
+                const res = await fetch('/api/close-positions-group', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Pin': pin
+                    },
+                    body: JSON.stringify({ group: isProfitGroup ? 'profit' : 'loss' })
+                });
+
+                if (res.status === 401) {
+                    sessionStorage.removeItem('admin_pin');
+                    alert('🔒 Hata: Geçersiz Yönetici Güvenlik PIN Kodu!');
+                } else {
+                    const data = await res.json();
+                    if (data.status === 'success') {
+                        await fetchTerminal();
+                    } else {
+                        alert('⚠️ ' + (data.message || 'Pozisyonlar kapatılamadı.'));
+                    }
+                }
+            } catch (err) {
+                console.error("Grup kapatma hatası:", err);
+                alert('İletişim hatası: Pozisyonlar kapatılamadı!');
+            } finally {
+                btns.forEach(b => {
+                    const oldTxt = b.getAttribute('data-old-text') || (isProfitGroup ? '💰 Kârdakileri Kapat' : '🛑 Zarardakileri Kapat');
+                    b.innerHTML = oldTxt;
+                    b.disabled = false;
+                });
             }
         }
 
@@ -5841,6 +5982,7 @@ _terminal_cache = {
     "btc_regime": {"status": "NEUTRAL", "btc_price": 0, "summary": "Piyasa taranıyor..."},
     "stats": {},
     "total_unrealized_pnl": 0.0,
+    "total_unrealized_dollar": 0.0,
     "active_positions": [],
     "scanner_logs": [],
     "news_feed": [],
@@ -5997,6 +6139,7 @@ def update_terminal_cache_loop():
             # 4. Standart Aktif Pozisyonlar ve Çizgi Fiyatları
             active_positions = []
             total_unrealized_pnl = 0.0
+            total_unrealized_dollar = 0.0
 
             from core.binance_streamer import get_live_price, is_streamer_connected
 
@@ -6020,6 +6163,10 @@ def update_terminal_cache_loop():
                     gross_pnl_pct = round(raw_diff * leverage * 100, 2)
                     net_pnl_pct = round(gross_pnl_pct - fee_pct, 2)
                     total_unrealized_pnl += net_pnl_pct
+
+                pos_margin = float(sig.get("allocated_margin_usdt") or 200.0)
+                pos_dollar_gain = round(pos_margin * (net_pnl_pct / 100.0), 2)
+                total_unrealized_dollar += pos_dollar_gain
 
                 # Mum verisini çek (başarısız olursa son hafızadakini koru)
                 try:
@@ -6051,6 +6198,8 @@ def update_terminal_cache_loop():
                 sig_dict["elapsed_str"] = elapsed_str
                 sig_dict["live_price"] = live_price
                 sig_dict["unrealized_pnl_pct"] = net_pnl_pct
+                sig_dict["unrealized_pnl_dollar"] = pos_dollar_gain
+                sig_dict["allocated_margin_usdt"] = pos_margin
                 sig_dict["gross_pnl_pct"] = gross_pnl_pct
                 sig_dict["fee_pct"] = fee_pct
                 sig_dict["ladder_step"] = sig.get("ladder_step") or 0
@@ -6061,6 +6210,7 @@ def update_terminal_cache_loop():
             # 5. FAST Scalper Aktif Pozisyonlar ve Çizgi Fiyatları (1m Mumlar)
             fast_active_positions = []
             fast_total_unrealized_pnl = 0.0
+            fast_total_unrealized_dollar = 0.0
 
             for fsig in fast_active_signals:
                 fsymbol = fsig["symbol"]
@@ -6082,6 +6232,10 @@ def update_terminal_cache_loop():
                     f_gross_pnl_pct = round(f_raw_diff * f_leverage * 100, 2)
                     f_net_pnl_pct = round(f_gross_pnl_pct - f_fee_pct, 2)
                     fast_total_unrealized_pnl += f_net_pnl_pct
+
+                f_pos_margin = float(fsig.get("allocated_margin_usdt") or 100.0)
+                f_pos_dollar = round(f_pos_margin * (f_net_pnl_pct / 100.0), 2)
+                fast_total_unrealized_dollar += f_pos_dollar
 
                 # 1m hızlı mum verisi çek
                 try:
@@ -6113,6 +6267,8 @@ def update_terminal_cache_loop():
                 fsig_dict["elapsed_str"] = f_elapsed_str
                 fsig_dict["live_price"] = f_live_price
                 fsig_dict["unrealized_pnl_pct"] = f_net_pnl_pct
+                fsig_dict["unrealized_pnl_dollar"] = f_pos_dollar
+                fsig_dict["allocated_margin_usdt"] = f_pos_margin
                 fsig_dict["gross_pnl_pct"] = f_gross_pnl_pct
                 fsig_dict["fee_pct"] = f_fee_pct
                 fsig_dict["ladder_step"] = fsig.get("ladder_step") or 0
@@ -6151,6 +6307,7 @@ def update_terminal_cache_loop():
             # 6. SÜPER FAST Scalper Aktif Pozisyonlar ve Çizgi Fiyatları
             super_fast_active_positions = []
             super_fast_total_unrealized_pnl = 0.0
+            super_fast_total_unrealized_dollar = 0.0
 
             for sfsig in super_fast_active_signals:
                 sfsymbol = sfsig["symbol"]
@@ -6172,6 +6329,10 @@ def update_terminal_cache_loop():
                     sf_gross_pnl_pct = round(sf_raw_diff * sf_leverage * 100, 2)
                     sf_net_pnl_pct = round(sf_gross_pnl_pct - sf_fee_pct, 2)
                     super_fast_total_unrealized_pnl += sf_net_pnl_pct
+
+                sf_pos_margin = float(sfsig.get("allocated_margin_usdt") or 50.0)
+                sf_pos_dollar = round(sf_pos_margin * (sf_net_pnl_pct / 100.0), 2)
+                super_fast_total_unrealized_dollar += sf_pos_dollar
 
                 # 1m hızlı mum verisi (grafik için)
                 try:
@@ -6203,6 +6364,8 @@ def update_terminal_cache_loop():
                 sfsig_dict["elapsed_str"] = sf_elapsed_str
                 sfsig_dict["live_price"] = sf_live_price
                 sfsig_dict["unrealized_pnl_pct"] = sf_net_pnl_pct
+                sfsig_dict["unrealized_pnl_dollar"] = sf_pos_dollar
+                sfsig_dict["allocated_margin_usdt"] = sf_pos_margin
                 sfsig_dict["gross_pnl_pct"] = sf_gross_pnl_pct
                 sfsig_dict["fee_pct"] = sf_fee_pct
                 sfsig_dict["ladder_step"] = sfsig.get("ladder_step") or 0
@@ -6236,6 +6399,7 @@ def update_terminal_cache_loop():
                     "max_concurrent_trades": MAX_CONCURRENT_TRADES,
                     "timeline_quotas": timeline_quotas,
                     "total_unrealized_pnl": round(total_unrealized_pnl, 2),
+                    "total_unrealized_dollar": round(total_unrealized_dollar, 2),
                     "active_positions": active_positions,
                     "scanner_logs": scanner_logs if scanner_logs else _terminal_cache.get("scanner_logs", []),
                     "news_feed": news_feed if news_feed else _terminal_cache.get("news_feed", []),
@@ -6249,6 +6413,7 @@ def update_terminal_cache_loop():
                     "fast_stats": fast_stats,
                     "fast_max_concurrent_trades": FAST_MAX_CONCURRENT_TRADES,
                     "fast_total_unrealized_pnl": round(fast_total_unrealized_pnl, 2),
+                    "fast_total_unrealized_dollar": round(fast_total_unrealized_dollar, 2),
                     "fast_active_positions": fast_active_positions,
                     "fast_trade_history": fast_history if fast_history else _terminal_cache.get("fast_trade_history", []),
                     "fast_scanner_logs": fast_scanner_logs if fast_scanner_logs else _terminal_cache.get("fast_scanner_logs", []),
@@ -6256,6 +6421,7 @@ def update_terminal_cache_loop():
                     "super_fast_stats": super_fast_stats,
                     "super_fast_max_concurrent_trades": SUPER_FAST_MAX_CONCURRENT_TRADES,
                     "super_fast_total_unrealized_pnl": round(super_fast_total_unrealized_pnl, 2),
+                    "super_fast_total_unrealized_dollar": round(super_fast_total_unrealized_dollar, 2),
                     "super_fast_active_positions": super_fast_active_positions,
                     "super_fast_trade_history": super_fast_history if super_fast_history else _terminal_cache.get("super_fast_trade_history", []),
                     "super_fast_scanner_logs": super_fast_scanner_logs if super_fast_scanner_logs else _terminal_cache.get("super_fast_scanner_logs", [])
@@ -6392,6 +6558,36 @@ def api_close_single_position():
         "signal": closed_sig
     })
 
+@app.route("/api/close-positions-group", methods=["POST"])
+@require_admin_pin
+def api_close_positions_group():
+    data = request.get_json(silent=True) or {}
+    group = data.get("group") or request.args.get("group")
+    if not group or group.lower() not in ("profit", "kar", "green", "loss", "zarar", "red"):
+        return jsonify({"status": "error", "message": "Geçerli bir grup belirtilmedi ('profit' veya 'loss')"}), 400
+
+    from core.database import (
+        close_positions_by_outcome_db, get_performance_stats, get_all_signals, get_active_and_pending_signals
+    )
+    res = close_positions_by_outcome_db(group, client=client)
+
+    with _cache_lock:
+        active_sigs = get_active_and_pending_signals() or []
+        _terminal_cache["active_positions"] = active_sigs
+        _terminal_cache["stats"] = get_performance_stats()
+        _all_init = get_all_signals(limit=40) or []
+        _terminal_cache["trade_history"] = [
+            s for s in _all_init if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER", "ACTIVE_PARTIAL_TP1")
+        ]
+
+    return jsonify({
+        "status": "success",
+        "group": res.get("group"),
+        "count": res.get("count", 0),
+        "closed": res.get("closed", []),
+        "message": f"{res.get('count', 0)} adet pozisyon piyasa fiyatından kapatıldı."
+    })
+
 @app.route("/api/close-all-positions", methods=["POST"])
 @require_admin_pin
 def api_close_all_positions():
@@ -6400,6 +6596,7 @@ def api_close_all_positions():
     with _cache_lock:
         _terminal_cache["active_positions"] = []
         _terminal_cache["total_unrealized_pnl"] = 0.0
+        _terminal_cache["total_unrealized_dollar"] = 0.0
         _terminal_cache["stats"] = get_performance_stats()
         _all_init = get_all_signals(limit=40) or []
         _terminal_cache["trade_history"] = [s for s in _all_init if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER", "ACTIVE_PARTIAL_TP1")]
