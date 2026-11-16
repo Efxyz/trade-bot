@@ -375,21 +375,32 @@ class TechnicalAnalysisAgent:
         setup, _ = self.analyze_setup(symbol, candles_15m)
         return setup
 
-    def analyze_setup(self, symbol: str, candles_15m: List[Dict], candles_1h: Optional[List[Dict]] = None) -> Tuple[Optional[Dict], str]:
+    def analyze_setup(
+        self,
+        symbol: str,
+        candles_15m: List[Dict],
+        candles_1h: Optional[List[Dict]] = None,
+        timeframe: str = "15m",
+        candles_macro: Optional[List[Dict]] = None
+    ) -> Tuple[Optional[Dict], str]:
         """
-        Kurumsal SMC + Quant Confluence Scalp Analizi (15m):
+        Kurumsal SMC + Quant Confluence Scalp Analizi:
         FVG, Order Block, Liquidity Sweep, TTM Squeeze, VWAP ve EMA/RSI birleşimiyle
         0-100 arası Güven Skoru üretir.
+        Dinamik Çoklu-Vade (15m Kısa / 30m Orta / 1h Uzun) desteği içerir.
         """
+        if candles_macro is not None:
+            candles_1h = candles_macro
+
         if symbol in EXCLUDED_SYMBOLS_BLACKLIST:
             return None, f"📌 {symbol} Zehirli Parite Kara Listesinde (Kronik testere/zarar geçmişi nedeniyle elendi)."
 
         if len(candles_15m) < 35:
-            return None, "Yetersiz 15m mum verisi (en az 35 mum gerekli)"
+            return None, f"Yetersiz {timeframe} mum verisi (en az 35 mum gerekli)"
 
         # 1. Hacim Patlaması & Hareket Kontrolü
         if not self.check_volume_burst(candles_15m):
-            return None, "15m Hacim patlaması yetersiz (Hareketsiz / Yatay Tahta)"
+            return None, f"{timeframe} Hacim patlaması yetersiz (Hareketsiz / Yatay Tahta)"
 
         closes = [c["close"] for c in candles_15m]
         current_price = closes[-1]
@@ -401,7 +412,7 @@ class TechnicalAnalysisAgent:
             min_l = min(c["low"] for c in recent_4)
             range_pct = ((max_h - min_l) / current_price) * 100.0 if current_price > 0 else 0.0
             if range_pct < MIN_4BAR_RANGE_PCT:
-                return None, f"Yatay / Testere Piyasa (Son 1 saat dalgalanma %{range_pct:.2f} < %{MIN_4BAR_RANGE_PCT} eşiği)"
+                return None, f"Yatay / Testere Piyasa (Son 4 mum dalgalanma %{range_pct:.2f} < %{MIN_4BAR_RANGE_PCT} eşiği)"
 
         # Temel İndikatörler
         ema20 = self.calculate_ema(closes, 20)
@@ -435,9 +446,9 @@ class TechnicalAnalysisAgent:
         curr_vwap = vwap[-1] if vwap else current_price
 
         if not (curr_ema20 and curr_ema50 and curr_rsi and curr_atr):
-            return None, "15m İndikatör verisi eksik"
+            return None, f"{timeframe} İndikatör verisi eksik"
 
-        # Dinamik ATR Tabanlı Stop & Hedef Hesabı (Fitil ve gürültüye ezilmeme garantisi & Otonom Kalibrasyon)
+        # Dinamik Vade ve ATR Tabanlı Stop & Hedef Hesabı
         try:
             from core.self_tuning_engine import SelfTuningEngine
             adaptive_params = SelfTuningEngine.get_current_params()
@@ -449,14 +460,32 @@ class TechnicalAnalysisAgent:
             active_max_sl = MAX_SCALP_SL_PCT
             target_min_score = MIN_CONFLUENCE_SCORE
 
-        # 15m ATR x 1.3 stop mesafesi, adaptif kalibre edilmiş sınırlar arasına korunur
-        min_sl_dist = current_price * (active_min_sl / 100.0)
-        max_sl_dist = current_price * (active_max_sl / 100.0)
-        sl_dist = max(min_sl_dist, min(max_sl_dist, curr_atr * 1.3))
+        if timeframe == "30m":
+            horizon_label = "Orta Vade (30m)"
+            tf_min_sl = 1.10
+            tf_max_sl = 1.80
+            tf_target_profit = 2.80
+            atr_mult = 1.5
+        elif timeframe == "1h":
+            horizon_label = "Uzun Vade (1h)"
+            tf_min_sl = 1.60
+            tf_max_sl = 2.80
+            tf_target_profit = 4.20
+            atr_mult = 1.8
+        else:
+            timeframe = "15m"
+            horizon_label = "Kısa Vade (15m)"
+            tf_min_sl = active_min_sl
+            tf_max_sl = active_max_sl
+            tf_target_profit = TARGET_PROFIT_PCT
+            atr_mult = 1.3
+
+        min_sl_dist = current_price * (tf_min_sl / 100.0)
+        max_sl_dist = current_price * (tf_max_sl / 100.0)
+        sl_dist = max(min_sl_dist, min(max_sl_dist, curr_atr * atr_mult))
         sl_pct = round((sl_dist / current_price) * 100, 2)
 
-        # Dinamik TP: En az MIN_RR_RATIO (1:1.8) Risk/Ödül ve en az TARGET_PROFIT_PCT (%2.00)
-        min_tp_dist = current_price * (TARGET_PROFIT_PCT / 100.0)
+        min_tp_dist = current_price * (tf_target_profit / 100.0)
         tp_dist = max(sl_dist * MIN_RR_RATIO, min_tp_dist)
         tp_pct = round((tp_dist / current_price) * 100, 2)
         actual_rr = round(tp_pct / sl_pct, 2) if sl_pct > 0 else MIN_RR_RATIO
@@ -846,6 +875,8 @@ class TechnicalAnalysisAgent:
             setup = {
                 "symbol": symbol,
                 "direction": "LONG",
+                "timeframe": timeframe,
+                "trade_horizon": horizon_label,
                 "leverage": leverage,
                 "risk_grade": grade,
                 "confluence_score": min(long_score, 100),
@@ -1012,6 +1043,8 @@ class TechnicalAnalysisAgent:
             setup = {
                 "symbol": symbol,
                 "direction": "SHORT",
+                "timeframe": timeframe,
+                "trade_horizon": horizon_label,
                 "leverage": leverage,
                 "risk_grade": grade,
                 "confluence_score": min(short_score, 100),
@@ -1073,3 +1106,57 @@ class TechnicalAnalysisAgent:
             f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> {factor_desc}; 10x/20x kaldıraçta sahte fitil ve stop olma riski yüksek.<br>"
             f"🎯 <strong>Beklenen Şart:</strong> Net Likidite Temizliği (Sweep) veya FVG Kırılımı ile skorun {target_min_score}+ üzerine çıkması."
         )
+
+    def analyze_multi_horizon(
+        self,
+        symbol: str,
+        candles_15m: List[Dict],
+        candles_30m: Optional[List[Dict]] = None,
+        candles_1h: Optional[List[Dict]] = None
+    ) -> Tuple[Optional[Dict], str]:
+        """
+        3-Zaman Dilimli Çoklu-Vade (Triple-Horizon) Analiz Motoru:
+        - ⚡ Kısa Vade (15m): Mikro dalga ve hızlı kâr kilidi
+        - 🎯 Orta Vade (30m): Likidite süpürmeleri ve dengeli salınım
+        - 👑 Uzun Vade (1h): Makro kurumsal trend kırılımı ve büyük dalga koşucusu
+        
+        En yüksek güven skoruna ve kurumsal SMC teyidine sahip vadenin işlemini seçer.
+        """
+        candidates_setups = []
+        last_rejection_reason = "3 zaman diliminde de geçerli SMC kurulumu bulunamadı"
+
+        # 1. 15m Kısa Vade İncelemesi
+        if candles_15m and len(candles_15m) >= 35:
+            setup_15m, reason_15m = self.analyze_setup(symbol, candles_15m, candles_macro=candles_1h, timeframe="15m")
+            if setup_15m:
+                candidates_setups.append((setup_15m["confluence_score"], setup_15m, reason_15m))
+            else:
+                last_rejection_reason = f"15m: {reason_15m}"
+
+        # 2. 30m Orta Vade İncelemesi
+        if candles_30m and len(candles_30m) >= 35:
+            setup_30m, reason_30m = self.analyze_setup(symbol, candles_30m, candles_macro=candles_1h, timeframe="30m")
+            if setup_30m:
+                effective_score = setup_30m["confluence_score"] + 2
+                candidates_setups.append((effective_score, setup_30m, reason_30m))
+            else:
+                if not candidates_setups:
+                    last_rejection_reason = f"30m: {reason_30m}"
+
+        # 3. 1h Uzun Vade İncelemesi
+        if candles_1h and len(candles_1h) >= 35:
+            setup_1h, reason_1h = self.analyze_setup(symbol, candles_1h, candles_macro=None, timeframe="1h")
+            if setup_1h:
+                effective_score = setup_1h["confluence_score"] + 3
+                candidates_setups.append((effective_score, setup_1h, reason_1h))
+            else:
+                if not candidates_setups:
+                    last_rejection_reason = f"1h: {reason_1h}"
+
+        if not candidates_setups:
+            return None, last_rejection_reason
+
+        # En yüksek efektif skora sahip vadeyi seç
+        candidates_setups.sort(key=lambda x: x[0], reverse=True)
+        best_score, best_setup, best_reason = candidates_setups[0]
+        return best_setup, f"[{best_setup.get('trade_horizon', '15m')}] {best_reason}"
