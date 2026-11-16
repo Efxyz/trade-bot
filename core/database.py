@@ -994,15 +994,9 @@ def get_and_update_today_peak_profit(current_pnl: float):
             cursor.execute("INSERT OR REPLACE INTO system_state (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)", (today_key, str(peak)))
             conn.commit()
 
-    floor = 0.0
-    if peak >= 75.0:
-        floor = 55.0
-    elif peak >= 50.0:
-        floor = 35.0
-    elif peak >= 30.0:
-        floor = 15.0
-
-    is_locked = (peak >= 30.0 and current_pnl <= floor)
+    from config import DAILY_TRAILING_PROFIT_MIN_USDT, DAILY_TRAILING_PROFIT_RATIO
+    floor = round(peak * DAILY_TRAILING_PROFIT_RATIO, 2) if peak >= DAILY_TRAILING_PROFIT_MIN_USDT else 0.0
+    is_locked = (peak >= DAILY_TRAILING_PROFIT_MIN_USDT and current_pnl <= floor)
     return round(peak, 2), round(floor, 2), is_locked
 
 def is_symbol_locked_by_other_bot(symbol: str, current_bot: str, direction: Optional[str] = None) -> Tuple[bool, str]:
@@ -1094,6 +1088,22 @@ def get_last_loss_closed_time() -> Optional[str]:
             ORDER BY closed_at DESC
             LIMIT 1
         """)
+        row = cursor.fetchone()
+        return row["closed_at"] if row else None
+
+def get_last_loss_for(symbol: str, direction: str) -> Optional[str]:
+    """Belirli bir sembol ve yönde son kapanan zararlı işlemin kapanış zamanını döner (Sembol+Yön Soğuma Kalkanı)."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT closed_at FROM signals
+            WHERE symbol = ? AND direction = ?
+              AND status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
+              AND simulated_pnl_pct < 0
+              AND closed_at IS NOT NULL
+            ORDER BY closed_at DESC
+            LIMIT 1
+        """, (symbol, direction))
         row = cursor.fetchone()
         return row["closed_at"] if row else None
 
@@ -1266,7 +1276,7 @@ def get_daily_pnl_archive_db(limit: int = 30) -> List[Dict]:
         cursor.execute("SELECT * FROM daily_pnl_archive ORDER BY date_str DESC LIMIT ?", (limit,))
         return [dict(r) for r in cursor.fetchall()]
 
-_PARTIAL_REMAINING_RATIOS = {1: 0.50, 2: 0.65, 3: 0.325}
+_PARTIAL_REMAINING_RATIOS = {0: 1.00, 1: 0.50, 2: 0.65, 3: 0.325}
 
 def reconcile_partial_pnl(
     allocated_margin: float,
@@ -1277,8 +1287,8 @@ def reconcile_partial_pnl(
     final_status: str = ""
 ) -> Tuple[float, float, float]:
     """Kısmi kâr alımı (Basamak 1 %35 veya TP1 %50) yapılmış pozisyonun toplam net PnL ve orijinal marjinini hesaplar."""
-    ratio = _PARTIAL_REMAINING_RATIOS.get(partial_tp_taken)
-    if not ratio:
+    ratio = _PARTIAL_REMAINING_RATIOS.get(int(partial_tp_taken or 0), 1.00)
+    if ratio == 1.00:
         return net_pnl_pct, round(net_pnl_pct + fee_pct, 2), allocated_margin
     orig_margin = round(allocated_margin / ratio, 2)
     runner_usd = allocated_margin * (net_pnl_pct / 100.0)
