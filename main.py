@@ -206,22 +206,7 @@ class TradingBotOrchestrator:
             add_scanner_log("BTC KALKANI", "PROTECTED", detailed_msg, "Sermaye Koruma Modu (0 Risk)")
             return
 
-        # 2.5 ZARARLI İŞLEM SONRASI SOĞUMA MOLASI (Anti-Overtrading Cooldown)
-        from core.database import get_last_loss_closed_time
-        from config import POST_LOSS_COOLDOWN_MINUTES
-        last_loss_time_str = get_last_loss_closed_time()
-        if last_loss_time_str:
-            try:
-                last_loss_dt = datetime.strptime(last_loss_time_str[:19], "%Y-%m-%d %H:%M:%S")
-                elapsed_min = (datetime.now() - last_loss_dt).total_seconds() / 60.0
-                if elapsed_min < POST_LOSS_COOLDOWN_MINUTES:
-                    rem_min = int(POST_LOSS_COOLDOWN_MINUTES - elapsed_min) + 1
-                    msg = f"Son zararlı işlem sonrası soğuma molasında ({rem_min} dk kaldı). Testere piyasa tuzağı engellendi."
-                    print(f"⏳ [Soğuma Molası] {msg}")
-                    add_scanner_log("SOĞUMA MOLASI", "PROTECTED", msg, "Aşırı İşlem Freni")
-                    return
-            except Exception:
-                pass
+        # 2.5 SEMBOL + YÖN BAZLI SOĞUMA MOLASI: Aday döngüsünde TA kurulumu sonrası kontrol edilir (Global dondurma kaldırıldı)
 
         # 3. Binance Futures USDT.P çiftlerini tara (Akıllı 200+ Parite Rotasyonu & Cooldown Koruması)
         print("📡 [Scanner Ajanı] Binance Futures USDT.P çiftleri taranıyor...")
@@ -294,6 +279,22 @@ class TradingBotOrchestrator:
                 if not ta_setup:
                     add_scanner_log(symbol, "REJECTED", ta_reason)
                     continue
+
+                # Sembol + Yön Bazlı Soğuma Molası (Aynı paritede aynı yönde intikam işlemini önle, diğer pariteleri kilitleme)
+                try:
+                    from core.database import get_last_loss_for
+                    from config import POST_LOSS_COOLDOWN_MINUTES
+                    last_loss_sym_dir = get_last_loss_for(symbol, ta_setup["direction"])
+                    if last_loss_sym_dir:
+                        last_loss_dt = datetime.strptime(last_loss_sym_dir[:19], "%Y-%m-%d %H:%M:%S")
+                        elapsed_min = (datetime.now() - last_loss_dt).total_seconds() / 60.0
+                        if elapsed_min < POST_LOSS_COOLDOWN_MINUTES:
+                            rem_min = int(POST_LOSS_COOLDOWN_MINUTES - elapsed_min) + 1
+                            msg = f"{symbol} {ta_setup['direction']} son zarar sonrası soğuma molasında ({rem_min} dk kaldı)."
+                            add_scanner_log(symbol, "PROTECTED", msg, "Sembol+Yön Soğuma Molası")
+                            continue
+                except Exception:
+                    pass
 
                 # Multi-Bot Anti-Collision & Anti-Hedging Kalkanı (Çapraz Bot Koruması)
                 is_other_locked, lock_reason = is_symbol_locked_by_other_bot(symbol, "standard", ta_setup["direction"])
