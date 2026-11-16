@@ -107,7 +107,7 @@ SMC_PREMIUM_DISCOUNT_FILTER = True     # SMC Premium/Discount Kalkanı (Dipten S
 # Bir yönde (özellikle SHORT) peş peşe zarar geldiğinde o yönü dondurur, diğer yön (LONG) kesintisiz devam eder
 SIDE_STOPLOSS_GUARD_ENABLED = True
 SIDE_STOPLOSS_MAX_CONSECUTIVE_LOSSES = 2   # Peş peşe 2 zarar eden yön kilitlenir
-SIDE_STOPLOSS_COOLDOWN_MINUTES = 120       # Kilitlenen yön 120 dakika boyunca yeni işleme kapatılır
+SIDE_STOPLOSS_COOLDOWN_MINUTES = 45        # Kilitlenen yön 45 dakika boyunca yeni işleme kapatılır (Eski: 120 dk)
 
 # ========================================================
 # VADEYE / ZAMAN DİLİMİNE ÖZEL GÜNLÜK İŞLEM KOTALARI
@@ -160,3 +160,37 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 ENABLE_TELEGRAM_COMMANDS = True
 CRYPTOPANIC_API_KEY = os.getenv("CRYPTOPANIC_API_KEY", "")
+
+# ========================================================
+# DEEPSEEK-R1 QUANT YÜKSELTMESİ: REPAINT, ATR MERDİVEN & REJİM
+# ========================================================
+# Kapanmamış mum (candles[-1]) kaynaklı lookahead/repainting hatalarını önle
+USE_CLOSED_CANDLES_FOR_SCORING = True
+
+# Volatiliteye (ATR) Normalize Dinamik Merdiven Kâr Sistemi
+ATR_LADDER_ENABLED = True
+ATR_PERIOD = 14
+ATR_LADDER_MULT = {
+    1: {"trigger": 1.15, "lock_distance": 0.45},
+    2: {"trigger": 1.75, "lock_distance": 0.55},
+    3: {"trigger": 2.40, "lock_distance": 0.70},
+    4: {"trigger": 3.10, "lock_distance": 0.90},
+}
+
+# Piyasa Rejim Tespiti (Choppiness Index & Kaufman Efficiency Ratio)
+REGIME_CHOP_PERIOD = 14
+REGIME_KER_PERIOD = 20
+REGIME_CI_TREND = 38.2
+REGIME_CI_CHOP = 61.8
+REGIME_KER_TREND = 0.50
+REGIME_KER_CHOP = 0.25
+
+REGIME_POLICY = {
+    "TRENDING":   {"min_rr": 1.65, "ladder_mult": 1.35, "hold_mult": 1.4, "mean_reversion": False},
+    "CHOPPY":     {"min_rr": 2.10, "ladder_mult": 0.75, "hold_mult": 0.65, "mean_reversion": True},
+    "TRANSITION": {"min_rr": 1.80, "ladder_mult": 1.00, "hold_mult": 1.0, "mean_reversion": True},
+}
+
+# Günlük Oransal Zirve Kâr Kilidi
+DAILY_TRAILING_PROFIT_RATIO = 0.55
+DAILY_TRAILING_PROFIT_MIN_USDT = 25.0
