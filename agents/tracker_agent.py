@@ -35,13 +35,33 @@ from config import (
     LADDER_DYNAMIC_CHANNEL_PCT,
     EARLY_INVALIDATION_ENABLED,
     EARLY_INVALIDATION_MINUTES,
-    EARLY_INVALIDATION_LOSS_PCT
+    EARLY_INVALIDATION_LOSS_PCT,
+    ATR_LADDER_ENABLED,
+    ATR_PERIOD,
+    ATR_LADDER_MULT,
+    MIN_RR_RATIO,
+    MAX_ALLOCATED_MARGIN_PER_TRADE
 )
 
 class CounterfactualTrackerAgent:
     def __init__(self, client: BinanceFuturesClient, output_dir=CHARTS_DIR):
         self.client = client
         self.output_dir = output_dir
+
+    @staticmethod
+    def _calc_atr(candles: List[Dict], period: int = ATR_PERIOD) -> Optional[float]:
+        """Son kapanmış mumlardan ATR (Volatilite) hesaplar."""
+        if not candles or len(candles) < period + 1:
+            return None
+        trs = []
+        for i in range(1, len(candles)):
+            h = float(candles[i]["high"])
+            l = float(candles[i]["low"])
+            pc = float(candles[i - 1]["close"])
+            trs.append(max(h - l, abs(h - pc), abs(l - pc)))
+        if len(trs) < period:
+            return None
+        return sum(trs[-period:]) / period
 
     def update_tracked_trades(self, notifier=None) -> List[Dict]:
         """
@@ -92,19 +112,43 @@ class CounterfactualTrackerAgent:
 
             if entry_limit_2 > 0 and entry_limit_2_hit == 0 and partial_tp_taken == 0:
                 is_hit_limit2 = (is_long and current_price <= entry_limit_2) or (not is_long and current_price >= entry_limit_2)
-                if is_hit_limit2:
-                    # İkinci kademe limit emir doldu! Maliyeti dengede iyileştir
-                    new_avg_entry = round((entry_price + entry_limit_2) / 2.0, 8)
-                    new_margin = allocated_margin * 1.5  # %50 ek marjin doldu
+                new_margin = round(allocated_margin * 1.5, 2)  # %50 ek marjin doldu
+                if is_hit_limit2 and new_margin <= (MAX_ALLOCATED_MARGIN_PER_TRADE * 1.5):
+                    # Ağırlıklı ortalama: %100 ilk giriş + %50 ikinci kademe = %150 hacim
+                    orig_sl_dist = abs(entry_price - sl)
+                    orig_tp_dist = abs(tp - entry_price)
+                    orig_rr = (orig_tp_dist / orig_sl_dist) if orig_sl_dist > 0 else MIN_RR_RATIO
+                    target_rr = max(MIN_RR_RATIO, orig_rr)
+
+                    new_avg_entry = round(((entry_price * 1.0) + (entry_limit_2 * 0.5)) / 1.5, 8)
+                    if is_long:
+                        raw_sl_dist = new_avg_entry - sl
+                        new_sl_dist = raw_sl_dist if raw_sl_dist > 0 else (orig_sl_dist * 0.67)
+                        new_sl = round(sl, 8) if raw_sl_dist > 0 else round(new_avg_entry - new_sl_dist, 8)
+                        recal_tp1 = round(new_avg_entry + (new_sl_dist * target_rr), 8)
+                        min_tp1 = round(new_avg_entry + (new_sl_dist * MIN_RR_RATIO), 8)
+                        new_tp1 = max(min_tp1, min(tp, recal_tp1))
+                    else:
+                        raw_sl_dist = sl - new_avg_entry
+                        new_sl_dist = raw_sl_dist if raw_sl_dist > 0 else (orig_sl_dist * 0.67)
+                        new_sl = round(sl, 8) if raw_sl_dist > 0 else round(new_avg_entry + new_sl_dist, 8)
+                        recal_tp1 = round(new_avg_entry - (new_sl_dist * target_rr), 8)
+                        min_tp1 = round(new_avg_entry - (new_sl_dist * MIN_RR_RATIO), 8)
+                        new_tp1 = min(min_tp1, max(tp, recal_tp1))
+
                     update_signal_status(sig_id, {
                         "actual_entry_price": new_avg_entry,
                         "entry_limit_2_hit": 1,
                         "allocated_margin_usdt": new_margin,
+                        "stop_loss": new_sl,
+                        "take_profit_1": new_tp1,
                         "ladder_name": "🪜 2. Kademe Giriş Eklendi (DCA)"
                     })
                     entry_price = new_avg_entry
                     allocated_margin = new_margin
-                    print(f"🪜 [{symbol}] 2. Kademe Giriş Doldu! Ortalama Maliyet İyileştirildi: {entry_price} (Marjin: ${allocated_margin})")
+                    sl = new_sl
+                    tp = new_tp1
+                    print(f"🪜 [{symbol}] 2. Kademe Giriş Doldu! Ağırlıklı Maliyet: {entry_price} | Marjin: ${allocated_margin} | Yeni SL: {sl} | Yeni TP1: {tp}")
 
             # 1. ZİRVE / DİP FİYAT VE ANLIK KÂR TAKİBİ
             highest_price = sig.get("highest_price") or entry_price
@@ -121,7 +165,7 @@ class CounterfactualTrackerAgent:
             raw_profit_pct = ((current_price - entry_price) / entry_price * 100) if is_long else ((entry_price - current_price) / entry_price * 100)
             peak_profit_pct = ((highest_price - entry_price) / entry_price * 100) if is_long else ((entry_price - lowest_price) / entry_price * 100)
 
-            # 2. MERDİVEN KÂR SİSTEMİ (STEP-LADDER PROFIT LOCKING - VADEYE GÖRE ÖLÇEKLİ)
+            # 2. MERDİVEN KÂR SİSTEMİ (STEP-LADDER PROFIT LOCKING - ATR VOLATİLİTE & VADEYE GÖRE ÖLÇEKLİ)
             current_sl = sl
             current_ladder_step = sig.get("ladder_step") or 0
             ladder_name = sig.get("ladder_name") or ""
@@ -130,10 +174,45 @@ class CounterfactualTrackerAgent:
             ladder_mult = 2.0 if sig_tf == "1h" else (1.25 if sig_tf == "30m" else 1.0)
 
             if ENABLE_LADDER_PROFIT:
-                for rung in LADDER_STEPS:
+                active_ladder_steps = LADDER_STEPS
+                step_mult = ladder_mult
+
+                # Volatiliteye (ATR) Normalize Dinamik Merdiven Basamakları (sadece kâr >= %0.30 iken hesapla)
+                atr_pct_val = None
+                if ATR_LADDER_ENABLED and peak_profit_pct >= 0.30:
+                    try:
+                        tf_klines_atr = self.client.get_klines(symbol, interval=sig_tf, limit=ATR_PERIOD + 10)
+                        closed_atr_candles = tf_klines_atr[:-1] if tf_klines_atr and len(tf_klines_atr) > ATR_PERIOD + 1 else tf_klines_atr
+                        atr_abs = self._calc_atr(closed_atr_candles, ATR_PERIOD)
+                        if atr_abs and entry_price > 0:
+                            atr_pct_val = max(0.32, min(2.50, (atr_abs / entry_price) * 100.0))
+                            active_ladder_steps = []
+                            for s_num, cfg in sorted(ATR_LADDER_MULT.items()):
+                                if s_num == 1:
+                                    # Basamak 1: Hızlı BE+ Sermaye Kalkanı (kazanan scalplerin tam SL olmasını önler)
+                                    trig_val = round(min(0.45 * ladder_mult, max(0.38, atr_pct_val * 0.48)), 4)
+                                    lock_val = round(-0.08 * ladder_mult, 4)
+                                    step_lbl = "🛡️ Basamak 1 (%35 Kâr Cebe + Nefes Payı BE+)"
+                                else:
+                                    static_rung = LADDER_STEPS[s_num - 1]
+                                    trig_val = round(max(static_rung["trigger_raw_pct"] * ladder_mult, atr_pct_val * cfg["trigger"]), 4)
+                                    lock_val = round(max(static_rung["lock_raw_pct"] * ladder_mult, atr_pct_val * (cfg["trigger"] - cfg["lock_distance"])), 4)
+                                    step_lbl = f"🪜 ATR Basamak {s_num}"
+                                active_ladder_steps.append({
+                                    "step": s_num,
+                                    "trigger_raw_pct": trig_val,
+                                    "lock_raw_pct": lock_val,
+                                    "name": step_lbl,
+                                })
+                            step_mult = 1.0  # sig_tf ATR ve ladder_mult yukarıda doğrudan ölçeklendi
+                    except Exception:
+                        active_ladder_steps = LADDER_STEPS
+                        step_mult = ladder_mult
+
+                for rung in active_ladder_steps:
                     step_num = rung["step"]
-                    trigger_pct = rung["trigger_raw_pct"] * ladder_mult
-                    lock_pct = rung["lock_raw_pct"] * ladder_mult
+                    trigger_pct = rung["trigger_raw_pct"] * step_mult
+                    lock_pct = rung["lock_raw_pct"] * step_mult
                     name = f"[{sig_tf}] {rung['name']}"
 
                     # Fiyat bu basamağın tetik seviyesine ulaştıysa ve henüz bu basamak uygulanmadıysa
@@ -160,7 +239,7 @@ class CounterfactualTrackerAgent:
                                 current_realized_usd = round(current_realized_usd + step1_usd, 2)
                                 allocated_margin = round(allocated_margin * 0.65, 2)
                                 partial_tp_taken = 2
-                                ladder_name = f"[{sig_tf}] 🛡️ Basamak 1 (+${step1_usd} Cebe | %65 Nefes BE+)"
+                                ladder_name = f"[{sig_tf}] 🛡️ Basamak 1 (+${step1_usd} Cebe | %65 BE+ Kilit)"
                                 db_updates.update({
                                     "partial_tp_taken": partial_tp_taken,
                                     "realized_pnl_usd": current_realized_usd,
@@ -171,8 +250,9 @@ class CounterfactualTrackerAgent:
                             print(f"🪜 [{symbol}] [{sig_tf}] {ladder_name} devrede! Stop: {current_sl} | Cebe alınan: ${current_realized_usd}")
 
                 # 3. DİNAMİK İZ SÜREN KANAL (Basamak 4 Ötesi Runner İz Sürme)
-                if peak_profit_pct >= (1.60 * ladder_mult):
-                    dyn_chan_pct = LADDER_DYNAMIC_CHANNEL_PCT * ladder_mult
+                step4_trigger = active_ladder_steps[-1]["trigger_raw_pct"] * step_mult
+                if peak_profit_pct >= step4_trigger:
+                    dyn_chan_pct = round(max(LADDER_DYNAMIC_CHANNEL_PCT, atr_pct_val * 0.65), 4) if atr_pct_val else (LADDER_DYNAMIC_CHANNEL_PCT * step_mult)
                     if is_long:
                         channel_sl = round(highest_price * (1.0 - dyn_chan_pct / 100.0), 8)
                         if channel_sl > current_sl:
