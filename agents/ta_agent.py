@@ -473,7 +473,8 @@ class TechnicalAnalysisAgent:
 
         # Temel İndikatörler (Kapanmış Mumlarla Repaint-Free Hesap)
         ema20 = self.calculate_ema(closes, 20)
-        ema50 = self.calculate_ema(closes, 50)
+        ema50_period = min(50, max(21, len(closes) - 1))
+        ema50 = self.calculate_ema(closes, ema50_period)
         rsi = self.calculate_rsi(closes, 14)
         atr = self.calculate_atr(eval_candles, 14)
         vwap = self.calculate_vwap(eval_candles)
@@ -1223,7 +1224,7 @@ class TechnicalAnalysisAgent:
         """
         candidates_setups = []
         active_tfs = [t.lower() for t in allowed_timeframes] if allowed_timeframes is not None else ["15m", "30m", "1h"]
-        last_rejection_reason = "Aktif vadelerin hiçbirinde geçerli SMC kurulumu bulunamadı"
+        rejection_reasons = []
 
         # 1. 15m Kısa Vade İncelemesi (Kotası açıksa)
         # Yatay/zayıf trend piyasasında (ADX < 22) hızlı 15m Vur-Kaç avantaj sağlar (+3)
@@ -1234,7 +1235,7 @@ class TechnicalAnalysisAgent:
                 effective_score = setup_15m["confluence_score"] + (3 if adx_15m < 22.0 else 0)
                 candidates_setups.append((effective_score, setup_15m, reason_15m))
             else:
-                last_rejection_reason = f"15m: {reason_15m}"
+                rejection_reasons.append(f"15m: {reason_15m}")
 
         # 2. 30m Orta Vade İncelemesi (Kotası açıksa)
         # 30m hedefleri için gerçek trend ivmesi aranır (ADX >= 22: +2, zayıfsa -2)
@@ -1245,12 +1246,11 @@ class TechnicalAnalysisAgent:
                 effective_score = setup_30m["confluence_score"] + (2 if adx_30m >= 22.0 else -2)
                 candidates_setups.append((effective_score, setup_30m, reason_30m))
             else:
-                if not candidates_setups:
-                    last_rejection_reason = f"30m: {reason_30m}"
+                rejection_reasons.append(f"30m: {reason_30m}")
 
         # 3. 1h Uzun Vade İncelemesi (Kotası açıksa)
         # 1h uzak hedefleri güçlü trendlerde (ADX >= 24) veya elit kırılım kurulumlarında (85+ skor) korunur
-        if "1h" in active_tfs and candles_1h and len(candles_1h) >= 20:
+        if "1h" in active_tfs and candles_1h and len(candles_1h) >= 35:
             setup_1h, reason_1h = self.analyze_setup(symbol, candles_1h, candles_macro=None, timeframe="1h")
             if setup_1h:
                 adx_1h = float(setup_1h.get("indicators", {}).get("adx_data", {}).get("adx", 20.0))
@@ -1262,11 +1262,12 @@ class TechnicalAnalysisAgent:
                     effective_score = setup_1h["confluence_score"]
                 candidates_setups.append((effective_score, setup_1h, reason_1h))
             else:
-                if not candidates_setups:
-                    last_rejection_reason = f"1h: {reason_1h}"
+                rejection_reasons.append(f"1h: {reason_1h}")
 
         if not candidates_setups:
-            return None, last_rejection_reason
+            detailed = [r for r in rejection_reasons if "📌" in r]
+            best_rejection = detailed[0] if detailed else (rejection_reasons[0] if rejection_reasons else "Aktif vadelerin hiçbirinde geçerli SMC kurulumu bulunamadı")
+            return None, best_rejection
 
         # En yüksek efektif skora sahip vadeyi seç
         candidates_setups.sort(key=lambda x: x[0], reverse=True)
