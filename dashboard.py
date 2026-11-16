@@ -97,18 +97,49 @@ HTML_OFFICE_TEMPLATE = """
         }
 
         /* Top Header */
-        .topbar {
-            min-height: 52px;
-            height: 52px;
+        /* 2-Katmanlı Üst Panel Mimarisi: 1. Bar Sistem & Takip, 2. Bar Finans & PnL */
+        .topbar-container {
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
             background: var(--panel-bg);
             border-bottom: 1px solid var(--panel-border);
+            width: 100%;
+        }
+        .topbar-system {
+            min-height: 42px;
+            height: 42px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             padding: 0 14px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            gap: 12px;
             flex-shrink: 0;
-            gap: 10px;
+            white-space: nowrap;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: none;
         }
+        .topbar-system::-webkit-scrollbar { display: none; }
+
+        .topbar-finance {
+            min-height: 38px;
+            height: 38px;
+            background: rgba(9, 14, 24, 0.95);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 14px;
+            gap: 14px;
+            flex-shrink: 0;
+            white-space: nowrap;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: none;
+        }
+        .topbar-finance::-webkit-scrollbar { display: none; }
+
         .brand {
             display: flex;
             align-items: center;
@@ -124,19 +155,15 @@ HTML_OFFICE_TEMPLATE = """
             display: flex; align-items: center; justify-content: center; font-size: 13px;
             flex-shrink: 0;
         }
-        .topbar-stats {
+        .top-stat-group {
             display: flex;
             align-items: center;
             gap: 12px;
             font-size: 11.5px;
             flex-wrap: nowrap;
-            overflow-x: auto;
-            overflow-y: hidden;
-            scrollbar-width: none;
-            -ms-overflow-style: none;
-            padding: 2px 0;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
-        .topbar-stats::-webkit-scrollbar { display: none; }
         .top-stat {
             display: flex;
             align-items: center;
@@ -166,10 +193,10 @@ HTML_OFFICE_TEMPLATE = """
         }
         .btn-scan:hover { background: #1d4ed8; }
 
-        /* Office Workspace: 3-Column / Grid Layout */
+        /* Office Workspace: Sol İşlem Penceresi Sağa Doğru Genişletildi (2.15fr 1fr) */
         .workspace {
             display: grid;
-            grid-template-columns: 1.6fr 1fr;
+            grid-template-columns: 2.15fr 1fr;
             grid-template-rows: 1fr 210px;
             gap: 10px;
             padding: 10px;
@@ -838,12 +865,15 @@ HTML_OFFICE_TEMPLATE = """
                 overflow-y: auto;
                 user-select: auto;
             }
-            .topbar {
+            .topbar-container {
                 height: auto;
-                padding: 10px 14px;
-                flex-direction: column;
+            }
+            .topbar-system, .topbar-finance {
+                height: auto;
+                min-height: 42px;
+                padding: 8px 12px;
+                flex-wrap: wrap;
                 gap: 8px;
-                align-items: flex-start;
             }
             .topbar-right {
                 width: 100%;
@@ -1251,72 +1281,92 @@ HTML_OFFICE_TEMPLATE = """
 </head>
 <body>
 
-    <!-- Top Bar -->
-    <div class="topbar">
-        <div class="brand">
-            <div class="brand-badge">⚡</div>
-            <span>3-Vadeli Quant Terminali</span>
-            <span style="font-size: 10px; background: rgba(16,185,129,0.15); color: #10b981; padding: 2px 7px; border-radius: 10px; font-weight: 600;">● CANLI</span>
-            <span id="wsBadge" style="font-size: 10px; background: rgba(56,189,248,0.15); color: #38bdf8; padding: 2px 7px; border-radius: 10px; font-weight: 600;">⚡ WSS AKTİF</span>
-            <span id="topTrClock" style="font-size: 10.5px; background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.3); padding: 2px 8px; border-radius: 10px; font-weight: 700; font-family: 'JetBrains Mono', monospace;" title="Türkiye Saati (TSİ / UTC+3)">🇹🇷 TSİ --:--:--</span>
+    <!-- 2-Katmanlı Üst Panel: Üstte Takip & Sistem Barı, Altta Finans & PnL Barı -->
+    <div class="topbar-container">
+        <!-- 1. BAR: Sistem & Takip Barı (Sol: Marka & Saat, Orta: BTC & Kotalar, Sağ: Aksiyon Butonları) -->
+        <div class="topbar-system">
+            <div class="brand">
+                <div class="brand-badge">⚡</div>
+                <span>3-Vadeli Quant Terminali</span>
+                <span style="font-size: 10px; background: rgba(16,185,129,0.15); color: #10b981; padding: 2px 7px; border-radius: 10px; font-weight: 600;">● CANLI</span>
+                <span id="wsBadge" style="font-size: 10px; background: rgba(56,189,248,0.15); color: #38bdf8; padding: 2px 7px; border-radius: 10px; font-weight: 600;">⚡ WSS AKTİF</span>
+                <span id="topTrClock" style="font-size: 10.5px; background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.3); padding: 2px 8px; border-radius: 10px; font-weight: 700; font-family: 'JetBrains Mono', monospace;" title="Türkiye Saati (TSİ / UTC+3)">🇹🇷 TSİ --:--:--</span>
 
-            <!-- 3-Zaman Dilimli Çoklu-Vade Durum Rozeti (Tek Panel) -->
-            <div style="display: flex; align-items: center; gap: 4px; background: rgba(15,23,42,0.85); padding: 2px 7px; border-radius: 20px; border: 1px solid rgba(56,189,248,0.25); margin-left: 6px; white-space: nowrap;">
-                <span style="font-size: 9px; font-weight: 800; color: #94a3b8;">VADELER:</span>
-                <span style="background:rgba(56,189,248,0.2); color:#38bdf8; border:1px solid rgba(56,189,248,0.4); padding: 1px 5px; border-radius: 4px; font-size: 9.5px; font-weight: 700;">15m</span>
-                <span style="background:rgba(168,85,247,0.2); color:#c084fc; border:1px solid rgba(168,85,247,0.4); padding: 1px 5px; border-radius: 4px; font-size: 9.5px; font-weight: 700;">30m</span>
-                <span style="background:rgba(245,158,11,0.2); color:#fbbf24; border:1px solid rgba(245,158,11,0.4); padding: 1px 5px; border-radius: 4px; font-size: 9.5px; font-weight: 700;">1h</span>
+                <!-- 3-Zaman Dilimli Çoklu-Vade Durum Rozeti -->
+                <div style="display: flex; align-items: center; gap: 4px; background: rgba(15,23,42,0.85); padding: 2px 7px; border-radius: 20px; border: 1px solid rgba(56,189,248,0.25); margin-left: 6px; white-space: nowrap;">
+                    <span style="font-size: 9px; font-weight: 800; color: #94a3b8;">VADELER:</span>
+                    <span style="background:rgba(56,189,248,0.2); color:#38bdf8; border:1px solid rgba(56,189,248,0.4); padding: 1px 5px; border-radius: 4px; font-size: 9.5px; font-weight: 700;">15m</span>
+                    <span style="background:rgba(168,85,247,0.2); color:#c084fc; border:1px solid rgba(168,85,247,0.4); padding: 1px 5px; border-radius: 4px; font-size: 9.5px; font-weight: 700;">30m</span>
+                    <span style="background:rgba(245,158,11,0.2); color:#fbbf24; border:1px solid rgba(245,158,11,0.4); padding: 1px 5px; border-radius: 4px; font-size: 9.5px; font-weight: 700;">1h</span>
+                </div>
             </div>
-        </div>
 
-        <div class="topbar-stats">
-            <div class="top-stat" style="cursor: pointer;" onclick="switchLeftView('btc')" title="Tıkla: Canlı BTC Mum Grafiğini Aç">
-                <span class="lbl">BTC Rejimi:</span>
-                <span class="val" id="topBtc" style="color: var(--yellow);">TARANIYOR</span>
+            <!-- Takip ve Koruma İstatistikleri -->
+            <div class="top-stat-group">
+                <div class="top-stat" style="cursor: pointer;" onclick="switchLeftView('btc')" title="Tıkla: Canlı BTC Mum Grafiğini Aç">
+                    <span class="lbl">BTC Rejimi:</span>
+                    <span class="val" id="topBtc" style="color: var(--yellow);">TARANIYOR</span>
+                </div>
+                <div class="top-stat" title="Anlık Eşzamanlı Açık Pozisyon Slotu (Azami 8 Slot)">
+                    <span class="lbl">Kasa Kalkanı:</span>
+                    <span class="val" id="topShieldQuota" style="color: var(--green);">0/8 Slot</span>
+                </div>
+                <div class="top-stat" style="border: 1px solid rgba(168, 85, 247, 0.35); background: rgba(168, 85, 247, 0.08); border-radius: 6px; padding: 2px 8px;" title="Bugünkü Toplam İşlem Kotası ve Vade Dağılımı (TSİ 00:00 - 23:59 Sıfırlanır)">
+                    <span class="lbl">Günlük Kota:</span>
+                    <span class="val" id="topTimelineQuota" style="color: #c084fc; font-weight: 700; font-size: 11px; white-space: nowrap;">0/12 Toplam (⚡0/5 • 🎯0/4 • 👑0/3)</span>
+                </div>
             </div>
-            <div class="top-stat" title="Anlık Eşzamanlı Açık Pozisyon Slotu (Azami 8 Slot)">
-                <span class="lbl">Kasa Kalkanı:</span>
-                <span class="val" id="topShieldQuota" style="color: var(--green);">0/8 Slot</span>
-            </div>
-            <div class="top-stat" style="border: 1px solid rgba(168, 85, 247, 0.35); background: rgba(168, 85, 247, 0.08); border-radius: 6px; padding: 2px 7px;" title="Bugünkü Toplam İşlem Kotası ve Vade Dağılımı (TSİ 00:00 - 23:59 Sıfırlanır)">
-                <span class="lbl">Günlük Kota:</span>
-                <span class="val" id="topTimelineQuota" style="color: #c084fc; font-weight: 700; font-size: 11px; white-space: nowrap;">0/12 Toplam (⚡0/5 • 🎯0/4 • 👑0/3)</span>
-            </div>
-            <div class="top-stat">
-                <span class="lbl">Fon Kasası:</span>
-                <span class="val" id="topEquity" style="color: #38bdf8;">$1,000.00</span>
-            </div>
-            <div class="top-stat">
-                <span class="lbl">Genel Kâr:</span>
-                <span class="val" id="topRealized" style="color: var(--green);">+0.0%</span>
-            </div>
-            <div class="top-stat" style="border: 1px solid rgba(16, 185, 129, 0.35); background: rgba(16, 185, 129, 0.08); border-radius: 6px; padding: 2px 7px;">
-                <span class="lbl" title="Türkiye Saati (TRT 00:00 - 23:59 arası). 23:59:59'da otomatik sıfırlanır ve arşivlenir.">Bugünkü PnL:</span>
-                <span class="val" id="topTodayPnl" style="color: var(--green); font-weight: 700;">+$0.00 (%0.0)</span>
-            </div>
-            <div class="top-stat">
-                <span class="lbl">Canlı PnL:</span>
-                <span class="val" id="topUnrealized" style="color: var(--text-muted);">+$0.00 (%0.0)</span>
-            </div>
-            <div class="top-stat">
-                <span class="lbl">Komisyon:</span>
-                <span class="val" id="topFees" style="color: #f59e0b;">-%0.0</span>
-            </div>
-            <div class="top-stat">
-                <span class="lbl">Win Rate:</span>
-                <span class="val" id="topWinRate" style="color: var(--yellow);">%0.0</span>
-            </div>
-            <div class="top-stat">
-                <span class="lbl">Kâr Faktörü:</span>
-                <span class="val" id="topProfitFactor" style="color: #38bdf8;">0.0</span>
-            </div>
+
+            <!-- Aksiyon Butonları -->
             <div style="display: flex; gap: 5px; align-items: center; flex-shrink: 0;">
                 <button class="btn-scan" style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(168, 85, 247, 0.25)); color: #facc15; border: 1px solid rgba(245, 158, 11, 0.5); font-weight: 700;" onclick="switchLeftView('office')" title="Sims Tarzı 3D Yapay Zeka İşlem Ofisi">🎮 3D Ofis</button>
                 <button class="btn-scan" style="background: rgba(245,158,11,0.18); color: #f59e0b; border: 1px solid rgba(245,158,11,0.4);" onclick="switchLeftView('btc')" title="Canlı BTC Vadeli Mum Grafiğini Aç">📈 BTC Grafik</button>
                 <button class="btn-scan" onclick="triggerScan()">⚡ Tara</button>
             </div>
         </div>
-    </div>
+
+        <!-- 2. BAR: Finans, PnL & Kasa Barı (Cüzdan, Kâr/Zarar ve Performans) -->
+        <div class="topbar-finance">
+            <!-- Sol: Cüzdan ve Kâr / Zarar Durumu -->
+            <div class="top-stat-group">
+                <div class="top-stat" title="Güncel Toplam Fon Sermayesi">
+                    <span class="lbl">Fon Kasası:</span>
+                    <span class="val" id="topEquity" style="color: #38bdf8;">$1,000.00</span>
+                </div>
+                <div class="top-stat" title="Kapanan İşlemlerden Elde Edilen Net Kâr Oranı">
+                    <span class="lbl">Genel Kâr:</span>
+                    <span class="val" id="topRealized" style="color: var(--green);">+0.0%</span>
+                </div>
+                <div class="top-stat" style="border: 1px solid rgba(16, 185, 129, 0.35); background: rgba(16, 185, 129, 0.1); border-radius: 6px; padding: 2px 8px;" title="Türkiye Saati (TRT 00:00 - 23:59 arası). 23:59:59'da otomatik sıfırlanır ve arşivlenir.">
+                    <span class="lbl">Bugünkü PnL:</span>
+                    <span class="val" id="topTodayPnl" style="color: var(--green); font-weight: 700;">+$0.00 (%0.0)</span>
+                </div>
+                <div class="top-stat" style="border: 1px solid rgba(56, 189, 248, 0.35); background: rgba(56, 189, 248, 0.08); border-radius: 6px; padding: 2px 8px;" title="Şu An Açık Olan Pozisyonların Canlı Gerçekleşmemiş Net PnL Tutarı">
+                    <span class="lbl">Canlı PnL:</span>
+                    <span class="val" id="topUnrealized" style="color: var(--text-muted); font-weight: 700;">+$0.00 (%0.0)</span>
+                </div>
+            </div>
+
+            <!-- Sağ: İstatistikler ve Metrikler -->
+            <div class="top-stat-group">
+                <div class="top-stat" title="Ödenen Tahmini Borsa Komisyonu">
+                    <span class="lbl">Komisyon:</span>
+                    <span class="val" id="topFees" style="color: #f59e0b;">-%0.0</span>
+                </div>
+                <div class="top-stat" title="Başarılı İşlem Oranı (Win Rate)">
+                    <span class="lbl">Win Rate:</span>
+                    <span class="val" id="topWinRate" style="color: var(--yellow);">%0.0</span>
+                </div>
+                <div class="top-stat" title="Toplam Brüt Kazanç / Toplam Kayıp">
+                    <span class="lbl">Kâr Faktörü:</span>
+                    <span class="val" id="topProfitFactor" style="color: #38bdf8;">0.0</span>
+                </div>
+                <div class="top-stat" style="border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.04); border-radius: 6px; padding: 2px 7px;">
+                    <span class="lbl" style="color: #94a3b8;">🛡️ Risk Kalkanı:</span>
+                    <span class="val" style="color: #e2e8f0; font-size: 10px;">%2.0 / $20 Sabit</span>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- ⚡ FAST Modu Bilgilendirme ve Kasa Ayrım Şeridi -->
@@ -3027,8 +3077,16 @@ HTML_OFFICE_TEMPLATE = """
                 }
             }
 
-            // 5. Alt Kısım: PnL Geçmiş Tablosu
-            const history = historyList;
+            // 5. Alt Kısım: PnL Geçmiş Tablosu (Son Kapatılan İşlem Anında En Üste Gelir)
+            let history = historyList;
+            if (Array.isArray(history)) {
+                history = [...history].sort((a, b) => {
+                    const timeA = new Date(a.closed_at || a.created_at || 0).getTime();
+                    const timeB = new Date(b.closed_at || b.created_at || 0).getTime();
+                    if (timeB !== timeA) return timeB - timeA;
+                    return (b.id || 0) - (a.id || 0);
+                });
+            }
             const historyBody = document.getElementById('historyBody');
             const historyCountEl = document.getElementById('historyCount');
             if (historyCountEl) historyCountEl.innerText = (Array.isArray(history) ? history.length : 0) + ' İşlem';
