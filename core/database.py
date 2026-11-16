@@ -1266,6 +1266,29 @@ def get_daily_pnl_archive_db(limit: int = 30) -> List[Dict]:
         cursor.execute("SELECT * FROM daily_pnl_archive ORDER BY date_str DESC LIMIT ?", (limit,))
         return [dict(r) for r in cursor.fetchall()]
 
+_PARTIAL_REMAINING_RATIOS = {1: 0.50, 2: 0.65, 3: 0.325}
+
+def reconcile_partial_pnl(
+    allocated_margin: float,
+    partial_tp_taken: int,
+    realized_pnl_usd: float,
+    net_pnl_pct: float,
+    fee_pct: float,
+    final_status: str = ""
+) -> Tuple[float, float, float]:
+    """Kısmi kâr alımı (Basamak 1 %35 veya TP1 %50) yapılmış pozisyonun toplam net PnL ve orijinal marjinini hesaplar."""
+    ratio = _PARTIAL_REMAINING_RATIOS.get(partial_tp_taken)
+    if not ratio:
+        return net_pnl_pct, round(net_pnl_pct + fee_pct, 2), allocated_margin
+    orig_margin = round(allocated_margin / ratio, 2)
+    runner_usd = allocated_margin * (net_pnl_pct / 100.0)
+    total_dollar_pnl = realized_pnl_usd + runner_usd
+    if final_status == "CLOSED_BE" and total_dollar_pnl < 0.25:
+        total_dollar_pnl = max(0.25, round(orig_margin * 0.0025, 2))
+    merged_net = round((total_dollar_pnl / orig_margin) * 100.0, 2) if orig_margin > 0 else net_pnl_pct
+    merged_gross = round(merged_net + fee_pct, 2)
+    return merged_net, merged_gross, orig_margin
+
 def close_single_signal_db(symbol_or_id: Union[str, int], client=None) -> Optional[Dict]:
     """Belirtilen sinyal ID veya paritedeki açık pozisyonu anlık piyasa fiyatıyla manuel olarak kapatır."""
     is_id = False
@@ -1339,18 +1362,13 @@ def close_single_signal_db(symbol_or_id: Union[str, int], client=None) -> Option
     fee_pct = round(0.10 * leverage, 2)
     net_pnl_pct = round(gross_pnl_pct - fee_pct, 2)
 
-    # TP1 alınmışsa (FREE-TRADE RUNNER) birleşik kâr ve marjini koru
-    partial_tp_taken = sig.get("partial_tp_taken") or 0
+    # Kısmi kâr (Basamak 1 veya TP1) alınmışsa birleşik kâr ve orijinal marjini koru
+    partial_tp_taken = int(sig.get("partial_tp_taken") or 0)
     allocated_margin = float(sig.get("allocated_margin_usdt") or 200.0)
-    final_margin_to_save = allocated_margin
-    if partial_tp_taken == 1:
-        prev_realized_usd = float(sig.get("realized_pnl_usd") or 0.0)
-        runner_usd = allocated_margin * (net_pnl_pct / 100.0)
-        total_dollar_pnl = prev_realized_usd + runner_usd
-        orig_margin = allocated_margin * 2.0
-        net_pnl_pct = round((total_dollar_pnl / orig_margin) * 100.0, 2)
-        gross_pnl_pct = round(net_pnl_pct + fee_pct, 2)
-        final_margin_to_save = orig_margin
+    prev_realized_usd = float(sig.get("realized_pnl_usd") or 0.0)
+    net_pnl_pct, gross_pnl_pct, final_margin_to_save = reconcile_partial_pnl(
+        allocated_margin, partial_tp_taken, prev_realized_usd, net_pnl_pct, fee_pct, "MANUAL_CLOSE"
+    )
 
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -1510,6 +1528,13 @@ def close_all_active_signals_db(client=None) -> int:
             fee_pct = round(0.10 * leverage, 2)
             net_pnl_pct = round(gross_pnl_pct - fee_pct, 2)
 
+            p_taken = int(sig.get("partial_tp_taken") or 0)
+            a_margin = float(sig.get("allocated_margin_usdt") or 200.0)
+            p_realized = float(sig.get("realized_pnl_usd") or 0.0)
+            net_pnl_pct, gross_pnl_pct, final_margin_to_save = reconcile_partial_pnl(
+                a_margin, p_taken, p_realized, net_pnl_pct, fee_pct, "MANUAL_CLOSE"
+            )
+
             cursor.execute("""
                 UPDATE signals SET
                     status = 'MANUAL_CLOSE',
@@ -1517,9 +1542,10 @@ def close_all_active_signals_db(client=None) -> int:
                     exit_price = ?,
                     simulated_pnl_pct = ?,
                     gross_pnl_pct = ?,
-                    fee_pct = ?
+                    fee_pct = ?,
+                    allocated_margin_usdt = ?
                 WHERE id = ?
-            """, (now_str, exit_price, net_pnl_pct, gross_pnl_pct, fee_pct, sig_id))
+            """, (now_str, exit_price, net_pnl_pct, gross_pnl_pct, fee_pct, final_margin_to_save, sig_id))
             closed_count += 1
 
             # Tauric Reflection kaydı
