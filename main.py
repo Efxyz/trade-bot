@@ -258,14 +258,34 @@ class TradingBotOrchestrator:
                 continue  # Zaten açık veya yakın zamanda denenmişse tekrar girme
 
             try:
-                # 3 Zaman Dilimli Mum Verilerini Çek (15m Kısa • 30m Orta • 1h Uzun)
-                candles_15m = self.client.get_klines(symbol, interval="15m", limit=100)
-                if len(candles_15m) < 35:
-                    add_scanner_log(symbol, "REJECTED", "Yetersiz 15m mum verisi")
-                    continue
+                # Kotası dolmamış vadeleri tara (Kotası biten vade için boşuna REST API ve tarama yapma)
+                candles_15m = []
+                candles_30m = []
+                candles_1h = []
 
-                candles_30m = self.client.get_klines(symbol, interval="30m", limit=70)
-                candles_1h = self.client.get_klines(symbol, interval="1h", limit=50)
+                if "15m" in allowed_timeframes:
+                    candles_15m = self.client.get_klines(symbol, interval="15m", limit=100)
+                    if len(candles_15m) < 35:
+                        add_scanner_log(symbol, "REJECTED", "Yetersiz 15m mum verisi")
+                        continue
+
+                if "30m" in allowed_timeframes:
+                    candles_30m = self.client.get_klines(symbol, interval="30m", limit=70)
+                    if len(candles_30m) < 35 and "15m" not in allowed_timeframes and "1h" not in allowed_timeframes:
+                        add_scanner_log(symbol, "REJECTED", "Yetersiz 30m mum verisi")
+                        continue
+
+                # 1h mumları: 1h kotası açıksa veya 15m/30m için makro trend teyidi gerekiyorsa çek
+                if "1h" in allowed_timeframes or ("15m" in allowed_timeframes) or ("30m" in allowed_timeframes):
+                    candles_1h = self.client.get_klines(symbol, interval="1h", limit=50)
+                    if "1h" in allowed_timeframes and "15m" not in allowed_timeframes and "30m" not in allowed_timeframes:
+                        if len(candles_1h) < 20:
+                            add_scanner_log(symbol, "REJECTED", "Yetersiz 1h mum verisi")
+                            continue
+
+                if not candles_15m and not candles_30m and not candles_1h:
+                    add_scanner_log(symbol, "REJECTED", "Kotası açık vadeye ait veri yok")
+                    continue
 
                 # Ajan 1: 3-Zaman Dilimli Çoklu-Vade SMC İncelemesi (15m Kısa • 30m Orta • 1h Uzun Vade)
                 ta_setup, ta_reason = self.ta_agent.analyze_multi_horizon(
@@ -382,6 +402,7 @@ class TradingBotOrchestrator:
                     "ai_verdict": ai_verdict,
                     "debate_data": debate_data,
                     "candles_15m": candles_15m,
+                    "candles": candles_1h if cand_tf == '1h' else (candles_30m if cand_tf == '30m' else candles_15m),
                     "ticker": ticker,
                     "timeframe": cand_tf,
                     "horizon_badge": horizon_badge,
@@ -577,7 +598,8 @@ class TradingBotOrchestrator:
                 # Grafik Çizim Ajanı
                 chart_path = ""
                 try:
-                    chart_path = self.chart_agent.generate_chart(ta_setup, candles_15m, suffix="setup")
+                    target_candles = cand.get("candles") or candles_15m or candles_30m or candles_1h
+                    chart_path = self.chart_agent.generate_chart(ta_setup, target_candles, suffix="setup")
                     if chart_path and sig_id:
                         from core.database import update_signal_status
                         update_signal_status(sig_id, {"chart_entry_png": chart_path})
