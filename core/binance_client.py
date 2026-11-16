@@ -380,9 +380,38 @@ class BinanceFuturesClient:
                     "summary": f"📉 BTC satıcılı seyrediyor ({current_btc:.1f}$, EMA altı). Sadece yüksek hacimli veya SHORT fırsatları aranıyor."
                 }
 
+            # 2b. BTC 15m Mikro-Trend Kalkanı (Ani 15m satış/ralli dalgalarında altcoin koruması)
+            micro_rally = False
+            try:
+                klines_15m = self.get_klines("BTCUSDT", interval="15m", limit=25)
+                if klines_15m and len(klines_15m) >= 21:
+                    closed_15m = klines_15m[:-1]
+                    c15 = [float(c["close"]) for c in closed_15m]
+                    k15 = 2.0 / 21.0
+                    ema20_15m = c15[0]
+                    for px in c15[1:]:
+                        ema20_15m = (px - ema20_15m) * k15 + ema20_15m
+                    c1 = klines_15m[-2]
+                    c2 = klines_15m[-3]
+                    ref_px = float(klines_15m[-4]["close"])
+                    chg_45m = ((current_btc - ref_px) / ref_px) * 100.0 if ref_px > 0 else 0.0
+                    if (current_btc < ema20_15m and float(c1["close"]) < float(c1["open"]) and float(c2["close"]) < float(c2["open"]) and chg_45m <= -0.30):
+                        return {
+                            "status": "MICRO_PULLBACK",
+                            "btc_price": current_btc,
+                            "change_3h_pct": round(change_3h_pct, 2),
+                            "block_longs": True,
+                            "block_shorts": False,
+                            "summary": f"⚠️ BTC 15m Mikro Düşüş Dalgası ({current_btc:.1f}$, 45dk: %{chg_45m:.2f}, 15m EMA20 altı). Altcoin LONG girişleri geçici durduruldu."
+                        }
+                    if (current_btc > ema20_15m and float(c1["close"]) > float(c1["open"]) and float(c2["close"]) > float(c2["open"]) and chg_45m >= 0.45):
+                        micro_rally = True
+            except Exception:
+                pass
+
             # 3. Boğa Piyasası: Fiyat EMA20 üzerinde
             if current_btc >= ema20:
-                block_shorts = (change_3h_pct >= 1.2)
+                block_shorts = (change_3h_pct >= 1.2) or micro_rally
                 return {
                     "status": "BULLISH",
                     "btc_price": current_btc,
@@ -397,6 +426,7 @@ class BinanceFuturesClient:
                 "btc_price": current_btc,
                 "change_3h_pct": round(change_3h_pct, 2),
                 "block_longs": False,
+                "block_shorts": micro_rally,
                 "summary": f"⚖️ BTC konsolide oluyor ({current_btc:.1f}$). Normal piyasa şartları."
             }
 
