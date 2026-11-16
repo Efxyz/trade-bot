@@ -63,7 +63,15 @@ class TradingBotOrchestrator:
             print("⚡ [WebSocket Streamer] Canlı emir akışı ve fiyat soketi bağlandı.")
         except Exception as ws_err:
             print(f"⚠️ WebSocket başlatılamadı: {ws_err}")
-        
+
+        # Başlangıçta aktif bot verileriyle Otonom Kalibrasyon yenilemesi (Eski kirli cache varsa temizler)
+        try:
+            from core.self_tuning_engine import SelfTuningEngine
+            SelfTuningEngine.get_current_params()
+            SelfTuningEngine.run_autonomous_training_cycle(min_trades_required=5, auto_commit=True)
+        except Exception as tune_err:
+            print(f"⚠️ Otonom kalibrasyon başlangıç hatası: {tune_err}")
+
         print("✅ Tüm Ajanlar, BTC Kalkanı ve Binance Futures (USDT.P) hazır.\n")
 
     def run_cycle(self):
