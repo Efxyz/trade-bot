@@ -109,6 +109,7 @@ class TradingBotOrchestrator:
         )
         from core.database import (
             get_today_trades_count,
+            get_today_trades_count_by_timeframe,
             get_today_net_dollar_loss,
             get_today_net_dollar_pnl,
             get_and_update_today_peak_profit
@@ -141,21 +142,55 @@ class TradingBotOrchestrator:
                 add_scanner_log("KÂR KİLİDİ", "PROFIT_LOCKED", msg, "Gün Sonu Kâr Sigortası")
                 return
 
-        # 1.8 DİNAMİK İŞLEM KOTASI (Kârlı Günde Sınırsız Avlanma / House-Money Kotası)
-        today_trades_count = get_today_trades_count()
+        # 1.8 VADEYE / ZAMAN DİLİMİNE ÖZEL BAĞIMSIZ GÜNLÜK İŞLEM KOTALARI
+        from config import (
+            DAILY_MAX_TRADES_15M, DAILY_MAX_TRADES_30M, DAILY_MAX_TRADES_1H,
+            PROFIT_STEP_FOR_BONUS_TRADES, BONUS_TRADES_PER_STEP
+        )
         bonus_slots = 0
         if today_pnl > 0 and PROFIT_STEP_FOR_BONUS_TRADES > 0:
             bonus_slots = int(today_pnl // PROFIT_STEP_FOR_BONUS_TRADES) * BONUS_TRADES_PER_STEP
 
-        effective_max_trades = DAILY_BASE_MAX_TRADES + bonus_slots
-        if today_trades_count >= effective_max_trades:
+        max_15m = DAILY_MAX_TRADES_15M + bonus_slots
+        max_30m = DAILY_MAX_TRADES_30M + bonus_slots
+        max_1h = DAILY_MAX_TRADES_1H + bonus_slots
+
+        today_counts = get_today_trades_count_by_timeframe()
+        c_15m = today_counts.get("15m", 0)
+        c_30m = today_counts.get("30m", 0)
+        c_1h = today_counts.get("1h", 0)
+
+        allowed_timeframes = []
+        quota_parts = []
+
+        if c_15m < max_15m:
+            allowed_timeframes.append("15m")
+            quota_parts.append(f"⚡ 15m: {c_15m}/{max_15m}")
+        else:
+            quota_parts.append(f"⚡ 15m: DOLU ({c_15m}/{max_15m})")
+
+        if c_30m < max_30m:
+            allowed_timeframes.append("30m")
+            quota_parts.append(f"🎯 30m: {c_30m}/{max_30m}")
+        else:
+            quota_parts.append(f"🎯 30m: DOLU ({c_30m}/{max_30m})")
+
+        if c_1h < max_1h:
+            allowed_timeframes.append("1h")
+            quota_parts.append(f"👑 1h: {c_1h}/{max_1h}")
+        else:
+            quota_parts.append(f"👑 1h: DOLU ({c_1h}/{max_1h})")
+
+        quota_summary = " | ".join(quota_parts)
+        print(f"🛡️ [Vade Kotaları] {quota_summary} (Kâr Bonusu: +{bonus_slots} slot)")
+
+        if not allowed_timeframes:
             msg = (
-                f"Günlük işlem kotası doldu ({today_trades_count}/{effective_max_trades}). "
-                f"Taban Kota: {DAILY_BASE_MAX_TRADES} | Kâr Bonusu: +{bonus_slots} slot (Bugünkü Net Kâr: ${today_pnl:+.2f}). "
-                f"Komisyon ve sermaye koruma kalkanı devrede."
+                f"Tüm vadelerin günlük işlem kotaları doldu! ({quota_summary}). "
+                f"Bugünkü Net Kâr: ${today_pnl:+.2f}. Komisyon ve sermaye koruma kalkanı devrede."
             )
-            print(f"🛡️ [Keskin Nişancı Kotası] {msg} Bugün yeni işlem aranmayacak.")
-            add_scanner_log("GÜNLÜK KOTA", "PROTECTED", msg, "Komisyon Koruma Kilidi")
+            print(f"🛑 [Keskin Nişancı Kotası] {msg} Bugün yeni işlem aranmayacak.")
+            add_scanner_log("GÜNLÜK KOTA", "PROTECTED", msg, "Tüm Zaman Dilimleri Dolu")
             return
 
         slots_left = MAX_CONCURRENT_TRADES - active_count
@@ -232,7 +267,9 @@ class TradingBotOrchestrator:
                 candles_1h = self.client.get_klines(symbol, interval="1h", limit=50)
 
                 # Ajan 1: 3-Zaman Dilimli Çoklu-Vade SMC İncelemesi (15m Kısa • 30m Orta • 1h Uzun Vade)
-                ta_setup, ta_reason = self.ta_agent.analyze_multi_horizon(symbol, candles_15m, candles_30m, candles_1h)
+                ta_setup, ta_reason = self.ta_agent.analyze_multi_horizon(
+                    symbol, candles_15m, candles_30m, candles_1h, allowed_timeframes=allowed_timeframes
+                )
                 if not ta_setup:
                     add_scanner_log(symbol, "REJECTED", ta_reason)
                     continue
@@ -355,6 +392,28 @@ class TradingBotOrchestrator:
                     f"[{horizon_badge}] {leverage}x {ta_setup['direction']} SMC Açıldı! (Marjin: ${risk_report['allocated_margin_usdt']}, Risk: ${risk_report['risk_usd']})",
                     f"Net SL: -%{risk_report['margin_risk_pct']}, Net TP: +%{risk_report['margin_tp1_pct']}"
                 )
+
+                # Vade kotasını döngü içinde dinamik güncelle
+                opened_tf = ta_setup.get("timeframe", "15m").lower()
+                if opened_tf == "15m":
+                    c_15m += 1
+                    if c_15m >= max_15m and "15m" in allowed_timeframes:
+                        allowed_timeframes.remove("15m")
+                        print(f"⚡ [15m Kotası Doldu] 15m kotası ({c_15m}/{max_15m}) tamamlandı. 30m ve 1h aranmaya devam ediliyor.")
+                elif opened_tf == "30m":
+                    c_30m += 1
+                    if c_30m >= max_30m and "30m" in allowed_timeframes:
+                        allowed_timeframes.remove("30m")
+                        print(f"🎯 [30m Kotası Doldu] 30m kotası ({c_30m}/{max_30m}) tamamlandı. 15m ve 1h aranmaya devam ediliyor.")
+                elif opened_tf == "1h":
+                    c_1h += 1
+                    if c_1h >= max_1h and "1h" in allowed_timeframes:
+                        allowed_timeframes.remove("1h")
+                        print(f"👑 [1h Kotası Doldu] 1h kotası ({c_1h}/{max_1h}) tamamlandı. 15m ve 30m aranmaya devam ediliyor.")
+
+                if not allowed_timeframes:
+                    print("🛡️ [Tüm Kotalar Doldu] Döngü içinde tüm vadelerin günlük kotaları doldu. Tarama tamamlandı.")
+                    break
 
                 if found_setups_count >= slots_left:
                     print(f"🛡️ [Kasa Kalkanı] İzin verilen kota ({slots_left}) doldu. Yeni fırsat taraması kilitlendi.")
