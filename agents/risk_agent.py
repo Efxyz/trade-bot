@@ -197,7 +197,13 @@ class RiskOfficerAgent:
             effective_max_sl_10x = 1.85
             effective_max_sl_20x = 1.40
         else:
-            effective_max_sl_10x = MAX_SL_PCT_10X
+            adaptive_max_sl = MAX_SL_PCT_10X
+            try:
+                from core.self_tuning_engine import SelfTuningEngine
+                adaptive_max_sl = float(SelfTuningEngine.get_current_params().get("max_scalp_sl_pct", MAX_SL_PCT_10X))
+            except Exception:
+                pass
+            effective_max_sl_10x = round(max(MAX_SL_PCT_10X, adaptive_max_sl) + 0.03, 2)
             effective_max_sl_20x = MAX_SL_PCT_20X
 
         # 2. KALDIRAÇ VE SL UYGUNLUK DENETİMİ
