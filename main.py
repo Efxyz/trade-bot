@@ -222,16 +222,17 @@ class TradingBotOrchestrator:
                 continue  # Zaten açık veya yakın zamanda denenmişse tekrar girme
 
             try:
-                # 15 Dakikalık (15m) scalping ve 1 Saatlik (1h) Makro Trend Mumlarını Çek
-                candles_15m = self.client.get_klines(symbol, interval=PRIMARY_TIMEFRAME, limit=120)
-                if len(candles_15m) < 40:
+                # 3 Zaman Dilimli Mum Verilerini Çek (15m Kısa • 30m Orta • 1h Uzun)
+                candles_15m = self.client.get_klines(symbol, interval="15m", limit=100)
+                if len(candles_15m) < 35:
                     add_scanner_log(symbol, "REJECTED", "Yetersiz 15m mum verisi")
                     continue
 
-                candles_1h = self.client.get_klines(symbol, interval=MACRO_TIMEFRAME, limit=35)
+                candles_30m = self.client.get_klines(symbol, interval="30m", limit=70)
+                candles_1h = self.client.get_klines(symbol, interval="1h", limit=50)
 
-                # Ajan 1: Teknik Analist incelemesi (15m Scalp + 1h Makro Trend Kalkanı)
-                ta_setup, ta_reason = self.ta_agent.analyze_setup(symbol, candles_15m, candles_1h)
+                # Ajan 1: 3-Zaman Dilimli Çoklu-Vade SMC İncelemesi (15m Kısa • 30m Orta • 1h Uzun Vade)
+                ta_setup, ta_reason = self.ta_agent.analyze_multi_horizon(symbol, candles_15m, candles_30m, candles_1h)
                 if not ta_setup:
                     add_scanner_log(symbol, "REJECTED", ta_reason)
                     continue
@@ -302,13 +303,17 @@ class TradingBotOrchestrator:
                 ta_setup["risk_grade"] = risk_report["risk_grade"]
 
                 # Veritabanına Sanal İşlem Olarak Kaydet (ÖNCELİKLE POZİSYONU AÇ VE DB'YE YAZ!)
+                horizon_badge = ta_setup.get("trade_horizon", "Kısa Vade (15m)")
                 signal_data = {
                     "symbol": symbol,
                     "direction": ta_setup["direction"],
+                    "timeframe": ta_setup.get("timeframe", "15m"),
+                    "trade_horizon": horizon_badge,
                     "leverage": leverage,
                     "entry_min": ta_setup["entry_min"],
                     "entry_max": ta_setup["entry_max"],
                     "actual_entry_price": ta_setup["current_price"],
+                    "entry_limit_2": ta_setup.get("entry_limit_2", 0.0),
                     "stop_loss": ta_setup["stop_loss"],
                     "take_profit_1": ta_setup["take_profit_1"],
                     "take_profit_2": ta_setup["take_profit_2"],
@@ -319,7 +324,7 @@ class TradingBotOrchestrator:
                     "tp2_pct": ta_setup["tp2_pct"],
                     "allocated_margin_usdt": risk_report["allocated_margin_usdt"],
                     "risk_usd": risk_report["risk_usd"],
-                    "news_summary": f"{news_analysis.get('summary', '')} | 🏛️ Komite: {ai_verdict.get('ai_confidence', 0)}/10",
+                    "news_summary": f"[{horizon_badge}] {news_analysis.get('summary', '')} | 🏛️ Komite: {ai_verdict.get('ai_confidence', 0)}/10",
                     "ta_reasons": ta_setup["ta_reasons"],
                     "ai_verdict": ai_verdict,
                     "quant_sim": quant_sim,
@@ -334,7 +339,7 @@ class TradingBotOrchestrator:
                 add_scanner_log(
                     symbol,
                     "APPROVED",
-                    f"{leverage}x {ta_setup['direction']} SMC Scalp Açıldı! (Marjin: ${risk_report['allocated_margin_usdt']}, Risk: ${risk_report['risk_usd']})",
+                    f"[{horizon_badge}] {leverage}x {ta_setup['direction']} SMC Açıldı! (Marjin: ${risk_report['allocated_margin_usdt']}, Risk: ${risk_report['risk_usd']})",
                     f"Net SL: -%{risk_report['margin_risk_pct']}, Net TP: +%{risk_report['margin_tp1_pct']}"
                 )
 
