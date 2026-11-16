@@ -270,35 +270,45 @@ class CounterfactualTrackerAgent:
                     else:
                         final_status = "HIT_SL"
 
-            # 5. ERKEN ZARAR KES KALKANI (EARLY INVALIDATION SHIELD - 22 DK HIZLI FREN)
-            # Eğer henüz SL'e çarpmamışsa, pozisyon 22 dakikayı geçmişse, henüz hiçbir kâr basamağı yakalayamadıysa (ladder_step == 0)
-            # ve fiyat %-0.40'ın altına sarkmışsa: -$20 tam stop beklenmeden erken zararla (-$7-$9) kesilir!
-            if not is_closed and EARLY_INVALIDATION_ENABLED and current_ladder_step == 0 and minutes_open >= EARLY_INVALIDATION_MINUTES:
+            # 5. ERKEN ZARAR KES KALKANI & VADEYE GÖRE DİNAMİK SÜRELER
+            sig_tf = sig.get("timeframe") or ("1h" if "1h" in str(sig.get("trade_horizon")) else ("30m" if "30m" in str(sig.get("trade_horizon")) else "15m"))
+            if sig_tf == "1h":
+                effective_early_inval_min = 60
+                effective_max_hold = 1440  # 24 saat nefes payı
+            elif sig_tf == "30m":
+                effective_early_inval_min = 40
+                effective_max_hold = 360   # 6 saat nefes payı
+            else:
+                effective_early_inval_min = EARLY_INVALIDATION_MINUTES
+                effective_max_hold = MAX_HOLD_MINUTES
+
+            # Eğer henüz SL'e çarpmamışsa, pozisyon vadeye göre erken süreyi geçmişse ve ladder_step == 0 ise:
+            if not is_closed and EARLY_INVALIDATION_ENABLED and current_ladder_step == 0 and minutes_open >= effective_early_inval_min:
                 raw_c = ((current_price - entry_price) / entry_price) if is_long else ((entry_price - current_price) / entry_price)
                 if raw_c <= -(EARLY_INVALIDATION_LOSS_PCT / 100.0):
                     is_closed = True
                     final_status = "EARLY_INVALIDATION_EXIT"
                     exit_price = current_price
                     raw_change = raw_c
-                    print(f"🛡️ [{symbol}] Erken Zarar Kes Kalkanı devrede! ({minutes_open:.0f} dk, ham: {raw_c*100:.2f}%). Pozisyon büyük stop beklenmeden küçük zararla kapatıldı.")
+                    print(f"🛡️ [{symbol}] [{sig_tf}] Erken Zarar Kes Kalkanı devrede! ({minutes_open:.0f} dk, ham: {raw_c*100:.2f}%). Pozisyon büyük stop beklenmeden küçük zararla kapatıldı.")
 
-            # 6. ZAMAN AŞIMI (TIMEOUT / 90 DAKİKA HAREKETSİZLİK ÇIKIŞI)
-            if not is_closed and minutes_open >= MAX_HOLD_MINUTES:
+            # 6. ZAMAN AŞIMI (TIMEOUT / VADEYE GÖRE HAREKETSİZLİK ÇIKIŞI)
+            if not is_closed and minutes_open >= effective_max_hold:
                 raw_change = ((current_price - entry_price) / entry_price) if is_long else ((entry_price - current_price) / entry_price)
                 # Eğer pozisyon kârda ise hemen kârı kilitleyip çık:
                 if raw_change > 0.001:
                     is_closed = True
                     final_status = "TIMEOUT_PROFIT_EXIT"
                     exit_price = current_price
-                    print(f"⏱️ [{symbol}] {MAX_HOLD_MINUTES} dk doldu: Pozisyon kârda ({raw_change*100:+.2f}%) kapatıldı.")
-                # Eğer pozisyon hafif ekside ancak Stop mesafesine çok uzaksa (<%0.4) ve 120 dk dolmadıysa gereksiz komisyon ödememek için ek nefes payı tanı:
-                elif minutes_open < 120 and abs(raw_change) < 0.004:
+                    print(f"⏱️ [{symbol}] [{sig_tf}] {effective_max_hold} dk doldu: Pozisyon kârda ({raw_change*100:+.2f}%) kapatıldı.")
+                # Eğer pozisyon hafif ekside ancak Stop mesafesine çok uzaksa (<%0.4) ek nefes payı tanı:
+                elif minutes_open < (effective_max_hold * 1.3) and abs(raw_change) < 0.004:
                     pass
                 else:
                     is_closed = True
                     final_status = "TIMEOUT_EXIT"
                     exit_price = current_price
-                    print(f"⏱️ [{symbol}] {minutes_open:.0f} dakika doldu! Hareketsiz pozisyon {current_price} seviyesinden kapatıldı.")
+                    print(f"⏱️ [{symbol}] [{sig_tf}] {minutes_open:.0f} dakika doldu! Hareketsiz pozisyon {current_price} seviyesinden kapatıldı.")
 
             # 6. İŞLEM KAPANDIYSA NET MARJİN PnL'İ HESAPLA VE VERİTABANINA YAZ
             if is_closed:
