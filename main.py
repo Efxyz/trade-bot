@@ -274,7 +274,20 @@ class TradingBotOrchestrator:
                     continue
 
                 # Ajan 3.2: Kuant & Monte Carlo Fiyat Yolu Simülasyon Ajanı (10,000 Bağımsız Yol)
-                quant_sim = self.quant_sim.simulate_setup(symbol, ta_setup, candles_15m, num_simulations=10000)
+                chosen_tf = ta_setup.get("timeframe", "15m")
+                if chosen_tf == "1h" and candles_1h and len(candles_1h) >= 15:
+                    sim_candles = candles_1h
+                    sim_horizon = 48  # 48 saatlik projeksiyon
+                elif chosen_tf == "30m" and candles_30m and len(candles_30m) >= 15:
+                    sim_candles = candles_30m
+                    sim_horizon = 36  # 18 saatlik projeksiyon
+                else:
+                    sim_candles = candles_15m
+                    sim_horizon = 24  # 6 saatlik projeksiyon
+
+                quant_sim = self.quant_sim.simulate_setup(
+                    symbol, ta_setup, sim_candles, num_simulations=10000, horizon_bars=sim_horizon
+                )
                 win_pct = quant_sim.get("win_probability_pct", 0.0)
 
                 if not quant_sim.get("is_approved", False):
