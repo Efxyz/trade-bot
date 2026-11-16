@@ -157,6 +157,15 @@ def init_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_signals_status ON signals(status)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_signals_symbol ON signals(symbol)")
 
+        # Kalıcı Gün Sonu Telegram Rapor Takip Defteri (Restart / gece yarısı atlama koruması)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS daily_report_sent_log (
+                date_str TEXT PRIMARY KEY,
+                sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("INSERT OR IGNORE INTO daily_report_sent_log (date_str) VALUES ('2026-11-16')")
+
         # FAST BOT TABLOLARI (1m Seri Hızlı Scalping - Bağımsız Kasa)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS fast_signals (
@@ -1592,42 +1601,84 @@ def get_current_equity() -> float:
     except Exception:
         return 1000.0
 
-def generate_daily_summary_report() -> Dict:
-    """Günün (TSİ 00:00'dan itibaren) veya son 24 saatin işlemlerini, net kâr/zararını ve gün sonu özetini derler."""
+def is_daily_report_sent_db(date_str: str) -> bool:
+    """Belirtilen TSİ günü (YYYY-MM-DD) için gün sonu Telegram raporunun gönderilip gönderilmediğini döner."""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM daily_report_sent_log WHERE date_str = ?", (date_str,))
+            return cursor.fetchone() is not None
+    except Exception:
+        return False
+
+def mark_daily_report_sent_db(date_str: str):
+    """Belirtilen TSİ günü (YYYY-MM-DD) için gün sonu Telegram raporunu kalıcı olarak işaretler."""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("INSERT OR IGNORE INTO daily_report_sent_log (date_str) VALUES (?)", (date_str,))
+            conn.commit()
+    except Exception:
+        pass
+
+def generate_daily_summary_report(target_date_str: Optional[str] = None) -> Dict:
+    """Belirtilen TSİ gününün (veya bugünün) kapanan işlemlerini, net kâr/zararını ve gün sonu özetini derler."""
     from datetime import datetime, timedelta, timezone
     tr_tz = timezone(timedelta(hours=3))
     now_tr = datetime.now(timezone.utc).astimezone(tr_tz)
 
-    today_start_tr = now_tr.replace(hour=0, minute=0, second=0, microsecond=0)
-    today_start_utc = today_start_tr.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    if target_date_str:
+        base_tr = datetime.strptime(target_date_str[:10], "%Y-%m-%d").replace(tzinfo=tr_tz)
+        day_start_tr = base_tr.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end_tr = base_tr.replace(hour=23, minute=59, second=59, microsecond=999999)
+        day_start_utc = day_start_tr.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        day_end_utc = day_end_tr.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        report_date_label = base_tr.strftime("%d.%m.%Y")
+        report_time_label = now_tr.strftime("%H:%M") if target_date_str[:10] == now_tr.strftime("%Y-%m-%d") else "23:59 (Telafi)"
+    else:
+        day_start_tr = now_tr.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_start_utc = day_start_tr.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        day_end_utc = None
+        report_date_label = now_tr.strftime("%d.%m.%Y")
+        report_time_label = now_tr.strftime("%H:%M")
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        # Önce bugünün kapanan işlemlerini çek (en son kapanan en üstte)
-        cursor.execute("""
-            SELECT * FROM signals
-            WHERE status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
-              AND closed_at IS NOT NULL
-              AND closed_at >= ?
-            ORDER BY closed_at DESC, id DESC
-        """, (today_start_utc,))
-        trades = [dict(r) for r in cursor.fetchall()]
-        period_type = "Bugün (TSİ 00:00 - 23:59)"
-
-        # Eğer bugün henüz hiç işlem kapanmamışsa son 24 saate bak
-        if not trades:
-            cutoff = datetime.now() - timedelta(hours=24)
-            cutoff_str = cutoff.strftime("%Y-%m-%d %H:%M:%S")
+        if day_end_utc is not None:
+            cursor.execute("""
+                SELECT * FROM signals
+                WHERE status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
+                  AND closed_at IS NOT NULL
+                  AND closed_at >= ? AND closed_at <= ?
+                ORDER BY closed_at DESC, id DESC
+            """, (day_start_utc, day_end_utc))
+            trades = [dict(r) for r in cursor.fetchall()]
+            period_type = f"{report_date_label} (TSİ 00:00 - 23:59)"
+        else:
             cursor.execute("""
                 SELECT * FROM signals
                 WHERE status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
                   AND closed_at IS NOT NULL
                   AND closed_at >= ?
                 ORDER BY closed_at DESC, id DESC
-            """, (cutoff_str,))
+            """, (day_start_utc,))
             trades = [dict(r) for r in cursor.fetchall()]
-            if trades:
-                period_type = "Son 24 Saat"
+            period_type = "Bugün (TSİ 00:00 - 23:59)"
+
+            # Eğer bugün henüz hiç işlem kapanmamışsa (ve belirli bir gün sorulmamışsa) son 24 saate bak
+            if not trades:
+                cutoff = datetime.utcnow() - timedelta(hours=24)
+                cutoff_str = cutoff.strftime("%Y-%m-%d %H:%M:%S")
+                cursor.execute("""
+                    SELECT * FROM signals
+                    WHERE status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
+                      AND closed_at IS NOT NULL
+                      AND closed_at >= ?
+                    ORDER BY closed_at DESC, id DESC
+                """, (cutoff_str,))
+                trades = [dict(r) for r in cursor.fetchall()]
+                if trades:
+                    period_type = "Son 24 Saat"
 
         cursor.execute("""
             SELECT * FROM signals
@@ -1671,8 +1722,8 @@ def generate_daily_summary_report() -> Dict:
             c_15m += 1
 
     return {
-        "date_str": now_tr.strftime("%d.%m.%Y"),
-        "time_str": now_tr.strftime("%H:%M"),
+        "date_str": report_date_label,
+        "time_str": report_time_label,
         "period_type": period_type,
         "total_trades": total_count,
         "win_count": len(wins),
