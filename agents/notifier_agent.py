@@ -62,10 +62,12 @@ class NotifierAgent:
             debate_text += "\n"
 
         # Telegram Gönderimi
+        horizon_tag = signal_data.get("trade_horizon") or "Kısa Vade (15m)"
         if self.has_telegram:
             msg_text = (
                 f"🎯 *YENİ İŞLEM FIRSATI (Binance Futures)*\n\n"
                 f"🪙 *Parite:* `{symbol}` (*{direction} {lev_tag}*)\n"
+                f"⏱️ *Vade:* `{horizon_tag}`\n"
                 f"🏷️ *Risk Grubu:* {risk_grade}\n"
                 f"━━━━━━━━━━━━━━━━━━━\n"
                 f"💵 *Giriş Aralığı:* `{signal_data['entry_min']} - {signal_data['entry_max']}`\n"
