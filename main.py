@@ -78,19 +78,34 @@ class TradingBotOrchestrator:
         """Tek bir tam analiz ve takip döngüsü yürütür."""
         print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 🔍 Döngü Başladı...")
 
-        # 0.5 GÜN SONU OTOMATİK TELEGRAM RAPORU (Her gün Türkiye Saati (TSİ / UTC+3) 23:55-23:59 veya 00:00-00:05)
+        # 0.5 GÜN SONU OTOMATİK TELEGRAM RAPORU (Kalıcı DB Loglu + Ertesi Gün Telafi Korumalı)
         # Bulut sunucuları (Railway Linux) UTC saat diliminde çalıştığından, TSİ (UTC+3) baz alınır.
+        from core.database import is_daily_report_sent_db, mark_daily_report_sent_db
         now_utc = datetime.now(timezone.utc)
         now_tr = now_utc.astimezone(TURKEY_TZ)
         today_str = now_tr.strftime("%Y-%m-%d")
-        if (now_tr.hour == 23 and now_tr.minute >= 55) or (now_tr.hour == 0 and now_tr.minute <= 5):
-            if self.last_daily_report_date != today_str:
-                try:
-                    print(f"📅 [Gün Sonu Raporu] 24 saatlik gün sonu raporu Telegram'a otomatik gönderiliyor... (TSİ {now_tr.strftime('%H:%M')})")
-                    self.notifier.send_daily_summary_report()
+        yesterday_str = (now_tr - timedelta(days=1)).strftime("%Y-%m-%d")
+
+        # Gece yarısı atlandıysa veya restart olduysa bir önceki günün raporunu otomatik telafi et
+        if not is_daily_report_sent_db(yesterday_str):
+            try:
+                print(f"📅 [Gün Sonu Telafi Raporu] {yesterday_str} kapanış raporu Telegram'a gönderiliyor...")
+                rep_y = self.notifier.send_daily_summary_report(target_date_str=yesterday_str)
+                if rep_y.get("sent", True):
+                    mark_daily_report_sent_db(yesterday_str)
+            except Exception as rep_err:
+                print(f"⚠️ Telafi gün sonu raporu gönderme hatası: {rep_err}")
+
+        # Günün kapanış penceresi: TSİ 23:55 - 23:59 arası o günün raporunu kalıcı mühürle gönder
+        if now_tr.hour == 23 and now_tr.minute >= 55 and not is_daily_report_sent_db(today_str):
+            try:
+                print(f"📅 [Gün Sonu Raporu] {today_str} gün sonu raporu Telegram'a otomatik gönderiliyor... (TSİ {now_tr.strftime('%H:%M')})")
+                rep_t = self.notifier.send_daily_summary_report(target_date_str=today_str)
+                if rep_t.get("sent", True):
+                    mark_daily_report_sent_db(today_str)
                     self.last_daily_report_date = today_str
-                except Exception as rep_err:
-                    print(f"⚠️ Gün sonu raporu gönderme hatası: {rep_err}")
+            except Exception as rep_err:
+                print(f"⚠️ Gün sonu raporu gönderme hatası: {rep_err}")
 
         # 1. Açık sanal işlemleri kontrol et (Break-Even & TP/SL takibi)
         print("📊 [Tracker Ajanı] Aktif sanal işlemler kontrol ediliyor...")
