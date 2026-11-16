@@ -26,7 +26,15 @@ from config import (
     MIN_CONFLUENCE_SCORE,
     MIN_CONFLUENCE_SCORE_SHORT,
     MAX_VWAP_DISTANCE_PCT,
-    SMC_PREMIUM_DISCOUNT_FILTER
+    SMC_PREMIUM_DISCOUNT_FILTER,
+    USE_CLOSED_CANDLES_FOR_SCORING,
+    REGIME_CHOP_PERIOD,
+    REGIME_KER_PERIOD,
+    REGIME_CI_TREND,
+    REGIME_CI_CHOP,
+    REGIME_KER_TREND,
+    REGIME_KER_CHOP,
+    REGIME_POLICY
 )
 from core.advanced_indicators import (
     calculate_linear_regression_channel,
@@ -41,6 +49,45 @@ from core.advanced_indicators import (
 )
 
 class TechnicalAnalysisAgent:
+    @staticmethod
+    def calculate_choppiness(candles: List[Dict], period: int = 14) -> float:
+        """Choppiness Index (CI): 61.8 üstü yatay testere, 38.2 altı güçlü trend."""
+        if len(candles) < period + 1:
+            return 50.0
+        recent = candles[-(period + 1):]
+        tr_sum = 0.0
+        for i in range(1, len(recent)):
+            h, l, pc = float(recent[i]["high"]), float(recent[i]["low"]), float(recent[i - 1]["close"])
+            tr_sum += max(h - l, abs(h - pc), abs(l - pc))
+        hh = max(float(c["high"]) for c in recent[-period:])
+        ll = min(float(c["low"]) for c in recent[-period:])
+        rng = hh - ll
+        if rng <= 0 or tr_sum <= 0 or period <= 1:
+            return 50.0
+        return round(100.0 * math.log10(tr_sum / rng) / math.log10(period), 1)
+
+    @staticmethod
+    def calculate_kaufman_er(candles: List[Dict], period: int = 20) -> float:
+        """Kaufman Efficiency Ratio (KER): 0.25 altı testere, 0.50 üstü temiz trend."""
+        if len(candles) < period + 1:
+            return 0.5
+        closes = [float(c["close"]) for c in candles[-(period + 1):]]
+        direction = abs(closes[-1] - closes[0])
+        volatility = sum(abs(closes[i] - closes[i - 1]) for i in range(1, len(closes)))
+        if volatility <= 0:
+            return 0.5
+        return round(direction / volatility, 3)
+
+    def detect_regime(self, candles: List[Dict]) -> Tuple[str, Dict]:
+        """Kapanmış mumlardan piyasa rejimini sınıflandırır: TRENDING, CHOPPY veya TRANSITION."""
+        ci = self.calculate_choppiness(candles, REGIME_CHOP_PERIOD)
+        ker = self.calculate_kaufman_er(candles, REGIME_KER_PERIOD)
+        if ci < REGIME_CI_TREND and ker > REGIME_KER_TREND:
+            return "TRENDING", {"ci": ci, "ker": ker}
+        if ci > REGIME_CI_CHOP and ker < REGIME_KER_CHOP:
+            return "CHOPPY", {"ci": ci, "ker": ker}
+        return "TRANSITION", {"ci": ci, "ker": ker}
+
     @staticmethod
     def calculate_ema(closes: List[float], period: int) -> List[Optional[float]]:
         if len(closes) < period:
@@ -410,42 +457,53 @@ class TechnicalAnalysisAgent:
         if not self.check_volume_burst(candles_15m, timeframe=timeframe):
             return None, f"{timeframe} Hacim patlaması yetersiz (Hareketsiz / Yatay Tahta)"
 
-        closes = [c["close"] for c in candles_15m]
-        current_price = closes[-1]
+        current_price = candles_15m[-1]["close"]
+        # Kapanmamış son mum kaynaklı repaint/lookahead hatasını önle
+        eval_candles = candles_15m[:-1] if (USE_CLOSED_CANDLES_FOR_SCORING and len(candles_15m) > 35) else candles_15m
+        closes = [c["close"] for c in eval_candles]
 
         # 1b. Chop / Ölü Piyasa Filtresi (Son 4 mumun dalgalanması < MIN_4BAR_RANGE_PCT ise yatay testere)
-        if len(candles_15m) >= 4:
-            recent_4 = candles_15m[-4:]
+        if len(eval_candles) >= 4:
+            recent_4 = eval_candles[-4:]
             max_h = max(c["high"] for c in recent_4)
             min_l = min(c["low"] for c in recent_4)
             range_pct = ((max_h - min_l) / current_price) * 100.0 if current_price > 0 else 0.0
             if range_pct < MIN_4BAR_RANGE_PCT:
-                return None, f"Yatay / Testere Piyasa (Son 4 mum dalgalanma %{range_pct:.2f} < %{MIN_4BAR_RANGE_PCT} eşiği)"
+                return None, f"Yatay / Testere Piyasa (Son 4 kapanmış mum dalgalanma %{range_pct:.2f} < %{MIN_4BAR_RANGE_PCT} eşiği)"
 
-        # Temel İndikatörler
+        # Temel İndikatörler (Kapanmış Mumlarla Repaint-Free Hesap)
         ema20 = self.calculate_ema(closes, 20)
         ema50 = self.calculate_ema(closes, 50)
         rsi = self.calculate_rsi(closes, 14)
-        atr = self.calculate_atr(candles_15m, 14)
-        vwap = self.calculate_vwap(candles_15m)
-        squeeze = self.calculate_ttm_squeeze(candles_15m)
+        atr = self.calculate_atr(eval_candles, 14)
+        vwap = self.calculate_vwap(eval_candles)
+        squeeze = self.calculate_ttm_squeeze(eval_candles)
 
-        # SMC Analizleri
-        fvg = self.detect_fvg(candles_15m)
-        ob = self.detect_order_blocks(candles_15m)
-        sweeps = self.detect_liquidity_sweep(candles_15m)
+        # SMC Analizleri (Kapanmış Mumlarla)
+        fvg = self.detect_fvg(eval_candles)
+        if fvg.get("current_in_fvg") == "NONE":
+            if fvg.get("bullish_fvg") and fvg["bullish_fvg"]["bottom"] <= current_price <= fvg["bullish_fvg"]["top"] * 1.002:
+                fvg["current_in_fvg"] = "BULLISH_TEST"
+            elif fvg.get("bearish_fvg") and fvg["bearish_fvg"]["bottom"] * 0.998 <= current_price <= fvg["bearish_fvg"]["top"]:
+                fvg["current_in_fvg"] = "BEARISH_TEST"
+        ob = self.detect_order_blocks(eval_candles)
+        sweeps = self.detect_liquidity_sweep(eval_candles)
 
         # 🚀 KURUMSAL GELİŞMİŞ GRAFİK & TREND ANALİZLERİ (ADVANCED QUANT ENGINE)
-        lr_channel = calculate_linear_regression_channel(candles_15m, period=40, num_std=2.0)
-        vol_profile = calculate_volume_profile(candles_15m, lookback=48, bins=30)
-        camarilla = calculate_camarilla_pivots(candles_15m, lookback_bars=24)
+        lr_channel = calculate_linear_regression_channel(eval_candles, period=40, num_std=2.0)
+        vol_profile = calculate_volume_profile(eval_candles, lookback=48, bins=30)
+        camarilla = calculate_camarilla_pivots(eval_candles, lookback_bars=24)
         rsi_clean = [r if r is not None else 50.0 for r in rsi]
-        rsi_div = advanced_detect_rsi_divergence(candles_15m, rsi_clean, lookback=40, order=3)
-        adx_data = calculate_adx(candles_15m, period=14)
-        fib_gp = calculate_fibonacci_golden_pocket(candles_15m, lookback=45)
-        sfp = detect_swing_failure_pattern(candles_15m, lookback=25)
-        supertrend = calculate_supertrend(candles_15m, period=10, multiplier=3.0)
-        vwap_bands = calculate_vwap_bands(candles_15m, lookback=40)
+        rsi_div = advanced_detect_rsi_divergence(eval_candles, rsi_clean, lookback=40, order=3)
+        adx_data = calculate_adx(eval_candles, period=14)
+        fib_gp = calculate_fibonacci_golden_pocket(eval_candles, lookback=45)
+        sfp = detect_swing_failure_pattern(eval_candles, lookback=25)
+        supertrend = calculate_supertrend(eval_candles, period=10, multiplier=3.0)
+        vwap_bands = calculate_vwap_bands(eval_candles, lookback=40)
+
+        # Piyasa Rejimi Sınıflandırması (TRENDING / CHOPPY / TRANSITION)
+        regime_name, regime_metrics = self.detect_regime(eval_candles)
+        policy = REGIME_POLICY.get(regime_name, REGIME_POLICY["TRANSITION"])
 
         curr_ema20 = ema20[-1]
         curr_ema50 = ema50[-1]
@@ -493,10 +551,11 @@ class TechnicalAnalysisAgent:
         sl_dist = max(min_sl_dist, min(max_sl_dist, curr_atr * atr_mult))
         sl_pct = round((sl_dist / current_price) * 100, 2)
 
+        eff_min_rr = max(MIN_RR_RATIO, policy.get("min_rr", MIN_RR_RATIO))
         min_tp_dist = current_price * (tf_target_profit / 100.0)
-        tp_dist = max(sl_dist * MIN_RR_RATIO, min_tp_dist)
+        tp_dist = max(sl_dist * eff_min_rr, min_tp_dist)
         tp_pct = round((tp_dist / current_price) * 100, 2)
-        actual_rr = round(tp_pct / sl_pct, 2) if sl_pct > 0 else MIN_RR_RATIO
+        actual_rr = round(tp_pct / sl_pct, 2) if sl_pct > 0 else eff_min_rr
 
         # ==========================================
         # 🎯 SMC & QUANT CONFLUENCE SKORLAMA (0-100)
@@ -574,76 +633,62 @@ class TechnicalAnalysisAgent:
             short_score += 15
             short_factors.append("Volatilite Baskısı")
 
-        # --- C. Hacim & VWAP Uyumu (20 Puan) ---
+        # --- C. Hacim & VWAP Uyumu (Çift Sayımdan Arındırılmış: Max 14 Puan) ---
         if current_price > curr_vwap:
-            long_score += 12
+            long_score += 6
             long_factors.append("VWAP Üzeri (Kurumsal Alıcı)")
         else:
-            short_score += 12
+            short_score += 6
             short_factors.append("VWAP Altı (Kurumsal Satıcı)")
 
-        # Hacim patlama bonusu (Son tamamlanan muma göre gürültüsüz ölçüm)
-        prior_vols = [c["volume"] for c in candles_15m[-12:-2]]
+        # Hacim patlama bonusu (Tamamlanmış mumlara göre gürültüsüz ölçüm)
+        prior_vols = [c["volume"] for c in eval_candles[-11:-1]]
         avg_v = sum(prior_vols) / len(prior_vols) if prior_vols else 1.0
-        if len(candles_15m) >= 2 and (candles_15m[-2]["volume"] >= (avg_v * 0.85) or candles_15m[-1]["volume"] >= (avg_v * 1.10)):
+        if len(eval_candles) >= 2 and eval_candles[-1]["volume"] >= (avg_v * 0.90):
             long_score += 8
             short_score += 8
             long_factors.append("Sağlıklı Hacim İvmesi")
             short_factors.append("Sağlıklı Hacim İvmesi")
 
-        # --- C2. VWAP Standart Sapma Bantları & Kurumsal Mean-Reversion (15 Puan) ---
-        if vwap_bands.get("is_mean_reversion_long"):
-            long_score += 15
-            long_factors.append(f"🌊 VWAP Mean-Reversion Taban Sekmesi (Z: {vwap_bands['z_score']})")
-        elif vwap_bands.get("is_mean_reversion_short"):
-            short_score += 15
-            short_factors.append(f"🌊 VWAP Mean-Reversion Tavan Reddi (Z: {vwap_bands['z_score']})")
+        # --- C2. VWAP Standart Sapma Bantları & Kurumsal Mean-Reversion (Rejim Bağımlı) ---
+        if policy.get("mean_reversion", True):
+            if vwap_bands.get("is_mean_reversion_long"):
+                long_score += 15
+                long_factors.append(f"🌊 VWAP Mean-Reversion Taban Sekmesi (Z: {vwap_bands['z_score']})")
+            elif vwap_bands.get("is_mean_reversion_short"):
+                short_score += 15
+                short_factors.append(f"🌊 VWAP Mean-Reversion Tavan Reddi (Z: {vwap_bands['z_score']})")
 
-        # --- D. Trend & RSI Momentumu (20 Puan) ---
-        # Trend & EMA Momentumu (15m)
+        # --- D. Birleşik Trend (EMA + SuperTrend Birlikte Max 12 Puan) ---
         if current_price > curr_ema20:
-            if curr_ema20 >= curr_ema50:
-                long_score += 10
-                long_factors.append("EMA 20>50 Trend")
-            else:
+            if curr_ema20 >= curr_ema50 and supertrend.get("is_bullish"):
+                long_score += 12
+                long_factors.append(f"Trend+SuperTrend Uyumlu (EMA20>50 | ST ${supertrend.get('supertrend')})")
+            elif curr_ema20 >= curr_ema50 or supertrend.get("is_bullish"):
                 long_score += 7
-                long_factors.append("EMA 20 Üzeri İvme (Erken Trend)")
+                long_factors.append("EMA/SuperTrend Boğa Eğilimi")
         if current_price < curr_ema20:
-            if curr_ema20 <= curr_ema50:
-                short_score += 10
-                short_factors.append("EMA 20<50 Trend")
-            else:
+            if curr_ema20 <= curr_ema50 and supertrend.get("is_bearish"):
+                short_score += 12
+                short_factors.append(f"Trend+SuperTrend Uyumlu (EMA20<50 | ST ${supertrend.get('supertrend')})")
+            elif curr_ema20 <= curr_ema50 or supertrend.get("is_bearish"):
                 short_score += 7
-                short_factors.append("EMA 20 Altı Baskı (Erken Trend)")
+                short_factors.append("EMA/SuperTrend Ayı Eğilimi")
 
-        # RSI Sweet Spot
-        if 48 <= curr_rsi <= 68:
-            long_score += 10
-            long_factors.append(f"RSI İdeal İvme ({curr_rsi:.1f})")
-        if 32 <= curr_rsi <= 52:
-            short_score += 10
-            short_factors.append(f"RSI İdeal Baskı ({curr_rsi:.1f})")
-
-        # --- E. Trend Kanalları (Linear Regression Channels - 15 Puan) ---
+        # --- E. Trend Kanalları (Yalnızca Sekme / Kırılım — Çift Sayım Kaldırıldı) ---
         if lr_channel["is_support_test"]:
-            long_score += 12
+            long_score += 10
             long_factors.append(f"LR Kanal Desteği Sekmesi (%{lr_channel['position_pct']})")
         elif lr_channel["is_upper_breakout"]:
-            long_score += 14
+            long_score += 12
             long_factors.append("LR Kanal Üstü Güçlü Kırılım")
-        elif lr_channel["trend"] == "BULLISH_CHANNEL" and lr_channel["position_pct"] < 65:
-            long_score += 6
-            long_factors.append("Yükselen Trend Kanalı İvmesi")
 
         if lr_channel["is_resistance_test"]:
-            short_score += 12
+            short_score += 10
             short_factors.append(f"LR Kanal Tavanı Direnci (%{lr_channel['position_pct']})")
         elif lr_channel["is_lower_breakdown"]:
-            short_score += 14
+            short_score += 12
             short_factors.append("LR Kanal Altı Çöküş Kırılımı")
-        elif lr_channel["trend"] == "BEARISH_CHANNEL" and lr_channel["position_pct"] > 35:
-            short_score += 6
-            short_factors.append("Düşen Trend Kanalı Baskısı")
 
         # --- F. Volume Profile: POC & Value Area (15 Puan) ---
         if vol_profile.get("is_vah_breakout"):
@@ -678,13 +723,16 @@ class TechnicalAnalysisAgent:
             short_score += 8
             short_factors.append(f"Camarilla H3 Tepe Direnci (${camarilla['r3_reversal']})")
 
-        # --- H. RSI Uyumsuzluk & Diverjans (15 Puan) ---
+        # --- H. RSI Tek Sayım Kuralı (Diverjans varsa Sweet Spot ayrıca sayılmaz) ---
         if rsi_div.get("bullish_divergence") == "REGULAR_BULLISH":
             long_score += 15
             long_factors.append("🚀 Düzenli Boğa Diverjansı (Dip Dönüşü)")
         elif rsi_div.get("bullish_divergence") == "HIDDEN_BULLISH":
             long_score += 12
             long_factors.append("⚡ Gizli Boğa Diverjansı (Trend Devamı)")
+        elif 48 <= curr_rsi <= 68:
+            long_score += 10
+            long_factors.append(f"RSI İdeal İvme ({curr_rsi:.1f})")
 
         if rsi_div.get("bearish_divergence") == "REGULAR_BEARISH":
             short_score += 15
@@ -692,15 +740,21 @@ class TechnicalAnalysisAgent:
         elif rsi_div.get("bearish_divergence") == "HIDDEN_BEARISH":
             short_score += 12
             short_factors.append("⚡ Gizli Ayı Diverjansı (Ayı Devamı)")
+        elif 32 <= curr_rsi <= 52:
+            short_score += 10
+            short_factors.append(f"RSI İdeal Baskı ({curr_rsi:.1f})")
 
-        # --- I. Welles Wilder ADX Trend Gücü & Kararlılık (10 Puan) ---
+        # --- I. ADX Trend Gücü & Rejim Kapısı ---
         if adx_data.get("is_strong_trend"):
             if adx_data.get("is_bullish_dominance"):
-                long_score += 10
+                long_score += 6
                 long_factors.append(f"ADX Güçlü Trend Onayı ({adx_data['adx']})")
             elif adx_data.get("is_bearish_dominance"):
-                short_score += 10
+                short_score += 6
                 short_factors.append(f"ADX Güçlü Düşüş Trendi ({adx_data['adx']})")
+        elif regime_name == "CHOPPY" and not policy.get("mean_reversion", True):
+            long_score = max(0, long_score - 5)
+            short_score = max(0, short_score - 5)
 
         # --- J. Fibonacci Altın Cep (Golden Pocket 0.618-0.665) & OTE (12 Puan) ---
         if fib_gp.get("is_in_golden_pocket"):
@@ -718,20 +772,13 @@ class TechnicalAnalysisAgent:
                 short_score += 8
                 short_factors.append("📐 Fibonacci OTE Ayı Tepki Direnç Bölgesi")
 
-        # --- K. Swing Failure Pattern (SFP) & SuperTrend Doğrulaması (15 Puan) ---
+        # --- K. Swing Failure Pattern (SFP) Likidite Süpürme (15 Puan) ---
         if sfp.get("bullish_sfp"):
             long_score += 15
             long_factors.append(f"🔥 Boğa Likidite Süpürme (SFP Dip Avı: ${sfp.get('sweep_level')})")
         if sfp.get("bearish_sfp"):
             short_score += 15
             short_factors.append(f"🔥 Ayı Likidite Süpürme (SFP Tepe Avı: ${sfp.get('sweep_level')})")
-
-        if supertrend.get("is_bullish"):
-            long_score += 8
-            long_factors.append(f"🛡️ SuperTrend Boğa Rejimi (${supertrend.get('supertrend')})")
-        elif supertrend.get("is_bearish"):
-            short_score += 8
-            short_factors.append(f"🛡️ SuperTrend Ayı Rejimi (${supertrend.get('supertrend')})")
 
         # --- 0. 1 SAATLİK MAKRO TREND KALKANI (1h Macro Confluence Shield) ---
         # 1 saatlik grafikte derin çöküş (%2.5'ten fazla fark) varsa LONG engellenir;
@@ -755,8 +802,8 @@ class TechnicalAnalysisAgent:
                         f"🎯 <strong>Beklenen Şart:</strong> Rallinin soğuması."
                     )
 
-        # --- SMC PREMIUM / DISCOUNT & DALGA ANALİZİ (Son 20 Mum) ---
-        lookback_candles = candles_15m[-20:] if len(candles_15m) >= 20 else candles_15m
+        # --- SMC PREMIUM / DISCOUNT & DALGA ANALİZİ (Son 20 Kapanmış Mum) ---
+        lookback_candles = eval_candles[-20:] if len(eval_candles) >= 20 else eval_candles
         swing_high = max(c["high"] for c in lookback_candles)
         swing_low = min(c["low"] for c in lookback_candles)
         swing_range = swing_high - swing_low
@@ -813,6 +860,12 @@ class TechnicalAnalysisAgent:
                     f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Düşen kanalın tavanı aşağı kırılmadan direnç altında LONG açmak reddedilme riski taşır.<br>"
                     f"🎯 <strong>Beklenen Şart:</strong> Kanal tavanının yukarı kırılması veya SuperTrend Boğa onayı."
                 )
+            if not lr_channel.get("is_upper_breakout") and ((ch_pos >= 70.0 and curr_rsi >= 62.0) or (ch_trend == "HORIZONTAL_CHANNEL" and ch_pos >= 75.0)):
+                return None, (
+                    f"📌 <strong>Mevcut Durum:</strong> {ch_trend} Üst Doygunluk Bölgesi (%{ch_pos:.1f}, RSI={curr_rsi:.1f}).<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Kanal tavanına (%70+) dayanmış fiyatta yukarı kırılım olmadan LONG açmak tepe yakalanması riski taşır.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> Fiyatın desteğe gevşemesi veya tavan üstü net kırılım."
+                )
 
             # 2. VWAP Aşırı Uzaklaşma (Lastik Bandı Kalkanı)
             if curr_vwap > 0 and vwap_dist_pct > MAX_VWAP_DISTANCE_PCT:
@@ -823,7 +876,7 @@ class TechnicalAnalysisAgent:
                 )
 
             # 3. RSI Uyumsuzluk Kalkanı (Bearish Divergence / Tepe Alımı Koruması)
-            has_bear_div, div_desc = self.detect_rsi_divergence(candles_15m, rsi, "LONG")
+            has_bear_div, div_desc = self.detect_rsi_divergence(eval_candles, rsi, "LONG")
             if has_bear_div:
                 return None, (
                     f"📌 <strong>Mevcut Durum:</strong> {div_desc}.<br>"
@@ -873,6 +926,9 @@ class TechnicalAnalysisAgent:
                 sl_pct = round((sl_dist / current_price) * 100, 2)
 
             stop_loss = round(current_price - sl_dist, 6)
+            tp_dist = max(tp_dist, sl_dist * eff_min_rr)
+            tp_pct = round((tp_dist / current_price) * 100, 2)
+            actual_rr = round(tp_pct / sl_pct, 2) if sl_pct > 0 else eff_min_rr
             tp1 = round(current_price + tp_dist, 6)
             tp2 = round(current_price + (tp_dist * 1.6), 6)
 
@@ -895,6 +951,8 @@ class TechnicalAnalysisAgent:
                 "direction": "LONG",
                 "timeframe": timeframe,
                 "trade_horizon": horizon_label,
+                "regime": regime_name,
+                "regime_metrics": regime_metrics,
                 "leverage": leverage,
                 "risk_grade": grade,
                 "confluence_score": min(long_score, 100),
@@ -913,7 +971,7 @@ class TechnicalAnalysisAgent:
                 "tp2_pct": round(tp_pct * 1.6, 2),
                 "ta_reasons": (
                     f"[{setup_type} | Skor: {min(long_score, 100)}/100] {factors_str}. "
-                    f"RSI={curr_rsi:.1f}, VWAP={curr_vwap:.4f}, LR-Kanal={lr_channel.get('trend', 'FLAT')} (%{lr_channel.get('position_pct', 50)}), POC=${vol_profile.get('poc', 0)}. Hedef1: +%{tp_pct}, Runner TP2: +%{round(tp_pct*1.6, 2)} ({leverage}x)."
+                    f"Rejim={regime_name}(CI:{regime_metrics['ci']},KER:{regime_metrics['ker']}), RSI={curr_rsi:.1f}, VWAP={curr_vwap:.4f}, LR-Kanal={lr_channel.get('trend', 'FLAT')} (%{lr_channel.get('position_pct', 50)}), POC=${vol_profile.get('poc', 0)}. Hedef1: +%{tp_pct}, Runner TP2: +%{round(tp_pct*1.6, 2)} ({leverage}x)."
                 ),
                 "indicators": {
                     "ema20": ema20,
@@ -991,6 +1049,12 @@ class TechnicalAnalysisAgent:
                     f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Yükselen kanalın destek çizgisi aşağı kırılmadan kanal dibinden SHORT açmak tepki alımı riski taşır.<br>"
                     f"🎯 <strong>Beklenen Şart:</strong> Kanal desteğinin aşağı kırılması veya SuperTrend Ayı onayı."
                 )
+            if not lr_channel.get("is_lower_breakdown") and ((ch_pos <= 30.0 and curr_rsi <= 38.0) or (ch_trend == "HORIZONTAL_CHANNEL" and ch_pos <= 25.0)):
+                return None, (
+                    f"📌 <strong>Mevcut Durum:</strong> {ch_trend} Alt Doygunluk Bölgesi (%{ch_pos:.1f}, RSI={curr_rsi:.1f}).<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Kanal tabanına (%30-) dayanmış yorgun fiyatta aşağı kırılım olmadan SHORT açmak V-dip tepki tuzağıdır.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> Fiyatın dirence tepki vermesi veya kanal tabanının hacimli kırılması."
+                )
 
             # 2. VWAP Aşırı Uzaklaşma (Lastik Bandı Kalkanı)
             if curr_vwap > 0 and vwap_dist_pct < -MAX_VWAP_DISTANCE_PCT:
@@ -1001,7 +1065,7 @@ class TechnicalAnalysisAgent:
                 )
 
             # 3. RSI Uyumsuzluk Kalkanı (Bullish Divergence / V-Dip Koruması)
-            has_bull_div, div_desc = self.detect_rsi_divergence(candles_15m, rsi, "SHORT")
+            has_bull_div, div_desc = self.detect_rsi_divergence(eval_candles, rsi, "SHORT")
             if has_bull_div:
                 return None, (
                     f"📌 <strong>Mevcut Durum:</strong> {div_desc}.<br>"
@@ -1051,6 +1115,9 @@ class TechnicalAnalysisAgent:
                 sl_pct = round((sl_dist / current_price) * 100, 2)
 
             stop_loss = round(current_price + sl_dist, 6)
+            tp_dist = max(tp_dist, sl_dist * eff_min_rr)
+            tp_pct = round((tp_dist / current_price) * 100, 2)
+            actual_rr = round(tp_pct / sl_pct, 2) if sl_pct > 0 else eff_min_rr
             tp1 = round(current_price - tp_dist, 6)
             tp2 = round(current_price - (tp_dist * 1.6), 6)
 
@@ -1073,6 +1140,8 @@ class TechnicalAnalysisAgent:
                 "direction": "SHORT",
                 "timeframe": timeframe,
                 "trade_horizon": horizon_label,
+                "regime": regime_name,
+                "regime_metrics": regime_metrics,
                 "leverage": leverage,
                 "risk_grade": grade,
                 "confluence_score": min(short_score, 100),
@@ -1091,7 +1160,7 @@ class TechnicalAnalysisAgent:
                 "tp2_pct": round(tp_pct * 1.6, 2),
                 "ta_reasons": (
                     f"[{setup_type} | Skor: {min(short_score, 100)}/100] {factors_str}. "
-                    f"RSI={curr_rsi:.1f}, VWAP={curr_vwap:.4f}, LR-Kanal={lr_channel.get('trend', 'FLAT')} (%{lr_channel.get('position_pct', 50)}), POC=${vol_profile.get('poc', 0)}. Hedef1: %{tp_pct}, Runner TP2: %{round(tp_pct*1.6, 2)} ({leverage}x)."
+                    f"Rejim={regime_name}(CI:{regime_metrics['ci']},KER:{regime_metrics['ker']}), RSI={curr_rsi:.1f}, VWAP={curr_vwap:.4f}, LR-Kanal={lr_channel.get('trend', 'FLAT')} (%{lr_channel.get('position_pct', 50)}), POC=${vol_profile.get('poc', 0)}. Hedef1: %{tp_pct}, Runner TP2: %{round(tp_pct*1.6, 2)} ({leverage}x)."
                 ),
                 "indicators": {
                     "ema20": ema20,
