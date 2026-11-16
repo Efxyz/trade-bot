@@ -5,7 +5,7 @@ Supports dynamic leverage (10x vs 20x Sniper) and Break-Even protection alerts.
 """
 import os
 import requests
-from typing import Dict
+from typing import Dict, Optional
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 
 class NotifierAgent:
@@ -139,23 +139,32 @@ class NotifierAgent:
             )
             self._send_telegram_photo(trade_info["chart_exit_png"], caption)
 
-    def send_text_message(self, text: str):
-        """Düz metin mesajı gönderir."""
+    def send_text_message(self, text: str) -> bool:
+        """Düz metin mesajı gönderir (Markdown reddedilirse düz metin fallback yapar)."""
         if not self.has_telegram:
-            return
+            return False
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
         try:
-            requests.post(url, data={"chat_id": self.chat_id, "text": text, "parse_mode": "Markdown"}, timeout=10)
+            resp = requests.post(url, data={"chat_id": self.chat_id, "text": text, "parse_mode": "Markdown"}, timeout=10)
+            if resp.status_code != 200:
+                print(f"⚠️ [Notifier] Telegram Markdown hatası ({resp.status_code}): {resp.text[:150]} -> Düz metin tekrar deneniyor...")
+                resp = requests.post(url, data={"chat_id": self.chat_id, "text": text}, timeout=10)
+            return resp.status_code == 200
         except Exception as e:
             print(f"[Notifier] Telegram mesaj hatası: {e}")
+            return False
 
-    def send_daily_summary_report(self) -> Dict:
+    def send_daily_summary_report(self, target_date_str: Optional[str] = None) -> Dict:
         """Gün sonu 24 saatlik işlem ve kâr/zarar raporunu derler ve Telegram'a iletir."""
         from core.database import generate_daily_summary_report, format_daily_telegram_message
-        report = generate_daily_summary_report()
+        report = generate_daily_summary_report(target_date_str=target_date_str)
         msg_text = format_daily_telegram_message(report)
-        self.send_text_message(msg_text)
-        print("🏆 [Gün Sonu Raporu] 24 saatlik işlem ve kâr/zarar raporu Telegram'a iletildi.")
+        sent = self.send_text_message(msg_text)
+        report["sent"] = sent
+        if sent:
+            print(f"🏆 [Gün Sonu Raporu] {report.get('date_str', '')} kapanış raporu Telegram'a iletildi.")
+        else:
+            print(f"⚠️ [Gün Sonu Raporu] {report.get('date_str', '')} Telegram iletimi başarısız!")
         return report
 
     def send_fast_hourly_report(self) -> Dict:
