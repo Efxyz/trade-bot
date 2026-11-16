@@ -200,6 +200,33 @@ HTML_OFFICE_TEMPLATE = """
         .pnl-pos { color: var(--green); }
         .pnl-neg { color: var(--red); }
 
+        .btn-manual-close {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.45);
+            border-radius: 5px;
+            padding: 3px 8px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            font-family: 'Inter', sans-serif;
+            white-space: nowrap;
+        }
+        .btn-manual-close:hover {
+            background: #ef4444;
+            color: #ffffff;
+            border-color: #ef4444;
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.45);
+            transform: translateY(-1px);
+        }
+        .btn-manual-close:active {
+            transform: translateY(0);
+        }
+
         /* Aktif İşlemler İki Kısımlı Bölüm ve Özet Barı */
         .active-summary-bar {
             display: flex;
@@ -2265,6 +2292,9 @@ HTML_OFFICE_TEMPLATE = """
                                                 Brüt: ${(pos.grossPnlPct >= 0 ? '+' : '') + pos.grossPnlPct.toFixed(2)}% | Kom: -${pos.feePct.toFixed(2)}%
                                             </div>
                                         </div>
+                                        <button class="btn-manual-close" onclick="closeSinglePosition('${pos.symbol}', ${pos.id || 0})" title="${pos.symbol} pozisyonunu anlık market fiyatından kapat">
+                                            ⚡ Kapat
+                                        </button>
                                     </div>
                                 </div>
 
@@ -2908,6 +2938,53 @@ HTML_OFFICE_TEMPLATE = """
                 if (pin) sessionStorage.setItem('admin_pin', pin.trim());
             }
             return pin;
+        }
+
+        async function closeSinglePosition(symbol, signalId) {
+            if (!symbol) return;
+            const msg = `⚡ ${symbol} açık pozisyonunu anlık piyasa fiyatından (Market Emri) kapatmak istediğinize emin misiniz?`;
+            if (!confirm(msg)) return;
+            const pin = await getAdminPin();
+            if (!pin) return;
+
+            const card = document.getElementById(`card-${symbol}`);
+            const btn = card ? card.querySelector('.btn-manual-close') : null;
+            const oldHtml = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.innerHTML = '⏳...';
+                btn.disabled = true;
+            }
+
+            try {
+                const res = await fetch('/api/close-position', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Pin': pin
+                    },
+                    body: JSON.stringify({ symbol: symbol, signal_id: signalId })
+                });
+
+                if (res.status === 401) {
+                    sessionStorage.removeItem('admin_pin');
+                    alert('🔒 Hata: Geçersiz Yönetici Güvenlik PIN Kodu!');
+                } else {
+                    const data = await res.json();
+                    if (data.status === 'success') {
+                        await fetchTerminal();
+                    } else {
+                        alert('⚠️ ' + (data.message || 'Pozisyon kapatılamadı.'));
+                    }
+                }
+            } catch (err) {
+                console.error("Manuel kapatma hatası:", err);
+                alert('İletişim hatası: Pozisyon kapatılamadı!');
+            } finally {
+                if (btn) {
+                    btn.innerHTML = oldHtml;
+                    btn.disabled = false;
+                }
+            }
         }
 
         async function closeAllPositions() {
@@ -6248,6 +6325,39 @@ def api_scan():
         orch = TradingBotOrchestrator()
         threading.Thread(target=orch.run_cycle, daemon=True).start()
         return jsonify({"status": "Scan triggered"})
+
+@app.route("/api/close-position", methods=["POST"])
+@require_admin_pin
+def api_close_single_position():
+    data = request.get_json(silent=True) or {}
+    symbol = data.get("symbol") or request.args.get("symbol")
+    sig_id = data.get("signal_id") or request.args.get("signal_id")
+    target = sig_id if sig_id else symbol
+
+    if not target:
+        return jsonify({"status": "error", "message": "Parite (symbol) veya Sinyal ID belirtilmedi"}), 400
+
+    from core.database import (
+        close_single_signal_db, get_performance_stats, get_all_signals, get_active_and_pending_signals
+    )
+    closed_sig = close_single_signal_db(target, client=client)
+    if not closed_sig:
+        return jsonify({"status": "error", "message": f"{target} için aktif pozisyon bulunamadı veya işlem zaten kapanmış"}), 404
+
+    with _cache_lock:
+        active_sigs = get_active_and_pending_signals() or []
+        _terminal_cache["active_positions"] = active_sigs
+        _terminal_cache["stats"] = get_performance_stats()
+        _all_init = get_all_signals(limit=40) or []
+        _terminal_cache["trade_history"] = [
+            s for s in _all_init if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER", "ACTIVE_PARTIAL_TP1")
+        ]
+
+    return jsonify({
+        "status": "success",
+        "message": f"{closed_sig.get('symbol')} pozisyonu piyasa fiyatından kapatıldı.",
+        "signal": closed_sig
+    })
 
 @app.route("/api/close-all-positions", methods=["POST"])
 @require_admin_pin
