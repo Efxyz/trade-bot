@@ -30,7 +30,9 @@ from config import (
     LADDER_DYNAMIC_CHANNEL_PCT,
     MAX_HOLD_MINUTES,
     RISK_PER_TRADE_PCT,
-    MAX_CONCURRENT_TRADES
+    MAX_CONCURRENT_TRADES,
+    ENABLE_FAST_ENGINE,
+    ENABLE_SUPER_FAST_ENGINE
 )
 
 ADAPTIVE_CONFIG_PATH = DATA_DIR / "adaptive_hyperparams.json"
@@ -40,15 +42,15 @@ ADAPTIVE_CONFIG_PATH = DATA_DIR / "adaptive_hyperparams.json"
 # Yapay zeka veya optimizasyon motoru bu sınırları ASLA aşamaz!
 # ========================================================
 SAFETY_GUARDRAILS = {
-    "MAX_RISK_PER_TRADE_PCT": 2.0,       # Asla %2'nin üzerine çıkamaz
-    "MAX_CONCURRENT_TRADES_HARD": 5,     # Maksimum 5 eşzamanlı pozisyon
-    "MAX_LEVERAGE_ALLOWED": 20,          # Asla 20x'in üzerine çıkamaz
-    "MAX_DAILY_DRAWDOWN_PCT": 6.0,       # Günlük %6 kayıpta sistem kilitlenir
-    "MIN_SL_FLOOR_PCT": 0.80,            # Stop mesafesi gürültüye ezilmemek için %0.80'den dar olamaz
-    "MAX_SL_CEILING_PCT": 1.60,          # Stop mesafesi %1.60'tan geniş olamaz
-    "MIN_CONFLUENCE_FLOOR": 58,          # Confluence tabanı 58'den düşük olamaz
-    "MAX_CONFLUENCE_CEILING": 68,        # Confluence tavanı felç olmamak için 68'den yüksek olamaz
-    "MAX_BTC_CHOP_CEILING": 0.85         # BTC Chop tavanı kilitlenmeyi önlemek için %0.85'ten yüksek olamaz
+    "MAX_RISK_PER_TRADE_PCT": 2.0,                   # Asla %2'nin üzerine çıkamaz
+    "MAX_CONCURRENT_TRADES_HARD": MAX_CONCURRENT_TRADES,  # Ana bot eşzamanlı pozisyon sınırı
+    "MAX_LEVERAGE_ALLOWED": 20,                      # Asla 20x'in üzerine çıkamaz
+    "MAX_DAILY_DRAWDOWN_PCT": 6.0,                   # Günlük %6 kayıpta sistem kilitlenir
+    "MIN_SL_FLOOR_PCT": 0.80,                        # Stop mesafesi gürültüye ezilmemek için %0.80'den dar olamaz
+    "MAX_SL_CEILING_PCT": 1.60,                      # Stop mesafesi %1.60'tan geniş olamaz
+    "MIN_CONFLUENCE_FLOOR": 58,                      # Confluence tabanı 58'den düşük olamaz
+    "MAX_CONFLUENCE_CEILING": 68,                    # Confluence tavanı felç olmamak için 68'den yüksek olamaz
+    "MAX_BTC_CHOP_CEILING": 0.85                     # BTC Chop tavanı kilitlenmeyi önlemek için %0.85'ten yüksek olamaz
 }
 
 class SelfTuningEngine:
@@ -56,8 +58,9 @@ class SelfTuningEngine:
 
     @staticmethod
     def get_current_params() -> Dict:
-        """Mevcut aktif adaptif parametreleri döner (Varsayılan veya kalibre edilmiş)."""
+        """Mevcut aktif adaptif parametreleri döner (Varsayılan veya v2 kalibre edilmiş)."""
         defaults = {
+            "schema_version": 2,
             "min_confluence_score": MIN_CONFLUENCE_SCORE,
             "min_scalp_sl_pct": MIN_SCALP_SL_PCT,
             "max_scalp_sl_pct": MAX_SCALP_SL_PCT,
@@ -73,7 +76,12 @@ class SelfTuningEngine:
             try:
                 with open(ADAPTIVE_CONFIG_PATH, "r", encoding="utf-8") as f:
                     saved = json.load(f)
+                if isinstance(saved, dict) and saved.get("schema_version") == 2:
                     defaults.update(saved)
+                else:
+                    # Eski v1 kirlenmiş parametreleri (kapalı 1m/1s botlardan gelen) sıfırla
+                    with open(ADAPTIVE_CONFIG_PATH, "w", encoding="utf-8") as fw:
+                        json.dump(defaults, fw, indent=4, ensure_ascii=False)
             except Exception:
                 pass
 
@@ -89,13 +97,13 @@ class SelfTuningEngine:
 
     @classmethod
     def get_all_completed_trades(cls, limit_per_bot: int = 40) -> List[Dict]:
-        """Tüm botlardan (15m, 1m FAST, SÜPER FAST) tamamlanmış kapalı işlemleri toplar."""
+        """Yalnızca aktif motorların tamamlanmış kapalı işlemlerini toplar."""
         all_trades = []
-        sources = [
-            ("signals", "15m_STANDART"),
-            ("fast_signals", "1m_FAST"),
-            ("super_fast_signals", "SÜPER_FAST_HFT")
-        ]
+        sources = [("signals", "15m_STANDART")]
+        if ENABLE_FAST_ENGINE:
+            sources.append(("fast_signals", "1m_FAST"))
+        if ENABLE_SUPER_FAST_ENGINE:
+            sources.append(("super_fast_signals", "SÜPER_FAST_HFT"))
         with get_db_connection() as conn:
             cursor = conn.cursor()
             for table, bot_name in sources:
@@ -336,8 +344,8 @@ class SelfTuningEngine:
                     "reason": f"Düşük kazanma oranı (%{win_rate:.1f}) nedeniyle kalite çıtası yükseltildi."
                 })
                 hypotheses.append(f"💡 [Kalite Optimizasyonu]: Kazanma oranını %65+ üzerine çekmek için minimum SMC giriş barajı {new_conf}/100 seviyesine yükseltildi; zayıf sinyaller ayıklandı.")
-        elif win_rate >= 68.0 and expectancy >= 0.40:
-            new_conf = max(SAFETY_GUARDRAILS["MIN_CONFLUENCE_FLOOR"], curr_conf - 1)
+        elif win_rate >= 65.0 and expectancy >= 0.40:
+            new_conf = max(SAFETY_GUARDRAILS["MIN_CONFLUENCE_FLOOR"], min(curr_conf - 1, 64))
             if new_conf != curr_conf:
                 tuned["min_confluence_score"] = new_conf
                 param_deltas.append({
@@ -350,8 +358,8 @@ class SelfTuningEngine:
                 })
                 hypotheses.append(f"💡 [Alfa Genişlemesi]: Sistem %{win_rate:.1f} kazanma oranıyla yüksek alfa ürettiğinden SMC barajı {new_conf}/100 seviyesine optimize edilerek daha fazla karlı kurulum yakalanması hedeflendi.")
 
-        # B) Stop Mesafesi (Fitil Avı Koruması)
-        curr_sl_min = current.get("min_scalp_sl_pct", 0.95)
+        # B) Stop Mesafesi (Fitil Avı Koruması & Simetrik Gevşeme)
+        curr_sl_min = current.get("min_scalp_sl_pct", MIN_SCALP_SL_PCT)
         if loss_analysis.get("wick_hunt_pct", 0) >= 25.0:
             new_sl_min = min(SAFETY_GUARDRAILS["MAX_SL_CEILING_PCT"] - 0.20, round(curr_sl_min + 0.10, 2))
             if new_sl_min != curr_sl_min:
@@ -365,9 +373,22 @@ class SelfTuningEngine:
                     "reason": "Likidite fitili kayıplarını bertaraf etmek için stop payı genişletildi."
                 })
                 hypotheses.append(f"💡 [Likidite Kalkanı]: Kayıpların %{loss_analysis.get('wick_hunt_pct')}'i erken fitillerden kaynaklandığı için stop payı %{new_sl_min:.2f}'ye genişletildi; piyasa gürültüsüne kurban gitme riski önlendi.")
+        elif loss_analysis.get("wick_hunt_pct", 0) < 20.0 and curr_sl_min > MIN_SCALP_SL_PCT:
+            new_sl_min = max(MIN_SCALP_SL_PCT, round(curr_sl_min - 0.10, 2))
+            if new_sl_min != curr_sl_min:
+                tuned["min_scalp_sl_pct"] = new_sl_min
+                param_deltas.append({
+                    "param_name": "Fitil Korumalı Stop",
+                    "key": "min_scalp_sl_pct",
+                    "old_val": curr_sl_min,
+                    "new_val": new_sl_min,
+                    "delta": f"-%{round(curr_sl_min - new_sl_min, 2)}",
+                    "reason": f"Erken fitil oranı (%{loss_analysis.get('wick_hunt_pct')}) düşük olduğu için minimum stop tabanı normale çekildi."
+                })
+                hypotheses.append(f"💡 [Dar Stop Verimliliği]: Erken fitil avı %{loss_analysis.get('wick_hunt_pct')} seviyesine düştüğünden minimum stop tabanı %{new_sl_min:.2f}'ye indirildi; daha fazla kaliteli 15m kurulum önü açıldı.")
 
-        # C) BTC Chop Kalkanı
-        curr_chop = current.get("btc_chop_min_range_4h_pct", 0.70)
+        # C) BTC Chop Kalkanı (Simetrik Gevşeme Dahil)
+        curr_chop = current.get("btc_chop_min_range_4h_pct", BTC_CHOP_MIN_RANGE_4H_PCT)
         if loss_analysis.get("timeout_pct", 0) >= 30.0 or regime_diag.get("timeout_ratio_pct", 0) >= 30.0:
             new_chop = round(min(SAFETY_GUARDRAILS["MAX_BTC_CHOP_CEILING"], curr_chop + 0.05), 2)
             if new_chop != curr_chop:
@@ -381,6 +402,19 @@ class SelfTuningEngine:
                     "reason": "Yatay testere piyasasında gereksiz işlem ve zaman aşımını engellemek için sıkılaştırıldı."
                 })
                 hypotheses.append(f"💡 [Testere Kalkanı]: Pozisyonların %{loss_analysis.get('timeout_pct')}'i yatay piyasada takılı kaldığından 4s BTC Dead Chop eşiği %{new_chop:.2f}'ye sıkılaştırıldı.")
+        elif loss_analysis.get("timeout_pct", 0) < 20.0 and curr_chop > BTC_CHOP_MIN_RANGE_4H_PCT:
+            new_chop = round(max(BTC_CHOP_MIN_RANGE_4H_PCT, curr_chop - 0.05), 2)
+            if new_chop != curr_chop:
+                tuned["btc_chop_min_range_4h_pct"] = new_chop
+                param_deltas.append({
+                    "param_name": "BTC Dead Chop Eşiği",
+                    "key": "btc_chop_min_range_4h_pct",
+                    "old_val": curr_chop,
+                    "new_val": new_chop,
+                    "delta": f"-%{round(curr_chop - new_chop, 2)}",
+                    "reason": f"Zaman aşımı oranı (%{loss_analysis.get('timeout_pct')}) düşük olduğu için BTC Dead Chop eşiği gevşetildi."
+                })
+                hypotheses.append(f"💡 [Tarama Genişlemesi]: Yatay sıkışma kayıpları düşük (%{loss_analysis.get('timeout_pct')}) olduğundan BTC Chop eşiği %{new_chop:.2f}'ye çekildi.")
 
         # D) Merdiven Kâr Kanalı İyileştirmesi
         curr_ladder_chan = current.get("ladder_dynamic_channel_pct", 0.25)
@@ -408,14 +442,16 @@ class SelfTuningEngine:
         hypotheses.append(f"💡 [Piyasa Rejimi]: {regime_diag.get('regime_name')} - {regime_diag.get('summary')}")
 
         # 4. GÜVENLİK ANAYASASINI UYGULA (IMMUTABLE GUARDRAILS)
+        tuned["schema_version"] = 2
         tuned["risk_per_trade_pct"] = min(SAFETY_GUARDRAILS["MAX_RISK_PER_TRADE_PCT"], tuned.get("risk_per_trade_pct", 2.0))
-        tuned["max_concurrent_trades"] = min(SAFETY_GUARDRAILS["MAX_CONCURRENT_TRADES_HARD"], tuned.get("max_concurrent_trades", 2))
-        tuned["min_confluence_score"] = max(SAFETY_GUARDRAILS["MIN_CONFLUENCE_FLOOR"], min(SAFETY_GUARDRAILS["MAX_CONFLUENCE_CEILING"], tuned.get("min_confluence_score", 65)))
-        tuned["btc_chop_min_range_4h_pct"] = max(0.55, min(SAFETY_GUARDRAILS["MAX_BTC_CHOP_CEILING"], tuned.get("btc_chop_min_range_4h_pct", 0.70)))
-        tuned["min_scalp_sl_pct"] = max(SAFETY_GUARDRAILS["MIN_SL_FLOOR_PCT"], min(SAFETY_GUARDRAILS["MAX_SL_CEILING_PCT"] - 0.20, tuned.get("min_scalp_sl_pct", 1.0)))
-        if tuned.get("min_scalp_sl_pct", 1.0) >= tuned.get("max_scalp_sl_pct", 1.35):
-            tuned["max_scalp_sl_pct"] = round(tuned["min_scalp_sl_pct"] + 0.30, 2)
-        tuned["max_scalp_sl_pct"] = min(SAFETY_GUARDRAILS["MAX_SL_CEILING_PCT"], tuned.get("max_scalp_sl_pct", 1.45))
+        if win_rate >= 60.0 and expectancy > 0.0:
+            tuned["max_concurrent_trades"] = MAX_CONCURRENT_TRADES
+        else:
+            tuned["max_concurrent_trades"] = min(SAFETY_GUARDRAILS["MAX_CONCURRENT_TRADES_HARD"], tuned.get("max_concurrent_trades", MAX_CONCURRENT_TRADES))
+        tuned["min_confluence_score"] = max(SAFETY_GUARDRAILS["MIN_CONFLUENCE_FLOOR"], min(SAFETY_GUARDRAILS["MAX_CONFLUENCE_CEILING"], tuned.get("min_confluence_score", MIN_CONFLUENCE_SCORE)))
+        tuned["btc_chop_min_range_4h_pct"] = max(0.55, min(SAFETY_GUARDRAILS["MAX_BTC_CHOP_CEILING"], tuned.get("btc_chop_min_range_4h_pct", BTC_CHOP_MIN_RANGE_4H_PCT)))
+        tuned["min_scalp_sl_pct"] = max(SAFETY_GUARDRAILS["MIN_SL_FLOOR_PCT"], min(SAFETY_GUARDRAILS["MAX_SL_CEILING_PCT"] - 0.20, tuned.get("min_scalp_sl_pct", MIN_SCALP_SL_PCT)))
+        tuned["max_scalp_sl_pct"] = min(SAFETY_GUARDRAILS["MAX_SL_CEILING_PCT"], round(max(MAX_SCALP_SL_PCT, tuned["min_scalp_sl_pct"] + 0.30), 2))
         tuned["last_calibrated_at"] = date_str
         tuned["adaptation_level"] = "Autonomous Self-Trained Active"
 
