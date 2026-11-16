@@ -335,12 +335,13 @@ class TechnicalAnalysisAgent:
         return False, ""
 
     @staticmethod
-    def check_volume_burst(candles: List[Dict]) -> bool:
+    def check_volume_burst(candles: List[Dict], timeframe: str = "15m") -> bool:
         """
         Hareketsiz coinleri eler:
         1. Son kapanan mumun hacmi (candles[-2]) ortalamanın üzerindeyse VEYA
         2. Canlı mumun (candles[-1]) projeksiyon hacmi ortalamayı aşıyorsa VEYA
         3. Canlı mum henüz bitmeden ortalama hacmin %75'ine ulaştıysa (Ani balina hacmi).
+        Vadeye göre dinamik mum süresi (15m: 900s, 30m: 1800s, 1h: 3600s) kullanır.
         """
         if len(candles) < 15:
             return False
@@ -354,13 +355,20 @@ class TechnicalAnalysisAgent:
         if prev_vol >= (avg_vol * 0.55):
             return True
 
-        # Kriter 2: Canlı mumun dakikalık projeksiyonu hacimli mi? (Dengeli Eşik: %70+)
+        # Kriter 2: Canlı mumun projeksiyonu hacimli mi? (Dengeli Eşik: %70+)
+        if timeframe == "1h":
+            candle_sec = 3600.0
+        elif timeframe == "30m":
+            candle_sec = 1800.0
+        else:
+            candle_sec = 900.0
+
         curr_c = candles[-1]
         curr_vol = curr_c["volume"]
         now_ms = time.time() * 1000
         candle_open_ms = curr_c.get("timestamp", now_ms)
-        elapsed_sec = max(30.0, min(900.0, (now_ms - candle_open_ms) / 1000.0))
-        projected_vol = curr_vol * (900.0 / elapsed_sec)
+        elapsed_sec = max(30.0, min(candle_sec, (now_ms - candle_open_ms) / 1000.0))
+        projected_vol = curr_vol * (candle_sec / elapsed_sec)
 
         if projected_vol >= (avg_vol * 0.70):
             return True
@@ -399,7 +407,7 @@ class TechnicalAnalysisAgent:
             return None, f"Yetersiz {timeframe} mum verisi (en az 35 mum gerekli)"
 
         # 1. Hacim Patlaması & Hareket Kontrolü
-        if not self.check_volume_burst(candles_15m):
+        if not self.check_volume_burst(candles_15m, timeframe=timeframe):
             return None, f"{timeframe} Hacim patlaması yetersiz (Hareketsiz / Yatay Tahta)"
 
         closes = [c["close"] for c in candles_15m]
