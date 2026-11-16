@@ -263,14 +263,14 @@ class TradingBotOrchestrator:
                         continue
 
                 if "30m" in allowed_timeframes:
-                    candles_30m = self.client.get_klines(symbol, interval="30m", limit=70)
+                    candles_30m = self.client.get_klines(symbol, interval="30m", limit=80)
                     if len(candles_30m) < 35 and "15m" not in allowed_timeframes and "1h" not in allowed_timeframes:
                         add_scanner_log(symbol, "REJECTED", "Yetersiz 30m mum verisi")
                         continue
 
                 # 1h mumları: 1h kotası açıksa veya 15m/30m için makro trend teyidi gerekiyorsa çek
                 if "1h" in allowed_timeframes or ("15m" in allowed_timeframes) or ("30m" in allowed_timeframes):
-                    candles_1h = self.client.get_klines(symbol, interval="1h", limit=50)
+                    candles_1h = self.client.get_klines(symbol, interval="1h", limit=80)
                     if "1h" in allowed_timeframes and "15m" not in allowed_timeframes and "30m" not in allowed_timeframes:
                         if len(candles_1h) < 20:
                             add_scanner_log(symbol, "REJECTED", "Yetersiz 1h mum verisi")
