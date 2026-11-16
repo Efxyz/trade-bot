@@ -220,7 +220,7 @@ class TechnicalAnalysisAgent:
         bearish_fvg = None
         start_idx = max(2, n - max_lookback)
 
-        for i in range(start_idx, n - 1):
+        for i in range(start_idx, n):
             c1 = candles[i - 2]
             c2 = candles[i - 1]
             c3 = candles[i]
@@ -481,7 +481,7 @@ class TechnicalAnalysisAgent:
 
         # SMC Analizleri (Kapanmış Mumlarla)
         fvg = self.detect_fvg(eval_candles)
-        if fvg.get("current_in_fvg") == "NONE":
+        if not fvg.get("current_in_fvg"):
             if fvg.get("bullish_fvg") and fvg["bullish_fvg"]["bottom"] <= current_price <= fvg["bullish_fvg"]["top"] * 1.002:
                 fvg["current_in_fvg"] = "BULLISH_TEST"
             elif fvg.get("bearish_fvg") and fvg["bearish_fvg"]["bottom"] * 0.998 <= current_price <= fvg["bearish_fvg"]["top"]:
