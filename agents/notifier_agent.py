@@ -117,6 +117,9 @@ class NotifierAgent:
             status_text = "🛡️ Başabaş Kapandı (Break-Even)"
         elif status == "HIT_SL":
             status_text = "🛑 Stop Loss Oldu"
+        elif status == "MANUAL_CLOSE":
+            status_text = "👤 Manuel Kapatıldı (Piyasa Emri)"
+            icon = "⚡"
         else:
             status_text = status
 
