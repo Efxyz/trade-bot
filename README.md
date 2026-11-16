@@ -1,42 +1,149 @@
-# 🚀 Binance Futures (USDT.P) 10x & 20x Multi-Agent Trade Bot & Canlı Dashboard
+# 🤖 Binance Futures (USDT.P) Otonom Multi-Agent Quant Trade Bot & Canlı Terminal
 
-Bu sistem, **Binance Vadeli İşlemler (USDT-M Perpetual / USDT.P)** piyasasında çalışan çoklu yapay zeka ajanlı bir analiz, risk yönetim, sanal takip ve **canlı masaüstü kontrol paneli (Dashboard)** sistemidir.
+**Binance Vadeli İşlemler (`USDT-M Perpetual / USDT.P`)** piyasası için geliştirilmiş; Smart Money Concepts (SMC), piyasa rejim tespiti, 10.000 yollu Monte Carlo stokastik simülasyonu, çoklu ajan münazara konseyi, ağırlıklı 2 kademeli DCA ve **Hibrit ATR Merdiven Kâr Kilidi** özelliklerini tek çatı altında birleştiren **6 katmanlı otonom algoritmik analiz, simülasyon ve canlı takip terminalidir**.
 
----
-
-## 🖥️ Canlı Web Dashboard (Kontrol Paneli)
-
-Bilgisayarınızda anlık çalışan TradingView / Bloomberg Terminali benzeri koyu temalı web uygulaması:
-* **Canlı Olası PnL (Unrealized PnL):** Açık sanal pozisyonların anlık fiyatlarla kar/zararını **her 2 saniyede bir canlı günceller**.
-* **BTC Çöküş Kalkanı Barı:** Anlık Bitcoin fiyatını ve piyasa koruma durumunu canlı gösterir.
-* **Geçmiş İşlemler & Gerçekleşen PnL:** Kapanan tüm işlemlerin net getirilerini listeler.
-* **PNG Grafik Görüntüleyici:** Tablodaki "👁️ Grafik" butonuna basarak üretilen analiz grafiklerini tam boy inceler.
-* **Hızlı Tarama Butonu:** Panelden tek tıkla anında piyasa taraması başlatabilirsiniz.
-
-**Dashboard'u Açmak İçin:**
-- Klasördeki [`open_dashboard.bat`](file:///c:/Users/isiks/OneDrive/Belgeler/antygravity/trade_bot/open_dashboard.bat) dosyasına çift tıklayın veya tarayıcınızda `http://127.0.0.1:5000` adresine gidin.
+> [!NOTE]
+> Sistem hem yerel masaüstü kontrol paneli olarak hem de **Railway** üzerinde 7/24 bulut terminali olarak çalışacak şekilde mimarilendirilmiştir. Sinyaller, kurumsal risk yönetimi ve gerçekleşen/olasılıksal net komisyon (`%0.05 Taker` giriş + `%0.05 Taker` çıkış = `%0.10` roundtrip) hesaplarıyla sanal olarak canlı piyasa fiyatlarında uçtan uca doğrulanır.
 
 ---
 
-## ⚡ Temel Özellikler
+## 🎯 Ne İşe Yarar ve Neleri Çözer?
 
-1. **⚡ Dinamik Kaldıraç (10x vs 20x Sniper):**
-   - Dar stoplu (<= %1.2 SL) ve yüksek kırılımlarda **20x Sniper (Grade A+)** önerir (Hedef: +%50 - +%100 kar).
-   - Standart trendlerde güvenli **10x Kaldıraç** uygular.
-2. **🛡️ BTC Market Shield (Çöküş Kalkanı):**
-   - BTC ani düşüşe geçtiğinde tüm altcoin LONG sinyallerini otomatik durdurur.
-3. **🔒 Break-Even (Sıfır Risk):**
-   - TP1'e ulaşıldığında Stop-Loss seviyesini otomatik giriş fiyatına taşır.
-4. **📱 Telegram İnteraktif Komutları:**
-   - `@Effe_trade_bot` üzerinden `/tara`, `/durum`, `/aktif`, `/btc` komutları ile uzaktan yönetim.
-5. **🎯 "Girseydim Ne Olurdu?" Simülatörü:**
-   - 10x/20x kaldıraçlı gerçekleşen net PnL oranını hesaplayıp sonuç grafiği sunar.
+Klasik tek indikatörlü botların yaşadığı üç temel sorunu (testere piyasada erken stop avı, komisyon erimesi ve kazanan işlemin kârsız kapanması) çözmek üzere kurgulanmıştır:
+
+1. **Tek Tip Parametre Yerine Piyasa Rejimi Adaptasyonu:** Yatay/testere (`CHOPPY`) ve güçlü akım (`TRENDING`) piyasalarını **Choppiness Index (CI)** ve **Kaufman Efficiency Ratio (KER)** ile otomatik ayırır; hedef R:R oranını, merdiven genişliğini ve mean-reversion stratejilerini rejime göre uyarlar.
+2. **Sıfır Repainting & Lookahead Koruması:** Sinyal skorlaması yalnızca **kapanmış mumlar (`candles[:-1]`)** üzerinden hesaplanır; canlı WebSocket fiyatı sadece giriş anı doğrulaması ve milisaniyelik kâr/zarar takibi için kullanılır.
+3. **Kazanan İşlemi Zararla Kapatmama Disiplini (Hibrit ATR Merdiven):** İşlem lehimize hızlıca döndüğünde **Basamak 1** sermaye kalkanı devreye girerek pozisyonun `%35`'ini nakit kâr olarak cebe alır ve kalan kısma nefes paylı BE+ kalkanı kurar; devam eden güçlü hareketlerde **Basamak 2–4** ve **Dinamik Kanal** volatiliteye (ATR) göre esneyerek büyük dalgaları taşır.
 
 ---
 
-## 🚀 Başlatma Komutları
+## 🧠 6 Katmanlı Multi-Agent Karar ve Takip Mimarisi
 
-* **7/24 Botu ve Dashboard'u Başlat:**
-  Klasördeki [`start_scanner.bat`](file:///c:/Users/isiks/OneDrive/Belgeler/antygravity/trade_bot/start_scanner.bat) dosyasına çift tıklayın.
-* **Sadece Dashboard'u Aç:**
-  Klasördeki [`open_dashboard.bat`](file:///c:/Users/isiks/OneDrive/Belgeler/antygravity/trade_bot/open_dashboard.bat) dosyasına çift tıklayın.
+```text
+[Binance Futures REST + Milisaniyelik WebSocket Akışı]
+                         │
+                         ▼
+  1. Tarama & Evren Seçimi (agents/scanner_agent.py)
+     └─ Yüksek 24s hacimli ($12M+) likit USDT.P pariteleri + zehirli parite karantinası
+                         │
+                         ▼
+  2. Çoklu-Vade SMC & Rejim Motoru (agents/ta_agent.py)
+     ├─ 15m (Kısa) • 30m (Orta) • 1h (Uzun) eşzamanlı analiz
+     ├─ CI + KER Rejim Tespiti (TRENDING / CHOPPY / TRANSITION)
+     ├─ Kapalı Mum SMC: FVG, Order Block, Liquidity Sweep, SFP, Fib Golden Pocket
+     └─ Kanal Doygunluk & VWAP Aşırı Uzama Kalkanı (Tepe Alım / Dip Satış Engeli)
+                         │
+                         ▼
+  3. Kurumsal Risk & Mikroyapı Kalkanı (agents/risk_agent.py)
+     ├─ 10x Standart / 20x Grade A+ Sniper kaldıraç seçimi
+     ├─ Order Book Imbalance (Tahta Baskısı), Spread & Funding Rate kontrolü
+     ├─ BTC Çöküş Kalkanı (BTC Market Shield) & Sembol/Yön bazlı limitler
+     └─ Maksimum 8 eşzamanlı işlem • Tek yönde maks. 4 pozisyon • $200 baz marjin tavanı
+                         │
+                         ▼
+  4. 10.000 Monte Carlo & Time Machine (agents/quant_simulation_agent.py)
+     ├─ Kapanmış mumların ampirik log-getirileriyle 10.000 GBM + Jump-Diffusion yolu
+     └─ Tarihsel kırılım rezonans testi (Empirical Replay)
+                         │
+                         ▼
+  5. Münazara Konseyi & Haber Analizi (agents/ai_analyst_agent.py & news_agent.py)
+     └─ Boğa, Ayı, Kuant Hakem ve Baş Yargıç oylaması + makro/haber duyarlılık teyidi
+                         │
+                         ▼
+  6. Canlı WebSocket Takip, DCA & Hibrit ATR Merdiven (agents/tracker_agent.py)
+     ├─ Bayat tick korumalı WebSocket fiyat takibi (max_age_sec = 5.0 sn)
+     ├─ 2. Kademe Ağırlıklı DCA: (E1 + 0.5·E2) / 1.5 + R:R (>= 1.80) SL/TP1 kalibrasyonu
+     ├─ Hibrit ATR Step-Ladder (%35 kısmi realizasyon + ATR bazlı Basamak 2-4 + Runner TP2)
+     └─ EMA20 mum kapanış teyitli Akıllı Yapısal Erken Zarar Kes
+```
+
+---
+
+## ⚙️ Öne Çıkan Çekirdek Özellikler
+
+### 1. 📊 Çoklu-Vade SMC & Çift Sayımdan Arındırılmış Skorlama ([`agents/ta_agent.py`](agents/ta_agent.py))
+- Aynı pariteyi eşzamanlı olarak **15 dakikalık (Vur-Kaç)**, **30 dakikalık (Dengeli Salınım)** ve **1 saatlik (Makro Trend)** vadelerde inceler; `ADX` ve kurulum kalitesine göre en verimli vadeyi seçer.
+- **Korelasyon / Çoklu Sayım Temizliği:** Birbirini tekrarlayan indikatörlerin skoru suni şişirmesini önlemek için EMA+SuperTrend üst sınırı, ayrı tutulan LR-Channel yapısı ve birbirini dışlayan RSI/Divergence puanlaması kullanır.
+- **Kanal Doygunluk Kalkanı:** Yükselen/düşen veya yatay kanalların en uç bölgelerinde kırılım gelmeden ters veya yorgun yönde işleme girilmesini otomatik engeller.
+
+### 2. 🪜 Ağırlıklı DCA & Hibrit ATR Merdiven Kâr Kilidi ([`agents/tracker_agent.py`](agents/tracker_agent.py))
+- **Doğru Ağırlıklı DCA Muhasebesi:** 2. kademe limit emir (%50 ek marjin) dolduğunda ortalama giriş fiyatı hacim ağırlıklı olarak `((E1 × 1.0) + (E2 × 0.5)) / 1.5` formülüyle güncellenir, marjin tavanı (`MAX_ALLOCATED_MARGIN_PER_TRADE × 1.5`) aşılırsa ek alım durdurulur ve `SL` / `TP1` mesafeleri asgari `1:1.80` R:R oranını koruyacak şekilde yeniden kalibre edilir.
+- **Hibrit ATR Merdiven:**
+  - **Basamak 1 (Hızlı Sermaye Kalkanı):** Küçük kârlarda gecikmeden tetiklenir; marjinin `%35`'ini nakit kâr olarak cebe alır ve kalan kısma komisyon korumalı nefes payı stopu yerleştirir.
+  - **Basamak 2–4 & Dinamik Kanal:** Pozisyonun bulunduğu zaman diliminin kapanmış mum **ATR(14)** volatilitesine göre otomatik genişleyip daralır (`ATR_LADDER_MULT`).
+- **Tam Parçalı Muhasebe (`reconcile_partial_pnl`):** Basamak 1 (`%35`) ve TP1 (`%50`) kısmi realize kârlarını başlangıç toplam marjini üzerinden birleştirerek nihai net yüzdesel ve dolar bazlı kârı sıfır sapmayla hesaplar.
+
+### 3. 🛡️ Sermaye Koruma & Otonom Kalibrasyon Kalkanları ([`core/database.py`](core/database.py), [`core/self_tuning_engine.py`](core/self_tuning_engine.py))
+- **Sembol + Yön Bazlı Soğuma Molası:** Bir paritede zararlı kapanış olduğunda tüm sistemi dondurmak yerine yalnızca o sembolün o yönünü **15 dakika** karantinaya alır.
+- **Side-Specific Stoploss Guard:** Aynı yönde ardışık 2 stop oluşursa o yönü **45 dakika** kilitlerken karşı yön fırsatlarını açık tutar.
+- **Oransal Günlük Zirve Kâr Kilidi:** Gün içi net gerçekleşen kâr `$25+` üzerine çıktığında zirvenin `%55`'ini taban kilidi olarak korur.
+- **Otonom Öz-Kalibrasyon (`Self-Tuning`):** Kapalı işlem istatistiklerine (Win Rate, Profit Factor, Expectancy) bakarak puan barajlarını dinamik ayarlar ve geçmiş performansı sürekli izler.
+
+### 4. 🖥️ Canlı Web Terminali, 3D Ajan Ofisi & Telegram Yönetimi
+- **Web Dashboard ([`dashboard.py`](dashboard.py)):** Dark-mode profesyonel arayüz; canlı Unrealized/Realized PnL tablosu, BTC Çöküş Kalkanı göstergesi, **3D Sims Ajan Ofisi & Münazara Odası**, tek tıkla manuel tarama ve kurumsal PNG grafik inceleme penceresi ([`agents/chart_agent.py`](agents/chart_agent.py)).
+- **Telegram İnteraktif Bot ([`agents/telegram_command_agent.py`](agents/telegram_command_agent.py) & [`agents/notifier_agent.py`](agents/notifier_agent.py)):** `/tara`, `/durum`, `/aktif`, `/btc` komutları ile uzaktan kontrol, anlık giriş/çıkış bildirimleri ve her gece **23:59**'da günlük performans özet raporu.
+
+---
+
+## 📂 Proje Klasör Yapısı
+
+```text
+trade_bot/
+├── main.py                          # Ana orkestratör döngüsü & dashboard/telegram entegrasyonu
+├── config.py                        # Strateji, risk, ATR merdiven, rejim ve koruma sabitleri
+├── dashboard.py                     # Flask tabanlı canlı Web Terminali & 3D Ajan Ofisi arayüzü
+├── sync_to_github.py                # GitHub API üzerinden kontrollü bulut/Railway senkronizasyonu
+├── requirements.txt                 # Python bağımlılıkları
+├── Dockerfile / Procfile            # Railway & Docker konteyner dağıtım yapılandırmaları
+├── start_scanner.bat                # Yerel 7/24 bot + dashboard başlatıcı
+├── open_dashboard.bat               # Sadece yerel kontrol paneli başlatıcı
+├── core/
+│   ├── binance_client.py            # Binance Futures REST API istemcisi (60s kline/book önbellekli)
+│   ├── binance_streamer.py          # Milisaniyelik WebSocket fiyat akışı & bayat veri koruması
+│   ├── database.py                  # SQLite işlem defteri, kısmi kâr mutabakatı & günlük kilitler
+│   ├── advanced_indicators.py       # FVG, OB, Sweep, SFP, TTM Squeeze, VWAP, LR-Channel motoru
+│   ├── quant_knowledge_base.py      # Kurumsal quant bilgi tabanı yardımcıları
+│   ├── self_tuning_engine.py        # Win Rate / Expectancy bazlı otonom baraj kalibrasyonu
+│   └── reflection.py                # İşlem sonrası yansıma & ders çıkarma motoru
+└── agents/
+    ├── scanner_agent.py             # Likit USDT.P parite tarayıcısı
+    ├── ta_agent.py                  # Çoklu-vade (15m/30m/1h) SMC + Rejim analiz ajanı
+    ├── risk_agent.py                # Kasa, kaldıraç, OBI tahta baskısı & portföy risk ajanı
+    ├── quant_simulation_agent.py    # 10.000 Monte Carlo GBM & Empirical Replay ajanı
+    ├── ai_analyst_agent.py          # Adversarial Boğa/Ayı/Hakem münazara komitesi
+    ├── news_agent.py                # Kripto/makro haber duyarlılık ajanı
+    ├── tracker_agent.py             # Canlı pozisyon takip, DCA & Hibrit ATR Merdiven motoru
+    ├── chart_agent.py               # Kurumsal analiz PNG grafik üreticisi
+    ├── notifier_agent.py            # Telegram sinyal, kapatma & 23:59 gün sonu rapor ajanı
+    └── telegram_command_agent.py    # İnteraktif Telegram komut dinleyicisi
+```
+
+*(Not: Depoda alternatif yüksek frekanslı deneysel `fast_*` ve `super_fast_*` motor modülleri de saklanmaktadır; varsayılan üretim modunda `ENABLE_FAST_ENGINE = False` ve `ENABLE_SUPER_FAST_ENGINE = False` olarak kapalı tutulur.)*
+
+---
+
+## 🚀 Kurulum ve Çalıştırma
+
+### 1. Ortam Değişkenleri (`.env`)
+Proje kökünde [`.env.example`](.env.example) dosyasını baz alarak `.env` oluşturun:
+```env
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+TELEGRAM_CHAT_ID=your_chat_id
+CRYPTOPANIC_API_KEY=optional_api_key
+GITHUB_TOKEN=optional_sync_token
+```
+
+### 2. Yerel Çalıştırma (Windows)
+- **Bot + Canlı Dashboard'u Birlikte Başlatmak İçin:** `start_scanner.bat` dosyasına çift tıklayın (veya `python main.py` çalıştırın).
+- **Sadece Web Dashboard'u Açmak İçin:** `open_dashboard.bat` dosyasına çift tıklayın ve tarayıcınızdan `http://127.0.0.1:5000` adresine gidin.
+
+### 3. Manuel Python Kurulumu
+```bash
+pip install -r requirements.txt
+python main.py
+```
+
+---
+
+## ⚠️ Yasal Uyarı
+Bu yazılım araştırma, simülasyon ve algoritmik strateji doğrulama amacıyla geliştirilmiştir. Kripto para vadeli işlemleri yüksek kaldıraç nedeniyle yüksek risk içerir; yatırım tavsiyesi değildir.
