@@ -1188,9 +1188,13 @@ HTML_OFFICE_TEMPLATE = """
                 <span class="lbl">BTC Rejimi:</span>
                 <span class="val" id="topBtc" style="color: var(--yellow);">TARANIYOR</span>
             </div>
-            <div class="top-stat">
+            <div class="top-stat" title="Anlık Açık Pozisyon Kotası">
                 <span class="lbl">Kasa Kalkanı:</span>
-                <span class="val" id="topShieldQuota" style="color: var(--green);">0/4 Pozisyon</span>
+                <span class="val" id="topShieldQuota" style="color: var(--green);">0/8 Pozisyon</span>
+            </div>
+            <div class="top-stat" title="Bugünkü Zaman Dilimi Kotaları (Kısa • Orta • Uzun)">
+                <span class="lbl">Vade Kotaları:</span>
+                <span class="val" id="topTimelineQuota" style="color: #c084fc; font-weight: 700; font-size: 11px;">⚡0/5 • 🎯0/4 • 👑0/3</span>
             </div>
             <div class="top-stat">
                 <span class="lbl">Fon Kasası:</span>
@@ -2126,6 +2130,16 @@ HTML_OFFICE_TEMPLATE = """
             if (shieldEl) {
                 shieldEl.innerText = `${currentTrades}/${maxTrades} Pozisyon`;
                 shieldEl.style.color = currentTrades >= maxTrades ? 'var(--red)' : (currentTrades >= 2 ? 'var(--yellow)' : 'var(--green)');
+            }
+
+            // Vade Kotaları (15m • 30m • 1h)
+            const tlQuotaEl = document.getElementById('topTimelineQuota');
+            if (tlQuotaEl && data.timeline_quotas) {
+                const tq = data.timeline_quotas;
+                const q15 = tq['15m'] || { used: 0, max: 5 };
+                const q30 = tq['30m'] || { used: 0, max: 4 };
+                const q1h = tq['1h'] || { used: 0, max: 3 };
+                tlQuotaEl.innerHTML = `⚡${q15.used}/${q15.max} • 🎯${q30.used}/${q30.max} • 👑${q1h.used}/${q1h.max}`;
             }
 
             // Fon Kasası ($)
@@ -5835,7 +5849,8 @@ _terminal_cache = {
     "committee_debates": [],
     "trade_reflections": [],
     "learning_reports": [],
-    "tuning_info": {}
+    "tuning_info": {},
+    "timeline_quotas": {"15m": {"used": 0, "max": 5}, "30m": {"used": 0, "max": 4}, "1h": {"used": 0, "max": 3}}
 }
 
 # İlk açılışta ekranın boş kalmaması veya gidip gelmemesi için DB'den anında besle
@@ -6195,6 +6210,23 @@ def update_terminal_cache_loop():
                 sfsig_dict["recent_candles"] = cached_fast_klines.get(sfsymbol, [])
                 super_fast_active_positions.append(sfsig_dict)
 
+            # Vade Kotaları Bilgisini Derle
+            try:
+                from core.database import get_today_trades_count_by_timeframe
+                from config import DAILY_MAX_TRADES_15M, DAILY_MAX_TRADES_30M, DAILY_MAX_TRADES_1H
+                t_counts = get_today_trades_count_by_timeframe()
+                timeline_quotas = {
+                    "15m": {"used": t_counts.get("15m", 0), "max": DAILY_MAX_TRADES_15M},
+                    "30m": {"used": t_counts.get("30m", 0), "max": DAILY_MAX_TRADES_30M},
+                    "1h": {"used": t_counts.get("1h", 0), "max": DAILY_MAX_TRADES_1H}
+                }
+            except Exception:
+                timeline_quotas = _terminal_cache.get("timeline_quotas", {
+                    "15m": {"used": 0, "max": 5},
+                    "30m": {"used": 0, "max": 4},
+                    "1h": {"used": 0, "max": 3}
+                })
+
             # Atomik Olarak Önbelleği Güncelle
             with _cache_lock:
                 _terminal_cache = {
@@ -6202,6 +6234,7 @@ def update_terminal_cache_loop():
                     "btc_regime": btc_regime,
                     "stats": stats,
                     "max_concurrent_trades": MAX_CONCURRENT_TRADES,
+                    "timeline_quotas": timeline_quotas,
                     "total_unrealized_pnl": round(total_unrealized_pnl, 2),
                     "active_positions": active_positions,
                     "scanner_logs": scanner_logs if scanner_logs else _terminal_cache.get("scanner_logs", []),
