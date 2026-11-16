@@ -1557,24 +1557,41 @@ def get_current_equity() -> float:
         return 1000.0
 
 def generate_daily_summary_report() -> Dict:
-    """Son 24 saat içinde gerçekleşen tüm işlemleri, net kâr/zararı ve gün sonu özetini derler."""
+    """Günün (TSİ 00:00'dan itibaren) veya son 24 saatin işlemlerini, net kâr/zararını ve gün sonu özetini derler."""
     from datetime import datetime, timedelta, timezone
     tr_tz = timezone(timedelta(hours=3))
     now_tr = datetime.now(timezone.utc).astimezone(tr_tz)
 
-    cutoff = datetime.now() - timedelta(hours=24)
-    cutoff_str = cutoff.strftime("%Y-%m-%d %H:%M:%S")
+    today_start_tr = now_tr.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start_utc = today_start_tr.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
+        # Önce bugünün kapanan işlemlerini çek (en son kapanan en üstte)
         cursor.execute("""
             SELECT * FROM signals
             WHERE status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
               AND closed_at IS NOT NULL
               AND closed_at >= ?
-            ORDER BY closed_at ASC
-        """, (cutoff_str,))
-        trades_24h = [dict(r) for r in cursor.fetchall()]
+            ORDER BY closed_at DESC, id DESC
+        """, (today_start_utc,))
+        trades = [dict(r) for r in cursor.fetchall()]
+        period_type = "Bugün (TSİ 00:00 - 23:59)"
+
+        # Eğer bugün henüz hiç işlem kapanmamışsa son 24 saate bak
+        if not trades:
+            cutoff = datetime.now() - timedelta(hours=24)
+            cutoff_str = cutoff.strftime("%Y-%m-%d %H:%M:%S")
+            cursor.execute("""
+                SELECT * FROM signals
+                WHERE status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
+                  AND closed_at IS NOT NULL
+                  AND closed_at >= ?
+                ORDER BY closed_at DESC, id DESC
+            """, (cutoff_str,))
+            trades = [dict(r) for r in cursor.fetchall()]
+            if trades:
+                period_type = "Son 24 Saat"
 
         cursor.execute("""
             SELECT * FROM signals
@@ -1586,26 +1603,41 @@ def generate_daily_summary_report() -> Dict:
     stats = get_performance_stats()
     current_equity = stats.get("portfolio_balance", 1000.0)
 
-    total_count = len(trades_24h)
-    wins = [t for t in trades_24h if (t.get("simulated_pnl_pct") or 0.0) > 0]
-    losses = [t for t in trades_24h if (t.get("simulated_pnl_pct") or 0.0) < 0]
-    bes = [t for t in trades_24h if (t.get("simulated_pnl_pct") or 0.0) == 0]
+    total_count = len(trades)
+    wins = [t for t in trades if (t.get("simulated_pnl_pct") or 0.0) > 0]
+    losses = [t for t in trades if (t.get("simulated_pnl_pct") or 0.0) < 0]
+    bes = [t for t in trades if (t.get("simulated_pnl_pct") or 0.0) == 0]
 
-    total_net_pnl_pct = sum((t.get("simulated_pnl_pct") or 0.0) for t in trades_24h)
-    total_gross_pnl_pct = sum((t.get("gross_pnl_pct") or 0.0) for t in trades_24h)
-    total_fee_pct = sum((t.get("fee_pct") or 0.0) for t in trades_24h)
+    total_net_pnl_pct = sum((t.get("simulated_pnl_pct") or 0.0) for t in trades)
+    total_gross_pnl_pct = sum((t.get("gross_pnl_pct") or 0.0) for t in trades)
+    total_fee_pct = sum((t.get("fee_pct") or 0.0) for t in trades)
 
     # Dolar bazlı kâr/zarar hesabı (allocated_margin * pnl_pct / 100)
     total_dollar_gain = sum(
         (t.get("allocated_margin_usdt") or 150.0) * ((t.get("simulated_pnl_pct") or 0.0) / 100.0)
-        for t in trades_24h
+        for t in trades
     )
 
     win_rate = (len(wins) / total_count * 100.0) if total_count > 0 else 0.0
 
+    # Vade dağılımı (15m, 30m, 1h)
+    c_15m = 0
+    c_30m = 0
+    c_1h = 0
+    for t in trades:
+        tf = (t.get("timeframe") or "").lower()
+        hz = (t.get("trade_horizon") or "").lower()
+        if tf == "1h" or "1h" in hz or "uzun" in hz:
+            c_1h += 1
+        elif tf == "30m" or "30m" in hz or "orta" in hz:
+            c_30m += 1
+        else:
+            c_15m += 1
+
     return {
         "date_str": now_tr.strftime("%d.%m.%Y"),
         "time_str": now_tr.strftime("%H:%M"),
+        "period_type": period_type,
         "total_trades": total_count,
         "win_count": len(wins),
         "loss_count": len(losses),
@@ -1616,68 +1648,116 @@ def generate_daily_summary_report() -> Dict:
         "fee_pct": round(total_fee_pct, 2),
         "dollar_pnl": round(total_dollar_gain, 2),
         "current_equity": round(current_equity, 2),
-        "trades": trades_24h,
+        "c_15m": c_15m,
+        "c_30m": c_30m,
+        "c_1h": c_1h,
+        "trades": trades,
         "active_trades": active_trades
     }
 
 def format_daily_telegram_message(report: Dict) -> str:
-    """Gün sonu raporunu profesyonel Telegram Markdown mesajı formatına dönüştürür."""
+    """Gün sonu raporunu gereksiz fazlalıklardan arındırılmış, profesyonel ve sade Telegram formatına dönüştürür."""
     date_str = report["date_str"]
     time_str = report["time_str"]
     total = report["total_trades"]
     wins = report["win_count"]
     losses = report["loss_count"]
+    bes = report.get("be_count", 0)
     win_rate = report["win_rate"]
     net_pnl = report["net_pnl_pct"]
     dollar_pnl = report["dollar_pnl"]
     equity = report["current_equity"]
+    c15 = report.get("c_15m", 0)
+    c30 = report.get("c_30m", 0)
+    c1h = report.get("c_1h", 0)
+    fee = report.get("fee_pct", 0.0)
 
     pnl_sign = "+" if dollar_pnl >= 0 else ""
-    pnl_emoji = "🟢" if dollar_pnl >= 0 else "🔴"
+    pnl_emoji = "🟢" if dollar_pnl > 0 else ("🔴" if dollar_pnl < 0 else "⚪")
     pct_sign = "+" if net_pnl >= 0 else ""
 
     lines = []
-    lines.append("🏆 *GÜN SONU PERFORMANS VE İŞLEM RAPORU*")
-    lines.append(f"🗓️ *Dönem:* Son 24 Saat | *Tarih:* `{date_str}` ({time_str})")
+    lines.append("🏆 *GÜN SONU PERFORMANS RAPORU*")
+    lines.append(f"🗓️ `{date_str}` (TSİ {time_str}) | *Günlük Bilanço*")
     lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━")
-    lines.append(f"💼 *Güncel Fon Kasası:* `${equity:,.2f} USDT`")
-    lines.append(f"{pnl_emoji} *24s Net Kâr / Zarar:* *{pnl_sign}${dollar_pnl:.2f}* ({pct_sign}%{net_pnl:.2f})")
-    lines.append(f"🎯 *24s İşlem Sayısı:* `{total}` adet")
-    lines.append(f"✅ *Kazanan (Win):* `{wins}` | 🛑 *Kaybeden (Loss):* `{losses}`")
-    lines.append(f"📊 *Günlük Kazanma Oranı:* *%{win_rate:.1f}*")
-    lines.append(f"💸 *Ödenen Komisyon:* `-%{report['fee_pct']:.2f}`")
-    lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+    lines.append(f"💼 *Fon Kasası:* `${equity:,.2f} USDT`")
+    lines.append(f"{pnl_emoji} *Günlük Net PnL:* *{pnl_sign}${dollar_pnl:.2f}* ({pct_sign}%{net_pnl:.2f})")
+    be_str = f" | 🛡️ {bes}BE" if bes > 0 else ""
+    lines.append(f"🎯 *Toplam İşlem:* `{total}` adet (🟢 {wins}W | 🔴 {losses}L{be_str})")
+    lines.append(f"📊 *Win Rate (WR):* *%{win_rate:.1f}* | *Komisyon:* `-%{fee:.2f}`")
+    lines.append(f"⏱️ *Vade Dağılımı:* `⚡15m: {c15} • 🎯30m: {c30} • 👑1h: {c1h}`")
+    lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━")
 
     if total == 0:
-        lines.append("😴 *Son 24 saatte tamamlanan işlem bulunmuyor.*\n(Piyasa testere/ölü bantta seyrettiği veya filtrelerimiz koruduğu için sermaye riske atılmadı).")
+        lines.append("\n😴 *Bugün tamamlanan işlem bulunmuyor.*")
+        lines.append("_(Sermaye koruma kalkanı devrede, gereksiz risk alınmadı.)_")
     else:
-        lines.append("📋 *SON 24 SAATTE KAPANAN POZİSYONLAR:*")
-        for i, t in enumerate(report["trades"], 1):
-            sym = t.get("symbol", "")
-            d = t.get("direction", "")
+        lines.append("\n📋 *GÜNÜN KAPANAN İŞLEMLERİ:*")
+        for t in report["trades"][:15]:
+            sym = t.get("symbol", "").replace("USDT", "")
+            d = t.get("direction", "LONG")
             lev = t.get("leverage", 10)
             pnl = t.get("simulated_pnl_pct", 0.0)
-            sign = "+" if pnl > 0 else ""
             status = t.get("status", "")
-            status_badge = "🎯 TP" if "TP" in status else ("🪜 LADDER" if "LADDER" in status else ("🛡️ BE" if "BE" in status else ("⏱️ ZAMAN AŞIMI" if "TIMEOUT" in status else "🛑 SL")))
-            entry = t.get("actual_entry_price") or t.get("entry_min", 0.0)
-            exit_p = t.get("exit_price", 0.0)
+
+            # Çıkış etiketi
+            if "TP" in status:
+                badge = "🎯 TP"
+            elif "LADDER" in status:
+                badge = "🪜 Kâr Al"
+            elif "BE" in status:
+                badge = "🛡️ BE+"
+            elif "TIMEOUT" in status:
+                badge = "⏱️ Süre Aşımı"
+            elif "MANUAL" in status:
+                badge = "🛑 El İle"
+            else:
+                badge = "🛑 SL"
+
+            # Vade rozeti
+            tf = (t.get("timeframe") or "").lower()
+            hz = (t.get("trade_horizon") or "").lower()
+            if tf == "1h" or "1h" in hz or "uzun" in hz:
+                tf_tag = "👑1h"
+            elif tf == "30m" or "30m" in hz or "orta" in hz:
+                tf_tag = "🎯30m"
+            else:
+                tf_tag = "⚡15m"
+
             t_margin = t.get("allocated_margin_usdt") or 150.0
             t_dollar = round(t_margin * (pnl / 100.0), 2)
-            t_dollar_sign = "+" if t_dollar >= 0 else ""
-            
-            pnl_icon = "🟢" if pnl > 0 else ("🔴" if pnl < 0 else "⚪")
-            lines.append(f"{i}. {pnl_icon} *{sym}* ({d} {lev}x) ➔ *{sign}%{pnl:.2f}* ({t_dollar_sign}${t_dollar:.2f})")
-            lines.append(f"   ↳ Fiyat: `{entry}` ➔ `{exit_p}` | [{status_badge}]")
+            dollar_abs = abs(t_dollar)
+            pnl_abs = abs(pnl)
+
+            if t_dollar > 0:
+                dollar_str = f"+${dollar_abs:.2f}"
+            elif t_dollar < 0:
+                dollar_str = f"-${dollar_abs:.2f}"
+            else:
+                dollar_str = "$0.00"
+
+            if pnl > 0:
+                pct_str = f"+%{pnl_abs:.1f}"
+            elif pnl < 0:
+                pct_str = f"-%{pnl_abs:.1f}"
+            else:
+                pct_str = "%0.0"
+
+            icon = "🟢" if pnl > 0 else ("🔴" if pnl < 0 else "⚪")
+
+            # Tek satırda temiz ve kompakt format
+            lines.append(f"• {icon} *{sym}* ({d} {lev}x • {tf_tag}) ➔ *{dollar_str}* ({pct_str}) [{badge}]")
+
+        if len(report["trades"]) > 15:
+            lines.append(f"_...ve {len(report['trades']) - 15} diğer işlem daha._")
 
     active = report.get("active_trades", [])
     if active:
-        lines.append("\n⏳ *ŞU AN HALEN AÇIK OLAN POZİSYONLAR:*")
+        lines.append(f"\n⏳ *AÇIK POZİSYONLAR ({len(active)}):*")
         for a in active:
-            lines.append(f"• `{a.get('symbol')}` ({a.get('direction')} {a.get('leverage', 10)}x) | Giriş: `{a.get('actual_entry_price')}` | Stop: `{a.get('stop_loss')}`")
-
-    lines.append("\n━━━━━━━━━━━━━━━━━━━━━━━━━")
-    lines.append("🤖 *AI Ticaret Ofisi:* _10,000 Monte Carlo simülasyonu ve Dinamik Bileşik Kasa Kalkanı devrededir._")
+            a_sym = a.get("symbol", "").replace("USDT", "")
+            a_tf = a.get("timeframe") or ("1h" if "1h" in (a.get("trade_horizon") or "") else ("30m" if "30m" in (a.get("trade_horizon") or "") else "15m"))
+            lines.append(f"• `{a_sym}` ({a.get('direction')} {a.get('leverage', 10)}x • {a_tf}) | Giriş: `${a.get('actual_entry_price') or a.get('entry_min')}`")
 
     return "\n".join(lines)
 
