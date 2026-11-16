@@ -84,7 +84,7 @@ class TechnicalAnalysisAgent:
         ker = self.calculate_kaufman_er(candles, REGIME_KER_PERIOD)
         if ci < REGIME_CI_TREND and ker > REGIME_KER_TREND:
             return "TRENDING", {"ci": ci, "ker": ker}
-        if ci > REGIME_CI_CHOP and ker < REGIME_KER_CHOP:
+        if (ci > REGIME_CI_CHOP and ker < REGIME_KER_CHOP) or (ci >= 56.0 and ker <= 0.16):
             return "CHOPPY", {"ci": ci, "ker": ker}
         return "TRANSITION", {"ci": ci, "ker": ker}
 
@@ -861,12 +861,21 @@ class TechnicalAnalysisAgent:
                     f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Düşen kanalın tavanı aşağı kırılmadan direnç altında LONG açmak reddedilme riski taşır.<br>"
                     f"🎯 <strong>Beklenen Şart:</strong> Kanal tavanının yukarı kırılması veya SuperTrend Boğa onayı."
                 )
-            if not lr_channel.get("is_upper_breakout") and ((ch_pos >= 70.0 and curr_rsi >= 62.0) or (ch_trend == "HORIZONTAL_CHANNEL" and ch_pos >= 75.0)):
+            if not lr_channel.get("is_upper_breakout") and ((ch_pos >= 70.0 and curr_rsi >= 60.0) or (ch_trend == "HORIZONTAL_CHANNEL" and ch_pos >= 65.0)):
                 return None, (
                     f"📌 <strong>Mevcut Durum:</strong> {ch_trend} Üst Doygunluk Bölgesi (%{ch_pos:.1f}, RSI={curr_rsi:.1f}).<br>"
-                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Kanal tavanına (%70+) dayanmış fiyatta yukarı kırılım olmadan LONG açmak tepe yakalanması riski taşır.<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Yatay kanal üst yarısı (%65+) veya doygun tepe bölgesinde kırılım olmadan LONG açmak dirençten reddedilme riski taşır.<br>"
                     f"🎯 <strong>Beklenen Şart:</strong> Fiyatın desteğe gevşemesi veya tavan üstü net kırılım."
                 )
+            # Testere (CHOPPY) rejimde yalnızca dip tepki/mean-reversion/kırılım onaylı LONG aç; kanal ortasında açma
+            if regime_name == "CHOPPY" and not lr_channel.get("is_upper_breakout"):
+                has_chop_long_edge = (ch_pos <= 32.0 or vwap_bands.get("is_mean_reversion_long") or sweeps.get("bullish_sweep") or sfp.get("bullish_sfp"))
+                if not has_chop_long_edge:
+                    return None, (
+                        f"📌 <strong>Mevcut Durum:</strong> Testere (CHOPPY) Rejimde Orta Bölge LONG (%{ch_pos:.1f} kanal, CI={regime_metrics['ci']}, KER={regime_metrics['ker']}).<br>"
+                        f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Testere piyasasında dip tepkisi/mean-reversion veya likidite avı olmadan orta bölgeden LONG açılmaz.<br>"
+                        f"🎯 <strong>Beklenen Şart:</strong> Kanal dibine (%32-) çekilme, dip süpürme veya trend rejiminin oluşması."
+                    )
 
             # 2. VWAP Aşırı Uzaklaşma (Lastik Bandı Kalkanı)
             if curr_vwap > 0 and vwap_dist_pct > MAX_VWAP_DISTANCE_PCT:
@@ -899,8 +908,8 @@ class TechnicalAnalysisAgent:
                     f"🎯 <strong>Beklenen Şart:</strong> RSI'ın {MIN_RSI_LONG}+ üzerine çıkıp alıcıların güçlenmesi."
                 )
 
-            # 20x Sniper Tetikleyici: Skor 85+ (Kusursuz SMC Onayı) ve Dar Stop (%1.20 altı)
-            is_sniper_20x = (long_score >= 85 and sl_pct <= MAX_SL_PCT_20X)
+            # 20x Sniper Tetikleyici: Skor 85+, Dar Stop (%1.20 altı) VE testeresiz verimli piyasa (CHOPPY / KER < 0.20 yasak)
+            is_sniper_20x = (long_score >= 85 and sl_pct <= MAX_SL_PCT_20X and regime_name != "CHOPPY" and regime_metrics.get("ker", 0.5) >= 0.20)
             leverage = 20 if is_sniper_20x else 10
             grade = "Grade A+ (20x Sniper)" if is_sniper_20x else "Grade A"
             setup_type = f"{timeframe} {leverage}x SMC SNIPER" if is_sniper_20x else f"{timeframe} {leverage}x SMC SCALP"
@@ -1050,12 +1059,21 @@ class TechnicalAnalysisAgent:
                     f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Yükselen kanalın destek çizgisi aşağı kırılmadan kanal dibinden SHORT açmak tepki alımı riski taşır.<br>"
                     f"🎯 <strong>Beklenen Şart:</strong> Kanal desteğinin aşağı kırılması veya SuperTrend Ayı onayı."
                 )
-            if not lr_channel.get("is_lower_breakdown") and ((ch_pos <= 30.0 and curr_rsi <= 38.0) or (ch_trend == "HORIZONTAL_CHANNEL" and ch_pos <= 25.0)):
+            if not lr_channel.get("is_lower_breakdown") and ((ch_pos <= 30.0 and curr_rsi <= 40.0) or (ch_trend == "HORIZONTAL_CHANNEL" and ch_pos <= 35.0)):
                 return None, (
                     f"📌 <strong>Mevcut Durum:</strong> {ch_trend} Alt Doygunluk Bölgesi (%{ch_pos:.1f}, RSI={curr_rsi:.1f}).<br>"
-                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Kanal tabanına (%30-) dayanmış yorgun fiyatta aşağı kırılım olmadan SHORT açmak V-dip tepki tuzağıdır.<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Yatay kanal alt yarısı (%35-) veya aşırı satılmış taban bölgesinde kırılım olmadan SHORT açmak V-dip tepki tuzağıdır.<br>"
                     f"🎯 <strong>Beklenen Şart:</strong> Fiyatın dirence tepki vermesi veya kanal tabanının hacimli kırılması."
                 )
+            # Testere (CHOPPY) rejimde yalnızca tepe reddi/mean-reversion/kırılım onaylı SHORT aç; kanal ortasında açma
+            if regime_name == "CHOPPY" and not lr_channel.get("is_lower_breakdown"):
+                has_chop_short_edge = (ch_pos >= 68.0 or vwap_bands.get("is_mean_reversion_short") or sweeps.get("bearish_sweep") or sfp.get("bearish_sfp"))
+                if not has_chop_short_edge:
+                    return None, (
+                        f"📌 <strong>Mevcut Durum:</strong> Testere (CHOPPY) Rejimde Orta Bölge SHORT (%{ch_pos:.1f} kanal, CI={regime_metrics['ci']}, KER={regime_metrics['ker']}).<br>"
+                        f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Testere piyasasında tepe reddi/mean-reversion veya likidite süpürme olmadan orta bölgeden SHORT açılmaz.<br>"
+                        f"🎯 <strong>Beklenen Şart:</strong> Kanal tavanına (%68+) yükseliş, tepe süpürme veya trend rejiminin oluşması."
+                    )
 
             # 2. VWAP Aşırı Uzaklaşma (Lastik Bandı Kalkanı)
             if curr_vwap > 0 and vwap_dist_pct < -MAX_VWAP_DISTANCE_PCT:
@@ -1088,8 +1106,8 @@ class TechnicalAnalysisAgent:
                     f"🎯 <strong>Beklenen Şart:</strong> Boğa momentumunun zayıflayıp 55 altına inmesi."
                 )
 
-            # 20x Sniper Tetikleyici: Skor 85+ (Kusursuz SMC Onayı) ve Dar Stop (%1.20 altı)
-            is_sniper_20x = (short_score >= 85 and sl_pct <= MAX_SL_PCT_20X)
+            # 20x Sniper Tetikleyici: Skor 85+, Dar Stop (%1.20 altı) VE testeresiz verimli piyasa (CHOPPY / KER < 0.20 yasak)
+            is_sniper_20x = (short_score >= 85 and sl_pct <= MAX_SL_PCT_20X and regime_name != "CHOPPY" and regime_metrics.get("ker", 0.5) >= 0.20)
             leverage = 20 if is_sniper_20x else 10
             grade = "Grade A+ (20x Sniper)" if is_sniper_20x else "Grade A"
             setup_type = f"{timeframe} {leverage}x SMC SNIPER" if is_sniper_20x else f"{timeframe} {leverage}x SMC SCALP"
