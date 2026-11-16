@@ -804,6 +804,16 @@ class TechnicalAnalysisAgent:
                     f"🎯 <strong>Beklenen Şart:</strong> Fiyatın konsolide olup desteğe gevşemesi."
                 )
 
+            # 1b. Kanal Üst Direnci / Kırılım Ayrımı (Düşen Kanal Tepesinde LONG Engeli)
+            ch_trend = lr_channel.get("trend", "FLAT")
+            ch_pos = lr_channel.get("position_pct", 50.0)
+            if ch_trend == "BEARISH_CHANNEL" and 55.0 <= ch_pos <= 98.0 and not lr_channel.get("is_upper_breakout") and not supertrend.get("is_bullish"):
+                return None, (
+                    f"📌 <strong>Mevcut Durum:</strong> Düşen Kanal Üst Direnç Bölgesi (%{ch_pos:.1f}).<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Düşen kanalın tavanı aşağı kırılmadan direnç altında LONG açmak reddedilme riski taşır.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> Kanal tavanının yukarı kırılması veya SuperTrend Boğa onayı."
+                )
+
             # 2. VWAP Aşırı Uzaklaşma (Lastik Bandı Kalkanı)
             if curr_vwap > 0 and vwap_dist_pct > MAX_VWAP_DISTANCE_PCT:
                 return None, (
@@ -839,7 +849,7 @@ class TechnicalAnalysisAgent:
             is_sniper_20x = (long_score >= 85 and sl_pct <= MAX_SL_PCT_20X)
             leverage = 20 if is_sniper_20x else 10
             grade = "Grade A+ (20x Sniper)" if is_sniper_20x else "Grade A"
-            setup_type = f"15m {leverage}x SMC SNIPER" if is_sniper_20x else f"15m {leverage}x SMC SCALP"
+            setup_type = f"{timeframe} {leverage}x SMC SNIPER" if is_sniper_20x else f"{timeframe} {leverage}x SMC SCALP"
 
             # 🛡️ Yapısal Destek Tabanlı Akıllı Stop İyileştirmesi (Fitil Avı Koruması)
             structural_supports = []
@@ -972,6 +982,16 @@ class TechnicalAnalysisAgent:
                     f"🎯 <strong>Beklenen Şart:</strong> Fiyatın tepki verip dirence yükselmesi."
                 )
 
+            # 1b. Kanal Alt Desteği / Kırılım Ayrımı (Yükselen Kanal Dibinde SHORT Engeli)
+            ch_trend = lr_channel.get("trend", "FLAT")
+            ch_pos = lr_channel.get("position_pct", 50.0)
+            if ch_trend == "BULLISH_CHANNEL" and 2.0 <= ch_pos <= 45.0 and not lr_channel.get("is_lower_breakdown") and not supertrend.get("is_bearish"):
+                return None, (
+                    f"📌 <strong>Mevcut Durum:</strong> Yükselen Kanal Alt Destek Bölgesi (%{ch_pos:.1f}).<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Yükselen kanalın destek çizgisi aşağı kırılmadan kanal dibinden SHORT açmak tepki alımı riski taşır.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> Kanal desteğinin aşağı kırılması veya SuperTrend Ayı onayı."
+                )
+
             # 2. VWAP Aşırı Uzaklaşma (Lastik Bandı Kalkanı)
             if curr_vwap > 0 and vwap_dist_pct < -MAX_VWAP_DISTANCE_PCT:
                 return None, (
@@ -1007,7 +1027,7 @@ class TechnicalAnalysisAgent:
             is_sniper_20x = (short_score >= 85 and sl_pct <= MAX_SL_PCT_20X)
             leverage = 20 if is_sniper_20x else 10
             grade = "Grade A+ (20x Sniper)" if is_sniper_20x else "Grade A"
-            setup_type = f"15m {leverage}x SMC SNIPER" if is_sniper_20x else f"15m {leverage}x SMC SCALP"
+            setup_type = f"{timeframe} {leverage}x SMC SNIPER" if is_sniper_20x else f"{timeframe} {leverage}x SMC SCALP"
 
             # 🛡️ Yapısal Direnç Tabanlı Akıllı Stop İyileştirmesi (Fitil Avı Koruması)
             structural_resistances = []
@@ -1137,28 +1157,40 @@ class TechnicalAnalysisAgent:
         last_rejection_reason = "Aktif vadelerin hiçbirinde geçerli SMC kurulumu bulunamadı"
 
         # 1. 15m Kısa Vade İncelemesi (Kotası açıksa)
+        # Yatay/zayıf trend piyasasında (ADX < 22) hızlı 15m Vur-Kaç avantaj sağlar (+3)
         if "15m" in active_tfs and candles_15m and len(candles_15m) >= 35:
             setup_15m, reason_15m = self.analyze_setup(symbol, candles_15m, candles_macro=candles_1h, timeframe="15m")
             if setup_15m:
-                candidates_setups.append((setup_15m["confluence_score"], setup_15m, reason_15m))
+                adx_15m = float(setup_15m.get("indicators", {}).get("adx_data", {}).get("adx", 20.0))
+                effective_score = setup_15m["confluence_score"] + (3 if adx_15m < 22.0 else 0)
+                candidates_setups.append((effective_score, setup_15m, reason_15m))
             else:
                 last_rejection_reason = f"15m: {reason_15m}"
 
         # 2. 30m Orta Vade İncelemesi (Kotası açıksa)
+        # 30m hedefleri için gerçek trend ivmesi aranır (ADX >= 22: +2, zayıfsa -2)
         if "30m" in active_tfs and candles_30m and len(candles_30m) >= 35:
             setup_30m, reason_30m = self.analyze_setup(symbol, candles_30m, candles_macro=candles_1h, timeframe="30m")
             if setup_30m:
-                effective_score = setup_30m["confluence_score"] + 2
+                adx_30m = float(setup_30m.get("indicators", {}).get("adx_data", {}).get("adx", 20.0))
+                effective_score = setup_30m["confluence_score"] + (2 if adx_30m >= 22.0 else -2)
                 candidates_setups.append((effective_score, setup_30m, reason_30m))
             else:
                 if not candidates_setups:
                     last_rejection_reason = f"30m: {reason_30m}"
 
         # 3. 1h Uzun Vade İncelemesi (Kotası açıksa)
+        # 1h uzak hedefleri güçlü trendlerde (ADX >= 24) veya elit kırılım kurulumlarında (85+ skor) korunur
         if "1h" in active_tfs and candles_1h and len(candles_1h) >= 20:
             setup_1h, reason_1h = self.analyze_setup(symbol, candles_1h, candles_macro=None, timeframe="1h")
             if setup_1h:
-                effective_score = setup_1h["confluence_score"] + 3
+                adx_1h = float(setup_1h.get("indicators", {}).get("adx_data", {}).get("adx", 20.0))
+                if adx_1h >= 24.0 or setup_1h["confluence_score"] >= 85:
+                    effective_score = setup_1h["confluence_score"] + 3
+                elif adx_1h < 20.0:
+                    effective_score = setup_1h["confluence_score"] - 4
+                else:
+                    effective_score = setup_1h["confluence_score"]
                 candidates_setups.append((effective_score, setup_1h, reason_1h))
             else:
                 if not candidates_setups:
