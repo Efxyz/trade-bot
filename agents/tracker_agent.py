@@ -119,17 +119,20 @@ class CounterfactualTrackerAgent:
             raw_profit_pct = ((current_price - entry_price) / entry_price * 100) if is_long else ((entry_price - current_price) / entry_price * 100)
             peak_profit_pct = ((highest_price - entry_price) / entry_price * 100) if is_long else ((entry_price - lowest_price) / entry_price * 100)
 
-            # 2. MERDİVEN KÂR SİSTEMİ (STEP-LADDER PROFIT LOCKING)
+            # 2. MERDİVEN KÂR SİSTEMİ (STEP-LADDER PROFIT LOCKING - VADEYE GÖRE ÖLÇEKLİ)
             current_sl = sl
             current_ladder_step = sig.get("ladder_step") or 0
             ladder_name = sig.get("ladder_name") or ""
 
+            sig_tf = sig.get("timeframe") or ("1h" if "1h" in str(sig.get("trade_horizon")) else ("30m" if "30m" in str(sig.get("trade_horizon")) else "15m"))
+            ladder_mult = 2.5 if sig_tf == "1h" else (1.5 if sig_tf == "30m" else 1.0)
+
             if ENABLE_LADDER_PROFIT:
                 for rung in LADDER_STEPS:
                     step_num = rung["step"]
-                    trigger_pct = rung["trigger_raw_pct"]
-                    lock_pct = rung["lock_raw_pct"]
-                    name = rung["name"]
+                    trigger_pct = rung["trigger_raw_pct"] * ladder_mult
+                    lock_pct = rung["lock_raw_pct"] * ladder_mult
+                    name = f"[{sig_tf}] {rung['name']}"
 
                     # Fiyat bu basamağın tetik seviyesine ulaştıysa ve henüz bu basamak uygulanmadıysa
                     if peak_profit_pct >= trigger_pct and step_num > current_ladder_step:
@@ -146,7 +149,7 @@ class CounterfactualTrackerAgent:
                                     "ladder_name": ladder_name,
                                     "status": "ACTIVE_BE" if current_ladder_step == 1 else "ACTIVE_LADDER"
                                 })
-                                print(f"🪜 [{symbol}] {name} devrede! Stop yukarı çekildi: {current_sl} (Komisyon güvende!)")
+                                print(f"🪜 [{symbol}] [{sig_tf}] {name} devrede! Stop yukarı çekildi: {current_sl} (Komisyon güvende!)")
                         else:
                             candidate_sl = round(entry_price * (1.0 - (lock_pct / 100.0)), 8)
                             if candidate_sl < current_sl:
@@ -159,32 +162,33 @@ class CounterfactualTrackerAgent:
                                     "ladder_name": ladder_name,
                                     "status": "ACTIVE_BE" if current_ladder_step == 1 else "ACTIVE_LADDER"
                                 })
-                                print(f"🪜 [{symbol}] {name} devrede! Stop aşağı çekildi: {current_sl} (Komisyon güvende!)")
+                                print(f"🪜 [{symbol}] [{sig_tf}] {name} devrede! Stop aşağı çekildi: {current_sl} (Komisyon güvende!)")
 
                 # 3. DİNAMİK İZ SÜREN KANAL (Basamak 4 Ötesi Runner İz Sürme)
-                if peak_profit_pct >= 1.05:
+                if peak_profit_pct >= (1.05 * ladder_mult):
+                    dyn_chan_pct = LADDER_DYNAMIC_CHANNEL_PCT * ladder_mult
                     if is_long:
-                        channel_sl = round(highest_price * (1.0 - LADDER_DYNAMIC_CHANNEL_PCT / 100.0), 8)
+                        channel_sl = round(highest_price * (1.0 - dyn_chan_pct / 100.0), 8)
                         if channel_sl > current_sl:
                             current_sl = channel_sl
-                            ladder_name = "⚡ Dinamik Kanal"
+                            ladder_name = f"⚡ Dinamik Kanal ({sig_tf})"
                             update_signal_status(sig_id, {
                                 "stop_loss": current_sl,
                                 "trailing_stop": current_sl,
                                 "ladder_name": ladder_name
                             })
                     else:
-                        channel_sl = round(lowest_price * (1.0 + LADDER_DYNAMIC_CHANNEL_PCT / 100.0), 8)
+                        channel_sl = round(lowest_price * (1.0 + dyn_chan_pct / 100.0), 8)
                         if channel_sl < current_sl:
                             current_sl = channel_sl
-                            ladder_name = "⚡ Dinamik Kanal"
+                            ladder_name = f"⚡ Dinamik Kanal ({sig_tf})"
                             update_signal_status(sig_id, {
                                 "stop_loss": current_sl,
                                 "trailing_stop": current_sl,
                                 "ladder_name": ladder_name
                             })
 
-            # 4. ZAMAN BOZULMASI VE KÂR KİLİDİ (TIME-DECAY ROI & 45 DAKİKA KURALI)
+            # 4. ZAMAN BOZULMASI VE KÂR KİLİDİ (TIME-DECAY ROI & VADEYE GÖRE SÜRE)
             entered_at_str = sig.get("entered_at") or sig.get("created_at")
             minutes_open = 0
             if entered_at_str:
@@ -200,13 +204,12 @@ class CounterfactualTrackerAgent:
             raw_change = 0.0
 
             # 4a. Time-Decay Erken Kâr Kilidi (Freqtrade Minimal ROI Prensibi)
-            # Eğer pozisyon 30 dakikayı geçmişse ve net kârda ise (%2.5+ marjin), kârın erimesine izin verme:
             net_unrealized_margin = (raw_profit_pct * leverage) - (0.10 * leverage)
-            if minutes_open >= 30 and net_unrealized_margin >= 2.5:
-                protect_sl = round(entry_price * (1.0 + 0.0025), 8) if is_long else round(entry_price * (1.0 - 0.0025), 8)
+            if minutes_open >= (30 * ladder_mult) and net_unrealized_margin >= (2.5 * ladder_mult):
+                protect_sl = round(entry_price * (1.0 + 0.0025 * ladder_mult), 8) if is_long else round(entry_price * (1.0 - 0.0025 * ladder_mult), 8)
                 if (is_long and protect_sl > current_sl) or (not is_long and protect_sl < current_sl):
                     current_sl = protect_sl
-                    update_signal_status(sig_id, {"stop_loss": current_sl, "ladder_name": "⏱️ 30dk Kâr Kilidi"})
+                    update_signal_status(sig_id, {"stop_loss": current_sl, "ladder_name": f"⏱️ {int(30*ladder_mult)}dk Kâr Kilidi"})
 
             # 4. HEDEF (TP) VE MERDİVEN STOP KONTROLLERİ (BİRİNCİL ÖNCELİK)
             if not is_closed:
@@ -318,6 +321,7 @@ class CounterfactualTrackerAgent:
                 net_pnl_pct = round(gross_pnl_pct - fee_pct, 2)
 
                 prev_realized_usd = float(sig.get("realized_pnl_usd") or 0.0)
+                final_margin_to_save = allocated_margin
                 if partial_tp_taken == 1:
                     # Kalan runner kârı ile TP1'de realize edilen kârın birleşimi
                     runner_usd = allocated_margin * (net_pnl_pct / 100.0)
@@ -325,6 +329,7 @@ class CounterfactualTrackerAgent:
                     orig_margin = allocated_margin * 2.0
                     net_pnl_pct = round((total_dollar_pnl / orig_margin) * 100.0, 2)
                     gross_pnl_pct = round(net_pnl_pct + fee_pct, 2)
+                    final_margin_to_save = orig_margin
 
                 candles = self.client.get_klines(symbol, interval="15m", limit=40)
                 exit_png_path = self.generate_outcome_chart(sig, candles, final_status, exit_price, net_pnl_pct, leverage)
@@ -336,6 +341,7 @@ class CounterfactualTrackerAgent:
                     "simulated_pnl_pct": net_pnl_pct,
                     "gross_pnl_pct": gross_pnl_pct,
                     "fee_pct": fee_pct,
+                    "allocated_margin_usdt": final_margin_to_save,
                     "chart_exit_png": exit_png_path
                 })
 
