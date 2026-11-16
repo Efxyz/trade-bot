@@ -893,8 +893,11 @@ def get_active_positions_count() -> int:
         cursor.execute("SELECT COUNT(*) FROM signals WHERE status IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')")
         return cursor.fetchone()[0]
 
-def get_today_trades_count() -> int:
-    """Bugün (Türkiye Saati ile 00:00'dan itibaren) açılan toplam işlem sayısını döner (Aşırı İşlem / Komisyon Kalkanı)."""
+def get_today_trades_count(timeframe: Optional[str] = None) -> int:
+    """
+    Bugün (Türkiye Saati ile 00:00'dan itibaren) açılan işlem sayısını döner.
+    timeframe belirtilirse ('15m', '30m', '1h') yalnızca o zaman dilimindeki işlemleri sayar.
+    """
     from datetime import datetime, timezone, timedelta
     tr_tz = timezone(timedelta(hours=3))
     now_tr = datetime.now(timezone.utc).astimezone(tr_tz)
@@ -902,9 +905,27 @@ def get_today_trades_count() -> int:
     today_start = today_start_tr.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM signals WHERE created_at >= ?", (today_start,))
+        if timeframe:
+            clean_tf = str(timeframe).lower().strip()
+            cursor.execute("""
+                SELECT COUNT(*) FROM signals 
+                WHERE created_at >= ? AND (
+                    LOWER(COALESCE(timeframe, '')) = ? OR 
+                    LOWER(COALESCE(trade_horizon, '')) LIKE ?
+                )
+            """, (today_start, clean_tf, f"%{clean_tf}%"))
+        else:
+            cursor.execute("SELECT COUNT(*) FROM signals WHERE created_at >= ?", (today_start,))
         row = cursor.fetchone()
         return row[0] if row else 0
+
+def get_today_trades_count_by_timeframe() -> Dict[str, int]:
+    """Bugün açılan işlemleri zaman dilimine göre döner: {'15m': X, '30m': Y, '1h': Z}"""
+    return {
+        "15m": get_today_trades_count("15m"),
+        "30m": get_today_trades_count("30m"),
+        "1h": get_today_trades_count("1h")
+    }
 
 def get_today_net_dollar_loss() -> float:
     """Bugün (Türkiye Saati ile 00:00'dan itibaren) kapanan işlemlerin net dolar bazlı toplam kaybını kontrol eder (Circuit Breaker)."""
