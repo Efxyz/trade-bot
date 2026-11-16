@@ -57,21 +57,21 @@ ESTIMATED_SLIPPAGE_PCT = 0.02          # %0.02 Tahmini kayma payı
 ENABLE_LADDER_PROFIT = True
 
 LADDER_STEPS = [
-    # Basamak 1: Freqtrade Dual-Tier Mikro BE+ Kalkanı (+%0.35 Ham / +%3.5 Marjin)
-    # Fiyat +%0.35 kâra ulaştığında stop'u +%0.10'a çek (komisyonu çıkarır ve ASLA eksiye düşürmez)
-    {"step": 1, "trigger_raw_pct": 0.35, "lock_raw_pct": 0.10, "name": "🛡️ Basamak 1 (BE+ %0.10 Sigorta)"},
+    # Basamak 1: %35 Kısmi Kâr Cebe + Nefes Alan BE+ Kalkanı (+%0.45 Ham / -%0.08 Nefes Payı Stop)
+    # Fiyat +%0.45 kâra ulaştığında pozisyonun %35'i nakit kâr alınır, kalan %65'in stopu girişin -%0.08 gerisine çekilir (retestte atılmaz, net sonuç >= $0 garanti!)
+    {"step": 1, "trigger_raw_pct": 0.45, "lock_raw_pct": -0.08, "name": "🛡️ Basamak 1 (%35 Kâr Cebe + Nefes Payı BE+)"},
 
-    # Basamak 2: Komisyon Korumalı Sağlıklı Kâr Kilidi (%0.30 Kilit)
-    # Fiyat +%0.65 kâra ulaştığında stop'u +%0.30'a çek (10x'te net +%3.0 marjin cepte, erken boğulmayı önler)
-    {"step": 2, "trigger_raw_pct": 0.65, "lock_raw_pct": 0.30, "name": "🪜 Basamak 2 (%0.30 Kilit)"},
+    # Basamak 2: Komisyon Korumalı Sağlıklı Kâr Kilidi (%0.35 Kilit)
+    # Fiyat +%0.75 kâra ulaştığında stop'u +%0.35'e çek (erken boğulmayı önler, güçlü net kâr kilitler)
+    {"step": 2, "trigger_raw_pct": 0.75, "lock_raw_pct": 0.35, "name": "🪜 Basamak 2 (+%0.35 Kâr Kilidi)"},
 
     # Basamak 3: Çeyrek Kâr Kilidi
-    # Fiyat +%1.10 kâra ulaştığında stop'u +%0.70 kâra çek (10x'te net +%7.0 marjin cepte, +$11-$14)
-    {"step": 3, "trigger_raw_pct": 1.10, "lock_raw_pct": 0.70, "name": "🪜 Basamak 3 (%0.70 Kilit)"},
+    # Fiyat +%1.15 kâra ulaştığında stop'u +%0.75 kâra çek
+    {"step": 3, "trigger_raw_pct": 1.15, "lock_raw_pct": 0.75, "name": "🪜 Basamak 3 (+%0.75 Kâr Kilidi)"},
 
     # Basamak 4: Hedefe Yakın Koruma
-    # Fiyat +%1.60 kâra ulaştığında stop'u +%1.25 kâra çek (10x'te net +%12.5 marjin cepte, +$18-$22)
-    {"step": 4, "trigger_raw_pct": 1.60, "lock_raw_pct": 1.25, "name": "🪜 Basamak 4 (%1.25 Kilit)"},
+    # Fiyat +%1.60 kâra ulaştığında stop'u +%1.25 kâra çek
+    {"step": 4, "trigger_raw_pct": 1.60, "lock_raw_pct": 1.25, "name": "🪜 Basamak 4 (+%1.25 Kâr Kilidi)"},
 ]
 
 # Dinamik Kanal (Runner / Trailing Channel): Zirvenin %0.30 gerisinden iz sürme mesafesi
