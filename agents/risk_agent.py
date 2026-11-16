@@ -188,21 +188,33 @@ class RiskOfficerAgent:
                     )
                 }
 
+        # Vadeye Göre Dinamik Stop-Loss Tavanı (15m Kısa / 30m Orta / 1h Uzun)
+        timeframe = ta_setup.get("timeframe") or ("1h" if "1h" in str(ta_setup.get("trade_horizon")) else ("30m" if "30m" in str(ta_setup.get("trade_horizon")) else "15m"))
+        if timeframe == "1h":
+            effective_max_sl_10x = 2.90
+            effective_max_sl_20x = 1.80
+        elif timeframe == "30m":
+            effective_max_sl_10x = 1.85
+            effective_max_sl_20x = 1.40
+        else:
+            effective_max_sl_10x = MAX_SL_PCT_10X
+            effective_max_sl_20x = MAX_SL_PCT_20X
+
         # 2. KALDIRAÇ VE SL UYGUNLUK DENETİMİ
         if leverage == 20:
-            if sl_pct > MAX_SL_PCT_20X:
+            if sl_pct > effective_max_sl_20x:
                 leverage = 10
                 ta_setup["leverage"] = 10
                 ta_setup["setup_type"] = "10x STANDART TREND"
 
         if leverage == 10:
-            if sl_pct > MAX_SL_PCT_10X:
+            if sl_pct > effective_max_sl_10x:
                 return False, {
                     "decision": "REJECT",
                     "reason": (
-                        f"📌 <strong>Mevcut Durum:</strong> Stop Mesafesi: %{sl_pct:.2f} (10x Sınırı: %{MAX_SL_PCT_10X:.2f}).<br>"
-                        f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Stop mesafesi 10x kaldıraç için çok geniş (Marjin riski > %15).<br>"
-                        f"🎯 <strong>Beklenen Şart:</strong> Daha dar stoplu (%{MAX_SL_PCT_10X:.2f} altı) güvenli bir formasyon oluşması."
+                        f"📌 <strong>Mevcut Durum:</strong> Stop Mesafesi: %{sl_pct:.2f} ({timeframe} 10x Sınırı: %{effective_max_sl_10x:.2f}).<br>"
+                        f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Stop mesafesi {timeframe} 10x için fazla geniş.<br>"
+                        f"🎯 <strong>Beklenen Şart:</strong> Daha dar stoplu (%{effective_max_sl_10x:.2f} altı) güvenli bir formasyon oluşması."
                     )
                 }
 
