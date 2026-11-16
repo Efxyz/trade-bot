@@ -24,11 +24,22 @@ MIN_24H_VOLUME_USDT = 12_000_000  # Likit, anlık hacimli pariteler
 # FON YÖNETİMİ & KASA KALKANI (CAPITAL PROTECTION SHIELD)
 # ========================================================
 PORTFOLIO_EQUITY_USDT = 1000.0         # Başlangıç Fon Kasası ($1000 USDT)
-MAX_CONCURRENT_TRADES = 5              # Patron Onayı: Maksimum 5 eşzamanlı pozisyon (Yüksek alfa kapasitesi)
-MAX_POSITIONS_PER_DIRECTION = 3        # Tek Yöne Yığılma Kalkanı (Maksimum 3 LONG veya 3 SHORT)
+MAX_CONCURRENT_TRADES = 8              # 3-Vadeli Tek Panel: Kısa (15m), Orta (30m) ve Uzun (1h) için dengeli slot kapasitesi
+MAX_POSITIONS_PER_DIRECTION = 4        # Tek Yöne Yığılma Kalkanı (Maksimum 4 LONG veya 4 SHORT)
 RISK_PER_TRADE_PCT = 2.0               # İşlem başına riske edilen maksimum kasa payı (%2.0 = $20 risk)
 MAX_ALLOCATED_MARGIN_PER_TRADE = 200.0 # Bir işleme ayrılabilecek taban maksimum marjin (%20 kuralı)
 POST_LOSS_COOLDOWN_MINUTES = 15        # Zararlı kapanış sonrası 15 dk karantina molası (İntikam işlemine son!)
+
+# ========================================================
+# ÇOKLU-MOTOR YÖNETİMİ & 3-VADELİ TEK TERMİNAL MODU
+# ========================================================
+ENABLE_FAST_ENGINE = False             # FAST (1m) Motoru Geçici Olarak Durduruldu (Kodlar Korunur)
+ENABLE_SUPER_FAST_ENGINE = False       # SÜPER FAST (1s) Motoru Geçici Olarak Durduruldu (Kodlar Korunur)
+
+# 3-Zaman Dilimli Çoklu-Vade (Triple-Horizon) Yapılandırması
+TIMEFRAME_SHORT = "15m"                # ⚡ Kısa Vade: 15 Dakikalık Mikro Dalgalar & Hızlı TP1
+TIMEFRAME_MEDIUM = "30m"               # 🎯 Orta Vade: 30 Dakikalık Likidite Süpürmeleri & Salınımlar
+TIMEFRAME_LONG = "1h"                  # 👑 Uzun Vade: 1 Saatlik Kurumsal Makro Trend & Runner TP2
 
 # Gerçekçi Borsa Komisyon & Fiyat Kayması (Binance Futures)
 BINANCE_TAKER_FEE_PCT = 0.05           # %0.05 Taker piyasa emri giriş komisyonu
@@ -123,8 +134,8 @@ MAX_RSI_SHORT = 60.0            # 60 üzeri güçlü boğa momentumunda SHORT gi
 MIN_4BAR_RANGE_PCT = 0.35       # Son 1 saatte dalgalanma %0.35'in altındaysa piyasa ölü kabul edilir
 BTC_CHOP_MIN_RANGE_4H_PCT = 0.70 # BTC 4 saatlik hareket alanı <%0.70 ise piyasa donuktur (Eski: 0.75 / 1.20)
 
-# Tarama Aralığı (15m Mumlar İçin Optimize Edilmiş Kurumsal Ritim - Daha Yavaş & Sakin)
-SCAN_INTERVAL_SECONDS = 180  # 15m SMC için her 180 saniyede bir (3 dk) sakin ve derin kurumsal tarama
+# Tarama Aralığı (3-Vadeli Hızlı ve Dengeli Tarama)
+SCAN_INTERVAL_SECONDS = 90  # FAST & SÜPER FAST kapalı olduğu için 90 saniyede bir dinamik tarama
 
 # Zaman Dilimleri
 PRIMARY_TIMEFRAME = "15m"   # 15 Dakikalık Mumlar
