@@ -187,8 +187,9 @@ class QuantSimulationAgent:
         if current_price <= 0 or tp1 <= 0 or sl <= 0 or len(candles_15m) < 15:
             return self._fallback_result(symbol, direction, n_sims)
 
-        # 1. Mum Verisinden Tarihsel Volatilite ve Drift Hesapla
-        closes = [float(c["close"]) for c in candles_15m if "close" in c]
+        # 1. Mum Verisinden Tarihsel Volatilite ve Drift Hesapla (Sadece kapanmış mumlar, dairesel TA bias yok)
+        closed_candles = candles_15m[:-1] if len(candles_15m) > 16 else candles_15m
+        closes = [float(c["close"]) for c in closed_candles if "close" in c]
         if len(closes) < 15:
             return self._fallback_result(symbol, direction, n_sims)
 
@@ -199,12 +200,10 @@ class QuantSimulationAgent:
         # Taban volatilite koruması (ölü piyasada sıfır bölmeyi engeller)
         sigma = max(hist_vol, 0.0035)
 
-        # Yöne göre momentum drift desteği
-        base_drift = float(np.mean(log_returns)) if len(log_returns) > 1 else 0.0
-        confluence_score = float(ta_setup.get("confluence_score", 75))
-        # Skora göre hafif pozitif drift katkısı
-        drift_bias = ((confluence_score - 50.0) / 100.0) * (sigma * 0.15)
-        drift = (base_drift + drift_bias) if direction == "LONG" else (base_drift - drift_bias)
+        # Saf ampirik momentum drift'i (confluence_score enjeksiyonu olmadan)
+        recent_returns = log_returns[-12:] if len(log_returns) >= 12 else log_returns
+        emp_drift = float(np.mean(recent_returns)) if len(recent_returns) > 0 else 0.0
+        drift = float(np.clip(emp_drift, -0.25 * sigma, 0.25 * sigma))
 
         # 2. Vektörize Monte Carlo Simülasyonu (NumPy Matrisi: 10000 x steps)
         # Z: Standart normal dağılım şokları
