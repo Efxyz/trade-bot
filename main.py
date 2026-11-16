@@ -243,6 +243,7 @@ class TradingBotOrchestrator:
         print(f"⚡ 200+ likit parite arasından seçilen {len(candidates)} farklı parite analiz havuzuna alındı.")
 
         found_setups_count = 0
+        shortlist_candidates = []
 
         # 4. Haber masasını güncelle (Sağ Alttaki Haber Masası için)
         try:
@@ -250,7 +251,7 @@ class TradingBotOrchestrator:
         except Exception:
             pass
 
-        # 5. Her aday pariteyi uzman ajanlar ekibine gönder (15m Hızlı Day Trade & 1h Makro Teyit)
+        # 5. BİRİNCİ AŞAMA: Tüm pariteleri baştan sona tara, önüne gelen ilk pariteye atlama, kaliteli olanları Aday Havuzunda topla
         for ticker in candidates:
             symbol = ticker["symbol"]
             if symbol in excluded_symbols:
@@ -347,22 +348,186 @@ class TradingBotOrchestrator:
                     add_scanner_log(symbol, "REJECTED", f"Yatırım Komitesi Veto Etti ({ai_verdict.get('ai_confidence', 0)}/10)", critique[:60])
                     continue
 
-                # Onaylanan kaldıraç ve risk grubunu ata
+                # Onaylanan parametreleri hazırla
                 leverage = risk_report["leverage"]
                 ta_setup["leverage"] = leverage
                 ta_setup["risk_grade"] = risk_report["risk_grade"]
 
-                # Veritabanına Sanal İşlem Olarak Kaydet (ÖNCELİKLE POZİSYONU AÇ VE DB'YE YAZ!)
+                # FIRSAT KALİTE SKORU HESAPLA (0 - 100 Puan Ağırlıklı Sistem)
+                mc_win_pct = float(quant_sim.get("win_probability_pct", 50.0))
+                mc_score = (mc_win_pct / 100.0) * 35.0  # %35 Kuant Monte Carlo Gücü
+
+                ai_conf = float(ai_verdict.get("ai_confidence", 5))
+                ai_score = (ai_conf / 10.0) * 25.0      # %25 Komite Konsensüsü
+
+                rr = float(ta_setup.get("risk_reward", 2.0))
+                rr_capped = max(1.5, min(rr, 4.0))
+                rr_score = ((rr_capped - 1.5) / 2.5) * 20.0  # %20 Risk/Ödül Oranı
+
+                grade = risk_report.get("risk_grade", "A")
+                grade_score = 20.0 if grade == "A+" else (16.0 if grade == "A" else 10.0)  # %20 Risk Notu
+
+                total_quality_score = round(mc_score + ai_score + rr_score + grade_score, 1)
                 horizon_badge = ta_setup.get("trade_horizon", "Kısa Vade (15m)")
+                cand_tf = ta_setup.get("timeframe", "15m").lower()
+
+                # Aday Havuzuna Ekle (Hemen işleme girme, diğer tüm coinler bitene kadar aklında tut!)
+                shortlist_candidates.append({
+                    "symbol": symbol,
+                    "quality_score": total_quality_score,
+                    "ta_setup": ta_setup,
+                    "risk_report": risk_report,
+                    "news_analysis": news_analysis,
+                    "quant_sim": quant_sim,
+                    "ai_verdict": ai_verdict,
+                    "debate_data": debate_data,
+                    "candles_15m": candles_15m,
+                    "ticker": ticker,
+                    "timeframe": cand_tf,
+                    "horizon_badge": horizon_badge,
+                    "leverage": leverage
+                })
+
+                add_scanner_log(
+                    symbol,
+                    "PENDING_ENTRY",
+                    f"🎯 Aday Havuzuna Alındı (Kalite: {total_quality_score}/100 | Komite: {ai_conf:.0f}/10 | Win: %{mc_win_pct:.1f})",
+                    f"Tüm pariteler tarandıktan sonra nihai eleme turnuvasında yarışacak"
+                )
+                print(f"🎯 [{symbol}] Aday Havuzuna Alındı! Kalite Skoru: {total_quality_score}/100 (Komite: {ai_conf:.0f}/10, Win: %{mc_win_pct:.1f}, RR: {rr:.1f})")
+
+            except Exception as e:
+                print(f"⚠️ [{symbol}] Analiz hatası: {e}")
+                continue
+            finally:
+                time.sleep(0.08)
+
+        # =========================================================================
+        # 🏆 İKİNCİ AŞAMA: TÜM TARAMA BİTTİKTEN SONRA TURNUVA SIRALAMASI & İKİNCİ TEYİT TARAMASI
+        # =========================================================================
+        if not shortlist_candidates:
+            print("💤 Bu döngüde kurallara tam uyan A+ kurulum bulunamadı (Filtreler sermayeyi koruyor).")
+        else:
+            # 1. Adayları Kalite Skoruna Göre En İyiden En Düşüğe Sırala (Tournament Leaderboard)
+            shortlist_candidates.sort(key=lambda x: x["quality_score"], reverse=True)
+
+            print(f"\n🏆 [Turnuva Masası] Tüm paritelerin 1. taraması tamamlandı! {len(shortlist_candidates)} aday fırsat yarışıyor:")
+            for rank, cand in enumerate(shortlist_candidates, 1):
+                tf = cand["timeframe"].upper()
+                dir_ = cand["ta_setup"]["direction"]
+                score = cand["quality_score"]
+                conf = cand["ai_verdict"].get("ai_confidence", 0)
+                win_p = cand["quant_sim"].get("win_probability_pct", 0.0)
+                rr_val = cand["ta_setup"].get("risk_reward", 0.0)
+                print(f"   #{rank} {cand['symbol']} -> Kalite: {score}/100 | {tf} {dir_} | RR: {rr_val:.1f} | Komite: {conf}/10 | MC Win: %{win_p:.1f}")
+
+            # 2. İkinci Teyit Taraması ve Seçim Döngüsü (Fresh Re-Validation Scan)
+            from core.binance_streamer import get_live_price
+            for cand in shortlist_candidates:
+                if found_setups_count >= slots_left:
+                    print(f"🛡️ [Kasa Kalkanı] İzin verilen işlem kotası ({slots_left}) doldu. Turnuva tamamlandı.")
+                    break
+
+                cand_tf = cand["timeframe"]
+                if cand_tf not in allowed_timeframes:
+                    add_scanner_log(
+                        cand["symbol"],
+                        "REJECTED",
+                        f"Vade Kotası Doldu ({cand_tf.upper()} kotası dolu olduğu için turnuvada elendi)",
+                        f"Turnuva Skoru: {cand['quality_score']}/100"
+                    )
+                    continue
+
+                symbol = cand["symbol"]
+                ta_setup = cand["ta_setup"]
+                risk_report = cand["risk_report"]
+                news_analysis = cand["news_analysis"]
+                quant_sim = cand["quant_sim"]
+                ai_verdict = cand["ai_verdict"]
+                debate_data = cand["debate_data"]
+                candles_15m = cand["candles_15m"]
+                horizon_badge = cand["horizon_badge"]
+                leverage = cand["leverage"]
+
+                # --- İKİNCİ TEYİT TARAMASI (Canlı Fiyat, Slippage ve Tahta Denetimi) ---
+                print(f"🔬 [İkinci Teyit Taraması] Turnuva Lideri: {symbol} canlı piyasada teyit ediliyor...")
+                fresh_ws_price = get_live_price(symbol)
+                fresh_book = None
+                try:
+                    fresh_book = self.client.get_book_ticker(symbol)
+                except Exception:
+                    pass
+
+                fresh_price = fresh_ws_price
+                if not fresh_price and fresh_book:
+                    fresh_price = float(fresh_book.get("askPrice" if ta_setup["direction"] == "LONG" else "bidPrice") or 0.0)
+                if not fresh_price or fresh_price <= 0:
+                    fresh_price = float(ta_setup["current_price"])
+
+                # Teyit 1: Fiyat Giriş Bölgesini Aştı mı? (Tepe / Dip Kovalamama Kalkanı)
+                entry_min = float(ta_setup["entry_min"])
+                entry_max = float(ta_setup["entry_max"])
+                is_chasing = False
+                chase_reason = ""
+
+                if ta_setup["direction"] == "LONG":
+                    if fresh_price > entry_max * 1.0035:
+                        is_chasing = True
+                        chase_reason = f"Fiyat yukarı fırladı (Canlı: ${fresh_price}, Tavan: ${entry_max})"
+                    elif fresh_price <= float(ta_setup["stop_loss"]):
+                        is_chasing = True
+                        chase_reason = f"Fiyat stop seviyesinin altına indi (Canlı: ${fresh_price}, SL: ${ta_setup['stop_loss']})"
+                else:  # SHORT
+                    if fresh_price < entry_min * 0.9965:
+                        is_chasing = True
+                        chase_reason = f"Fiyat aşağı çöktü (Canlı: ${fresh_price}, Taban: ${entry_min})"
+                    elif fresh_price >= float(ta_setup["stop_loss"]):
+                        is_chasing = True
+                        chase_reason = f"Fiyat stop seviyesinin üzerine çıktı (Canlı: ${fresh_price}, SL: ${ta_setup['stop_loss']})"
+
+                if is_chasing:
+                    print(f"⚠️ [{symbol}] İkinci Teyit Başarısız: {chase_reason}. Fırsat elendi, sıradaki adaya geçiliyor.")
+                    add_scanner_log(
+                        symbol,
+                        "TIMEOUT",
+                        f"2. Teyitte Elendi: {chase_reason}",
+                        "Kovalama ve Ani Fiyat Kayması Engellendi"
+                    )
+                    continue
+
+                # Teyit 2: Tahta Spread Denetimi (İllikit / Geniş Spread Koruması)
+                if fresh_book and fresh_book.get("bidPrice") and fresh_book.get("askPrice"):
+                    bid = float(fresh_book["bidPrice"])
+                    ask = float(fresh_book["askPrice"])
+                    if bid > 0 and ask > 0:
+                        spread_pct = ((ask - bid) / bid) * 100.0
+                        if spread_pct > 0.15:
+                            print(f"⚠️ [{symbol}] Geniş Spread (%{spread_pct:.3f} > %0.15). İkinci taramada elendi.")
+                            add_scanner_log(symbol, "REJECTED", f"2. Teyit: Geniş Spread (%{spread_pct:.2f})", "Yüksek Kayma Riski")
+                            continue
+
+                # Teyit 3: Güncel BTC Ani Çöküş Denetimi
+                fresh_btc = self.client.get_btc_regime()
+                if fresh_btc.get("block_all_entries", False):
+                    print(f"🛑 [BTC Acil Fren] İkinci teyit anında BTC çöküş alarmı verdi: {fresh_btc.get('summary')}")
+                    add_scanner_log(symbol, "PROTECTED", "İkinci teyitte BTC Çöküş Alarmı", "Sermaye Koruma Devrede")
+                    break
+
+                # =========================================================================
+                # 🎉 İKİNCİ TEYİT BAŞARILI: İŞLEMİ AÇ VE SİSTEME KAYDET (EXECUTION)
+                # =========================================================================
+                ta_setup["leverage"] = leverage
+                ta_setup["risk_grade"] = risk_report["risk_grade"]
+
                 signal_data = {
                     "symbol": symbol,
                     "direction": ta_setup["direction"],
-                    "timeframe": ta_setup.get("timeframe", "15m"),
+                    "timeframe": cand_tf,
                     "trade_horizon": horizon_badge,
                     "leverage": leverage,
                     "entry_min": ta_setup["entry_min"],
                     "entry_max": ta_setup["entry_max"],
-                    "actual_entry_price": ta_setup["current_price"],
+                    "actual_entry_price": fresh_price,
                     "entry_limit_2": ta_setup.get("entry_limit_2", 0.0),
                     "stop_loss": ta_setup["stop_loss"],
                     "take_profit_1": ta_setup["take_profit_1"],
@@ -374,13 +539,14 @@ class TradingBotOrchestrator:
                     "tp2_pct": ta_setup["tp2_pct"],
                     "allocated_margin_usdt": risk_report["allocated_margin_usdt"],
                     "risk_usd": risk_report["risk_usd"],
-                    "news_summary": f"[{horizon_badge}] {news_analysis.get('summary', '')} | 🏛️ Komite: {ai_verdict.get('ai_confidence', 0)}/10",
+                    "news_summary": f"[{horizon_badge}] {news_analysis.get('summary', '')} | 🏆 Turnuva: {cand['quality_score']}/100",
                     "ta_reasons": ta_setup["ta_reasons"],
                     "ai_verdict": ai_verdict,
                     "quant_sim": quant_sim,
                     "debate_json": debate_data,
                     "chart_entry_png": ""
                 }
+
                 sig_id = save_signal(signal_data)
                 add_stream_symbol(symbol)
                 excluded_symbols.add(symbol)
@@ -389,37 +555,26 @@ class TradingBotOrchestrator:
                 add_scanner_log(
                     symbol,
                     "APPROVED",
-                    f"[{horizon_badge}] {leverage}x {ta_setup['direction']} SMC Açıldı! (Marjin: ${risk_report['allocated_margin_usdt']}, Risk: ${risk_report['risk_usd']})",
-                    f"Net SL: -%{risk_report['margin_risk_pct']}, Net TP: +%{risk_report['margin_tp1_pct']}"
+                    f"🏆 Turnuva 1.'si Seçildi (Kalite: {cand['quality_score']}/100) | [{horizon_badge}] {leverage}x {ta_setup['direction']} (Giriş: ${fresh_price})",
+                    f"2. Teyit Başarılı! Net SL: -%{risk_report['margin_risk_pct']}, Net TP: +%{risk_report['margin_tp1_pct']}"
                 )
+                print(f"🚀 [İşlem Açıldı] {symbol} 2. teyitten başarıyla geçti ve portföye eklendi! (Giriş: ${fresh_price})")
 
-                # Vade kotasını döngü içinde dinamik güncelle
-                opened_tf = ta_setup.get("timeframe", "15m").lower()
-                if opened_tf == "15m":
+                # Vade kotasını dinamik güncelle
+                if cand_tf == "15m":
                     c_15m += 1
                     if c_15m >= max_15m and "15m" in allowed_timeframes:
                         allowed_timeframes.remove("15m")
-                        print(f"⚡ [15m Kotası Doldu] 15m kotası ({c_15m}/{max_15m}) tamamlandı. 30m ve 1h aranmaya devam ediliyor.")
-                elif opened_tf == "30m":
+                elif cand_tf == "30m":
                     c_30m += 1
                     if c_30m >= max_30m and "30m" in allowed_timeframes:
                         allowed_timeframes.remove("30m")
-                        print(f"🎯 [30m Kotası Doldu] 30m kotası ({c_30m}/{max_30m}) tamamlandı. 15m ve 1h aranmaya devam ediliyor.")
-                elif opened_tf == "1h":
+                elif cand_tf == "1h":
                     c_1h += 1
                     if c_1h >= max_1h and "1h" in allowed_timeframes:
                         allowed_timeframes.remove("1h")
-                        print(f"👑 [1h Kotası Doldu] 1h kotası ({c_1h}/{max_1h}) tamamlandı. 15m ve 30m aranmaya devam ediliyor.")
 
-                if not allowed_timeframes:
-                    print("🛡️ [Tüm Kotalar Doldu] Döngü içinde tüm vadelerin günlük kotaları doldu. Tarama tamamlandı.")
-                    break
-
-                if found_setups_count >= slots_left:
-                    print(f"🛡️ [Kasa Kalkanı] İzin verilen kota ({slots_left}) doldu. Yeni fırsat taraması kilitlendi.")
-                    break
-
-                # Ajan 4: Grafik Çizim Ajanı (Çizgi Grafiği PNG Üretimi)
+                # Grafik Çizim Ajanı
                 chart_path = ""
                 try:
                     chart_path = self.chart_agent.generate_chart(ta_setup, candles_15m, suffix="setup")
@@ -429,22 +584,28 @@ class TradingBotOrchestrator:
                 except Exception as chart_err:
                     print(f"⚠️ [{symbol}] Grafik çizim hatası: {chart_err}")
 
-                # Ajan 5: Sunum ve Bildirim Ajanı (Telegram + Konsol)
+                # Bildirim Ajanı (Telegram + Konsol)
                 try:
                     self.notifier.send_trade_presentation(signal_data, risk_report, news_analysis, chart_path)
                 except Exception as notify_err:
                     print(f"⚠️ [{symbol}] Bildirim hatası: {notify_err}")
 
-            except Exception as e:
-                print(f"⚠️ [{symbol}] Analiz hatası: {e}")
-                continue
-            finally:
-                time.sleep(0.10)
+                time.sleep(0.15)
+
+            # Kotaya takılan diğer iyi fırsatları logda belirt
+            for unselected in shortlist_candidates:
+                if unselected["symbol"] not in excluded_symbols:
+                    add_scanner_log(
+                        unselected["symbol"],
+                        "REJECTED",
+                        f"Turnuva Kotası Doldu (Kalite Skoru: {unselected['quality_score']}/100)",
+                        f"Daha yüksek kaliteli fırsatlar ({found_setups_count} adet) önceliklendirildi"
+                    )
 
         if found_setups_count == 0:
-            print("💤 Bu döngüde kurallara tam uyan A+ kurulum bulunamadı (Filtreler sermayeyi koruyor).")
+            print("💤 Bu döngüde kurallara tam uyan A+ kurulum bulunamadı veya 2. teyitte elendi.")
         else:
-            print(f"🎉 Bu döngüde toplam {found_setups_count} adet yüksek kaliteli fırsat tespit edildi ve sunuldu!")
+            print(f"🎉 Bu döngüde turnuva elemeleri ve 2. teyit sonrasında toplam {found_setups_count} adet şampiyon fırsat işleme alındı!")
 
     def show_stats(self):
         """'Girseydim Ne Olurdu?' performans istatistiklerini görüntüler."""
