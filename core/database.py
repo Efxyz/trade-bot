@@ -980,6 +980,73 @@ def get_today_net_dollar_pnl() -> float:
         net_dollar = (row["net_dollar"] if row and row["net_dollar"] is not None else 0.0)
         return round(net_dollar, 2)
 
+def get_open_unprotected_risk_usdt() -> float:
+    """Henüz BE+ korumasına (Basamak 1 / Kısmi TP) ulaşmamış açık pozisyonların toplam SL+komisyon riskini ($) döner."""
+    total_risk = 0.0
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT actual_entry_price, entry_min, stop_loss, leverage, allocated_margin_usdt,
+                       ladder_step, partial_tp_taken
+                FROM signals
+                WHERE status IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
+            """)
+            for r in cursor.fetchall():
+                if int(r["ladder_step"] or 0) > 0 or int(r["partial_tp_taken"] or 0) > 0:
+                    continue
+                entry = float(r["actual_entry_price"] or r["entry_min"] or 0.0)
+                sl = float(r["stop_loss"] or 0.0)
+                lev = int(r["leverage"] or 10)
+                margin = float(r["allocated_margin_usdt"] or 150.0)
+                if entry > 0 and sl > 0:
+                    sl_pct = abs(entry - sl) / entry * 100.0
+                    fee_pct = 0.10 * lev
+                    total_risk += margin * ((sl_pct * lev + fee_pct) / 100.0)
+    except Exception:
+        return 0.0
+    return round(total_risk, 2)
+
+def get_horizon_score_adjustments_db(lookback_per_tf: int = 15) -> Dict[str, int]:
+    """
+    Her vade (15m, 30m, 1h) için son kapanmış işlemlere göre dinamik performans ayarlaması döner.
+    - Zayıf/eksi beklentili vadeye -6 (barajı +6 yükseltir)
+    - Güçlü kârlı vadeye +3 öncelik bonusu verir.
+    """
+    adj = {"15m": 0, "30m": 0, "1h": 0}
+    try:
+        buckets: Dict[str, List[float]] = {"15m": [], "30m": [], "1h": []}
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT timeframe, trade_horizon, simulated_pnl_pct
+                FROM signals
+                WHERE status NOT IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
+                  AND simulated_pnl_pct IS NOT NULL
+                ORDER BY COALESCE(closed_at, created_at) DESC, id DESC
+                LIMIT 60
+            """)
+            for r in cursor.fetchall():
+                tf = str(r["timeframe"] or "").lower().strip()
+                if tf not in buckets:
+                    hz = str(r["trade_horizon"] or "").lower()
+                    tf = "1h" if "1h" in hz else ("30m" if "30m" in hz else "15m")
+                if len(buckets[tf]) < lookback_per_tf:
+                    buckets[tf].append(float(r["simulated_pnl_pct"] or 0.0))
+
+        for tf, pnls in buckets.items():
+            if len(pnls) < 6:
+                continue
+            wr = (sum(1 for p in pnls if p > 0) / len(pnls)) * 100.0
+            exp = sum(pnls) / len(pnls)
+            if exp < 0.0 or wr < 52.0:
+                adj[tf] = -6
+            elif wr >= 68.0 and exp > 0.0:
+                adj[tf] = 3
+    except Exception:
+        pass
+    return adj
+
 def get_and_update_today_peak_profit(current_pnl: float):
     """
     Günün en yüksek net kârını (Daily High-Water Mark) takip eder.
