@@ -1244,14 +1244,38 @@ class TechnicalAnalysisAgent:
         active_tfs = [t.lower() for t in allowed_timeframes] if allowed_timeframes is not None else ["15m", "30m", "1h"]
         rejection_reasons = []
 
+        # Dinamik Vade Beklenti Yönlendiricisi (son kapanmış işlemlerde zayıf vadeyi sıkılaştırır, güçlü vadeyi öne alır)
+        horizon_adj = {"15m": 0, "30m": 0, "1h": 0}
+        try:
+            from core.database import get_horizon_score_adjustments_db
+            horizon_adj = get_horizon_score_adjustments_db(lookback_per_tf=15)
+        except Exception:
+            pass
+
+        def _horizon_accepts(tf_key: str, setup_obj: Dict) -> bool:
+            adj_val = horizon_adj.get(tf_key, 0)
+            if adj_val >= 0:
+                return True
+            try:
+                from core.self_tuning_engine import SelfTuningEngine
+                base_min = SelfTuningEngine.get_current_params().get("min_confluence_score", MIN_CONFLUENCE_SCORE)
+            except Exception:
+                base_min = MIN_CONFLUENCE_SCORE
+            if setup_obj.get("direction") == "SHORT":
+                base_min = max(base_min, MIN_CONFLUENCE_SCORE_SHORT)
+            return setup_obj.get("confluence_score", 0) >= (base_min + abs(adj_val))
+
         # 1. 15m Kısa Vade İncelemesi (Kotası açıksa)
         # Yatay/zayıf trend piyasasında (ADX < 22) hızlı 15m Vur-Kaç avantaj sağlar (+3)
         if "15m" in active_tfs and candles_15m and len(candles_15m) >= 35:
             setup_15m, reason_15m = self.analyze_setup(symbol, candles_15m, candles_macro=candles_1h, timeframe="15m")
             if setup_15m:
-                adx_15m = float(setup_15m.get("indicators", {}).get("adx_data", {}).get("adx", 20.0))
-                effective_score = setup_15m["confluence_score"] + (3 if adx_15m < 22.0 else 0)
-                candidates_setups.append((effective_score, setup_15m, reason_15m))
+                if _horizon_accepts("15m", setup_15m):
+                    adx_15m = float(setup_15m.get("indicators", {}).get("adx_data", {}).get("adx", 20.0))
+                    effective_score = setup_15m["confluence_score"] + (3 if adx_15m < 22.0 else 0) + horizon_adj.get("15m", 0)
+                    candidates_setups.append((effective_score, setup_15m, reason_15m))
+                else:
+                    rejection_reasons.append(f"15m: Dinamik Vade Koruması (15m son performansı zayıf -> skor {setup_15m.get('confluence_score')}, +{abs(horizon_adj.get('15m', 0))} ek baraj aranıyor)")
             else:
                 rejection_reasons.append(f"15m: {reason_15m}")
 
@@ -1260,9 +1284,12 @@ class TechnicalAnalysisAgent:
         if "30m" in active_tfs and candles_30m and len(candles_30m) >= 35:
             setup_30m, reason_30m = self.analyze_setup(symbol, candles_30m, candles_macro=candles_1h, timeframe="30m")
             if setup_30m:
-                adx_30m = float(setup_30m.get("indicators", {}).get("adx_data", {}).get("adx", 20.0))
-                effective_score = setup_30m["confluence_score"] + (2 if adx_30m >= 22.0 else -2)
-                candidates_setups.append((effective_score, setup_30m, reason_30m))
+                if _horizon_accepts("30m", setup_30m):
+                    adx_30m = float(setup_30m.get("indicators", {}).get("adx_data", {}).get("adx", 20.0))
+                    effective_score = setup_30m["confluence_score"] + (2 if adx_30m >= 22.0 else -2) + horizon_adj.get("30m", 0)
+                    candidates_setups.append((effective_score, setup_30m, reason_30m))
+                else:
+                    rejection_reasons.append(f"30m: Dinamik Vade Koruması (30m son performansı zayıf -> skor {setup_30m.get('confluence_score')})")
             else:
                 rejection_reasons.append(f"30m: {reason_30m}")
 
@@ -1271,14 +1298,18 @@ class TechnicalAnalysisAgent:
         if "1h" in active_tfs and candles_1h and len(candles_1h) >= 35:
             setup_1h, reason_1h = self.analyze_setup(symbol, candles_1h, candles_macro=None, timeframe="1h")
             if setup_1h:
-                adx_1h = float(setup_1h.get("indicators", {}).get("adx_data", {}).get("adx", 20.0))
-                if adx_1h >= 24.0 or setup_1h["confluence_score"] >= 85:
-                    effective_score = setup_1h["confluence_score"] + 3
-                elif adx_1h < 20.0:
-                    effective_score = setup_1h["confluence_score"] - 4
+                if _horizon_accepts("1h", setup_1h):
+                    adx_1h = float(setup_1h.get("indicators", {}).get("adx_data", {}).get("adx", 20.0))
+                    if adx_1h >= 24.0 or setup_1h["confluence_score"] >= 85:
+                        effective_score = setup_1h["confluence_score"] + 3
+                    elif adx_1h < 20.0:
+                        effective_score = setup_1h["confluence_score"] - 4
+                    else:
+                        effective_score = setup_1h["confluence_score"]
+                    effective_score += horizon_adj.get("1h", 0)
+                    candidates_setups.append((effective_score, setup_1h, reason_1h))
                 else:
-                    effective_score = setup_1h["confluence_score"]
-                candidates_setups.append((effective_score, setup_1h, reason_1h))
+                    rejection_reasons.append(f"1h: Dinamik Vade Koruması (1h son performansı zayıf -> skor {setup_1h.get('confluence_score')})")
             else:
                 rejection_reasons.append(f"1h: {reason_1h}")
 
