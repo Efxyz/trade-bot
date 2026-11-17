@@ -1223,6 +1223,72 @@ class TechnicalAnalysisAgent:
             f"🎯 <strong>Beklenen Şart:</strong> Net Likidite Temizliği (Sweep) veya FVG Kırılımı ile skorun {target_min_score}+ üzerine çıkması."
         )
 
+    def check_4h_macro_compass(self, ta_setup: Dict, candles_4h: List[Dict]) -> Tuple[bool, str, int]:
+        """
+        4 Saatlik (4h) Makro Pusula & Yapısal Duvar Kalkanı:
+        İşlem açmadan yalnızca 15m/30m/1h sinyallerini 4h ana trend ve büyük OB duvarlarıyla hizalar.
+        Döner: (onay_mı, red_gerekçesi, skor_bonusu)
+        """
+        if not ta_setup or not candles_4h or len(candles_4h) < 35:
+            return True, "", 0
+
+        eval_4h = candles_4h[:-1] if len(candles_4h) > 35 else candles_4h
+        closes_4h = [float(c["close"]) for c in eval_4h]
+        ema20_4h = self.calculate_ema(closes_4h, 20)[-1]
+        ema50_4h = self.calculate_ema(closes_4h, min(50, max(21, len(closes_4h) - 1)))[-1]
+        if not ema20_4h or not ema50_4h:
+            return True, "", 0
+
+        st_4h = calculate_supertrend(eval_4h, period=10, multiplier=3.0)
+        ob_4h = self.detect_order_blocks(eval_4h, max_lookback=20)
+        price = float(ta_setup.get("current_price") or candles_4h[-1]["close"])
+        tp1 = float(ta_setup.get("take_profit_1") or 0.0)
+        direction = ta_setup.get("direction", "LONG")
+        score = int(ta_setup.get("confluence_score", 0))
+
+        # 1. Tam 4h Ana Trend Çatışması Vetosu (sadece >= 84 elit ters kurulum istisnası)
+        if direction == "LONG":
+            if ema20_4h < ema50_4h and st_4h.get("is_bearish") and price < (ema20_4h * 0.992) and score < 84:
+                return False, (
+                    f"📌 <strong>Mevcut Durum:</strong> 4h Makro Ayı Trendi (Fiyat ${price:.4f} < 4h EMA20 ${ema20_4h:.4f} < EMA50 ${ema50_4h:.4f}).<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> 4 saatlik ana dalga düşüşteyken alt vadede standart puanlı ({score}) LONG açmak ana trende karşı yüzmektir.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> 4h EMA20 üzeri kapanış veya 84+ elit dip dönüş teyidi."
+                ), 0
+            # 4h Bearish Order Block Duvarı (TP1'in önünde 0.55% içinde taze 4h satıcı duvarı varsa)
+            b_ob = ob_4h.get("bearish_ob")
+            if b_ob and price < b_ob["low"] and ((b_ob["low"] - price) / price * 100.0) <= 0.55 and tp1 > b_ob["low"]:
+                return False, (
+                    f"📌 <strong>Mevcut Durum:</strong> 4h Satıcı Duvarı (Bearish OB: ${b_ob['low']:.4f}) hemen %{((b_ob['low']-price)/price*100):.2f} üstte.<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Hedef (TP1) 4 saatlik ana direnç duvarının arkasında kalıyor.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> 4h OB direncinin yukarı kırılması."
+                ), 0
+            if ema20_4h > ema50_4h and st_4h.get("is_bullish"):
+                ta_setup["confluence_score"] = min(100, score + 5)
+                ta_setup["ta_reasons"] = f"{ta_setup.get('ta_reasons', '')} | 🧭 4h Makro Boğa Onayı (+5)".strip(" |")
+                return True, "", 5
+
+        else:  # SHORT
+            if ema20_4h > ema50_4h and st_4h.get("is_bullish") and price > (ema20_4h * 1.008) and score < 84:
+                return False, (
+                    f"📌 <strong>Mevcut Durum:</strong> 4h Makro Boğa Trendi (Fiyat ${price:.4f} > 4h EMA20 ${ema20_4h:.4f} > EMA50 ${ema50_4h:.4f}).<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> 4 saatlik ana dalga yükselişteyken alt vadede standart puanlı ({score}) SHORT açmak ralliye karşı durmaktır.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> 4h EMA20 altı kapanış veya 84+ elit tepe dönüş teyidi."
+                ), 0
+            # 4h Bullish Order Block Duvarı (TP1'in önünde 0.55% içinde taze 4h alıcı duvarı varsa)
+            b_ob = ob_4h.get("bullish_ob")
+            if b_ob and price > b_ob["high"] and ((price - b_ob["high"]) / price * 100.0) <= 0.55 and tp1 < b_ob["high"]:
+                return False, (
+                    f"📌 <strong>Mevcut Durum:</strong> 4h Alıcı Duvarı (Bullish OB: ${b_ob['high']:.4f}) hemen %{((price-b_ob['high'])/price*100):.2f} altta.<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Hedef (TP1) 4 saatlik ana destek duvarının altında kalıyor.<br>"
+                    f"🎯 <strong>Beklenen Şart:</strong> 4h OB desteğinin aşağı kırılması."
+                ), 0
+            if ema20_4h < ema50_4h and st_4h.get("is_bearish"):
+                ta_setup["confluence_score"] = min(100, score + 5)
+                ta_setup["ta_reasons"] = f"{ta_setup.get('ta_reasons', '')} | 🧭 4h Makro Ayı Onayı (+5)".strip(" |")
+                return True, "", 5
+
+        return True, "", 0
+
     def analyze_multi_horizon(
         self,
         symbol: str,
