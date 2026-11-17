@@ -425,6 +425,21 @@ class CounterfactualTrackerAgent:
                     raw_change = raw_c_2b
                     print(f"⚡ [{symbol}] [{sig_tf}] 2-Mum Momentum İptali ({minutes_open:.0f} dk, Zirve: +%{peak_profit_pct:.2f}, Anlık: {raw_c_2b*100:+.2f}%) -> Ölü sermaye serbest bırakıldı.")
 
+            # 5c. STAT-ARB SPREAD ORTALAMAYA DÖNÜŞ ÇIKIŞI (|Z| <= 0.40 ise pair bacaklarını eşzamanlı kapat)
+            pair_peer = sig.get("pair_symbol") or ""
+            if not is_closed and is_pair_trade == 1 and pair_peer and minutes_open >= 15:
+                try:
+                    from agents.pairs_stat_arb_agent import StatisticalArbitrageAgent
+                    z_now = StatisticalArbitrageAgent().get_pair_live_zscore(self.client, symbol, pair_peer)
+                    if z_now is not None and abs(z_now) <= 0.40:
+                        is_closed = True
+                        final_status = "PAIR_MEAN_REVERSION_EXIT"
+                        exit_price = current_price
+                        raw_change = ((current_price - entry_price) / entry_price) if is_long else ((entry_price - current_price) / entry_price)
+                        print(f"⚖️ [{symbol}/{pair_peer}] Spread Z-Skoru ortalamaya döndü (Z={z_now:+.2f}) -> Pair çıkışı.")
+                except Exception:
+                    pass
+
             # 6. ZAMAN AŞIMI (TIMEOUT / VADEYE GÖRE HAREKETSİZLİK ÇIKIŞI)
             if not is_closed and minutes_open >= effective_max_hold:
                 raw_change = ((current_price - entry_price) / entry_price) if is_long else ((entry_price - current_price) / entry_price)
@@ -515,7 +530,58 @@ class CounterfactualTrackerAgent:
                 if notifier:
                     notifier.send_outcome_report(resolved_info)
 
+        try:
+            self.evaluate_shadow_rejections(max_items=8)
+        except Exception:
+            pass
+
         return resolved_trades
+
+    def evaluate_shadow_rejections(self, max_items: int = 8):
+        """Reddedilen adayların varsayımsal TP1/SL sonucunu pasif olarak ölçer (Filtre Ablasyonu)."""
+        from core.database import get_pending_shadow_rejections, update_shadow_rejection
+        pending = get_pending_shadow_rejections(limit=max_items)
+        if not pending:
+            return
+        now = datetime.now()
+        for row in pending:
+            try:
+                created_dt = datetime.strptime(str(row["created_at"])[:19], "%Y-%m-%d %H:%M:%S")
+                created_ms = int(created_dt.timestamp() * 1000)
+                age_min = (now - created_dt).total_seconds() / 60.0
+                klines = self.client.get_klines(row["symbol"], interval="15m", limit=40) or []
+                bars = [k for k in klines if int(k.get("timestamp", 0)) >= created_ms]
+                ep = float(row["entry_price"])
+                sl = float(row["stop_loss"])
+                tp1 = float(row["take_profit_1"])
+                is_long = str(row["direction"]).upper() == "LONG"
+                sl_dist = abs(ep - sl)
+                rr_val = (abs(tp1 - ep) / sl_dist) if sl_dist > 0 else 1.8
+
+                outcome = None
+                sim_r = 0.0
+                for b in bars:
+                    hi, lo = float(b["high"]), float(b["low"])
+                    if is_long:
+                        if lo <= sl:
+                            outcome, sim_r = "WOULD_LOSE_SL", -1.0
+                            break
+                        if hi >= tp1:
+                            outcome, sim_r = "WOULD_WIN_TP1", rr_val
+                            break
+                    else:
+                        if hi >= sl:
+                            outcome, sim_r = "WOULD_LOSE_SL", -1.0
+                            break
+                        if lo <= tp1:
+                            outcome, sim_r = "WOULD_WIN_TP1", rr_val
+                            break
+                if outcome:
+                    update_shadow_rejection(row["id"], outcome, sim_r)
+                elif age_min >= 480:
+                    update_shadow_rejection(row["id"], "EXPIRED", 0.0)
+            except Exception:
+                continue
 
     def generate_outcome_chart(self, sig: Dict, candles: List[Dict], outcome: str, exit_price: float, pnl_pct: float, leverage: int = 10) -> str:
         symbol = sig["symbol"]
