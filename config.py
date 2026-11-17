@@ -26,9 +26,10 @@ MIN_24H_VOLUME_USDT = 12_000_000  # Likit, anlık hacimli pariteler
 PORTFOLIO_EQUITY_USDT = 1000.0         # Başlangıç Fon Kasası ($1000 USDT)
 MAX_CONCURRENT_TRADES = 8              # 3-Vadeli Tek Panel: Kısa (15m), Orta (30m) ve Uzun (1h) için dengeli slot kapasitesi
 MAX_POSITIONS_PER_DIRECTION = 4        # Tek Yöne Yığılma Kalkanı (Maksimum 4 LONG veya 4 SHORT)
-RISK_PER_TRADE_PCT = 2.0               # İşlem başına riske edilen maksimum kasa payı (%2.0 = $20 risk)
+RISK_PER_TRADE_PCT = 1.5               # İşlem başına riske edilen maksimum komisyon dahil kasa payı (%1.5 = $15 risk)
 MAX_ALLOCATED_MARGIN_PER_TRADE = 200.0 # Bir işleme ayrılabilecek taban maksimum marjin (%20 kuralı)
 POST_LOSS_COOLDOWN_MINUTES = 15        # Zararlı kapanış sonrası 15 dk karantina molası (İntikam işlemine son!)
+ENABLE_LOSING_DCA = False              # Zarardaki işleme +50% ek marjin eklemeyi kapat (Adverse Selection koruması)
 
 # ========================================================
 # ÇOKLU-MOTOR YÖNETİMİ & 3-VADELİ TEK TERMİNAL MODU
@@ -123,8 +124,8 @@ DAILY_BASE_MAX_TRADES = 24            # Toplam tavan referansı (10 + 8 + 6)
 DAILY_MAX_NEW_TRADES = 24             # Geriye dönük uyumluluk aliası
 PROFIT_STEP_FOR_BONUS_TRADES = 15.0   # Her +$15 net kârda her vadeye +1 ekstra kota slotu eklenir
 BONUS_TRADES_PER_STEP = 1             # Her kâr adımında her vade kotasına ilave hak
-ENABLE_CIRCUIT_BREAKER = True         # Güvenlik Kalkanı: Günlük -$50 kayıpta taramayı 24s dondur
-DAILY_MAX_DRAWDOWN_USDT = 50.0       # Günlük Acil Durum Sigortası (Circuit Breaker): -$50 kayıpta taramayı 24s dondur
+ENABLE_CIRCUIT_BREAKER = True         # Güvenlik Kalkanı: Günlük -$35 kayıpta taramayı 24s dondur
+DAILY_MAX_DRAWDOWN_USDT = 35.0       # Günlük Acil Durum Sigortası (Circuit Breaker): -$35 kayıpta taramayı dondur
 DAILY_TRAILING_PROFIT_LOCK_ENABLED = True # Günlük Zirve Kâr Kilidi (Kazanılan kârı asla geri vermeme kalkanı)
 
 # SMC & Confluence Kalite Eşiği (Dengeli Kurumsal SMC Kalibrasyonu - 15 Kasım Canlı Saha Ayarı)
