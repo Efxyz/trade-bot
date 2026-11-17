@@ -79,6 +79,34 @@ class TechnicalAnalysisAgent:
             return 0.5
         return round(direction / volatility, 3)
 
+    @staticmethod
+    def calculate_anchored_vwap(candles: List[Dict], atr_val: float, lookback: int = 50) -> Dict:
+        """
+        Olay Çapalı VWAP (Anchored VWAP ± ATR):
+        Son swing tepe veya swing dip mumundan itibaren hacim ağırlıklı kurumsal maliyet çizgisini hesaplar.
+        """
+        if not candles or len(candles) < 15:
+            return {"avwap": 0.0, "z_atr": 0.0, "anchor_type": "NONE"}
+        sub = candles[-min(len(candles), lookback):]
+        hi_idx = max(range(len(sub) - 3), key=lambda i: float(sub[i]["high"]))
+        lo_idx = min(range(len(sub) - 3), key=lambda i: float(sub[i]["low"]))
+        # Daha yakın tarihli swing dönüm noktasını çapa seç
+        anchor_idx = max(hi_idx, lo_idx)
+        anchor_type = "SWING_HIGH" if anchor_idx == hi_idx else "SWING_LOW"
+        pv_sum = 0.0
+        v_sum = 0.0
+        for c in sub[anchor_idx:]:
+            tp = (float(c["high"]) + float(c["low"]) + float(c["close"])) / 3.0
+            vol = float(c.get("volume") or 0.0)
+            pv_sum += tp * vol
+            v_sum += vol
+        if v_sum <= 0:
+            return {"avwap": 0.0, "z_atr": 0.0, "anchor_type": "NONE"}
+        avwap = pv_sum / v_sum
+        last_close = float(sub[-1]["close"])
+        z_atr = ((last_close - avwap) / atr_val) if atr_val and atr_val > 0 else 0.0
+        return {"avwap": round(avwap, 6), "z_atr": round(z_atr, 2), "anchor_type": anchor_type}
+
     def detect_regime(self, candles: List[Dict]) -> Tuple[str, Dict]:
         """Kapanmış mumlardan piyasa rejimini sınıflandırır: TRENDING, CHOPPY veya TRANSITION."""
         ci = self.calculate_choppiness(candles, REGIME_CHOP_PERIOD)
@@ -813,6 +841,24 @@ class TechnicalAnalysisAgent:
 
         # VWAP Aşırı Uzaklaşma Oranı
         vwap_dist_pct = round(((current_price - curr_vwap) / curr_vwap * 100.0), 2) if curr_vwap > 0 else 0.0
+
+        # --- K2. Olay Çapalı VWAP (Anchored VWAP ± ATR Bantları) ---
+        avwap_data = self.calculate_anchored_vwap(eval_candles, curr_atr, lookback=50)
+        avwap_px = avwap_data.get("avwap", 0.0)
+        avwap_z = avwap_data.get("z_atr", 0.0)
+        if avwap_px > 0:
+            dist_avwap_pct = abs(current_price - avwap_px) / avwap_px * 100.0
+            if dist_avwap_pct <= 0.35:
+                if current_price >= avwap_px:
+                    long_score += 6
+                    long_factors.append(f"⚓ Anchored VWAP Desteği (${avwap_px})")
+                else:
+                    short_score += 6
+                    short_factors.append(f"⚓ Anchored VWAP Direnci (${avwap_px})")
+            if avwap_z >= 2.2:
+                long_score = max(0, long_score - 5)
+            elif avwap_z <= -2.2:
+                short_score = max(0, short_score - 5)
 
         # --- L. Taker Hacim Deltası (CVD) & Asimetrik Seans Volatilitesi ---
         cvd_ratio = 0.0
