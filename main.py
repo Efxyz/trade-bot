@@ -323,7 +323,7 @@ class TradingBotOrchestrator:
                 except Exception:
                     pass
 
-                # Open Interest (OI) + Emir Defteri Duvar Baskısı (OBI) Mikroyapı Kalkanı
+                # Open Interest (OI) + Likidasyon Şelalesi + Basis + Emir Defteri (OBI) Mikroyapı Kalkanı
                 try:
                     oi_data = self.client.get_open_interest_delta(symbol, period="15m")
                     if oi_data and len(candles_15m) >= 6:
@@ -334,15 +334,53 @@ class TradingBotOrchestrator:
                         oi_chg = float(oi_data.get("oi_change_pct", 0.0))
                         c_dir = ta_setup.get("direction", "LONG")
                         c_score = int(ta_setup.get("confluence_score", 0))
-                        if c_dir == "LONG" and p_chg >= 0.50 and oi_chg <= -1.20 and c_score < 84:
+
+                        # Son kapanan mum fitil analizi (Likidasyon Şelalesi Dönüşü tespiti)
+                        lc = closed_15[-1]
+                        lc_body = max(1e-9, abs(float(lc["close"]) - float(lc["open"])))
+                        lower_wick = min(float(lc["open"]), float(lc["close"])) - float(lc["low"])
+                        upper_wick = float(lc["high"]) - max(float(lc["open"]), float(lc["close"]))
+                        is_cascade_rev = (
+                            oi_chg <= -3.0 and (
+                                (c_dir == "LONG" and lower_wick >= lc_body * 1.5) or
+                                (c_dir == "SHORT" and upper_wick >= lc_body * 1.5)
+                            )
+                        )
+
+                        if is_cascade_rev:
+                            ta_setup["confluence_score"] = min(100, c_score + 6)
+                            ta_setup["ta_reasons"] = f"{ta_setup.get('ta_reasons', '')} | 💥 Likidasyon Şelalesi Dönüşü (OI %{oi_chg:.1f}, +6)".strip(" |")
+                        elif c_dir == "LONG" and p_chg >= 0.50 and oi_chg <= -1.20 and c_score < 84:
                             add_scanner_log(symbol, "REJECTED", f"📌 <strong>Mevcut Durum:</strong> Sahte Kırılım / Short Squeeze (Fiyat +%{p_chg:.2f}, OI -%{abs(oi_chg):.2f}).<br>⛔ <strong>Giriş Yapılmama Nedeni:</strong> Yeni alım gelmeden yalnızca short stopları patladığı için geri dönüş riski yüksek.")
                             continue
-                        if c_dir == "SHORT" and p_chg <= -0.50 and oi_chg <= -1.20 and c_score < 84:
+                        elif c_dir == "SHORT" and p_chg <= -0.50 and oi_chg <= -1.20 and c_score < 84:
                             add_scanner_log(symbol, "REJECTED", f"📌 <strong>Mevcut Durum:</strong> Tükenmiş Long Tasfiyesi (Fiyat %{p_chg:.2f}, OI -%{abs(oi_chg):.2f}).<br>⛔ <strong>Giriş Yapılmama Nedeni:</strong> Tasfiye tamamlanırken dipten tepki sıçraması riski yüksek.")
                             continue
-                        if oi_chg >= 0.80:
+                        elif oi_chg >= 0.80:
                             ta_setup["confluence_score"] = min(100, c_score + 4)
                             ta_setup["ta_reasons"] = f"{ta_setup.get('ta_reasons', '')} | 📈 Organik OI (+%{oi_chg:.1f}, +4)".strip(" |")
+
+                    # Spot-Vadeli Basis & Kalabalık Pozisyon Karşıtı Filtre
+                    basis_info = (self.client.get_all_premium_basis() or {}).get(symbol)
+                    if basis_info:
+                        b_pct = float(basis_info.get("basis_pct", 0.0))
+                        fr_pct = float(basis_info.get("funding_rate_pct", 0.0))
+                        c_dir = ta_setup.get("direction", "LONG")
+                        c_score = int(ta_setup.get("confluence_score", 0))
+                        if b_pct >= 0.25 and fr_pct >= 0.05:
+                            if c_dir == "LONG" and c_score < 84:
+                                add_scanner_log(symbol, "REJECTED", f"📌 <strong>Mevcut Durum:</strong> Aşırı Pozitif Basis (+%{b_pct:.2f}, Fonlama +%{fr_pct:.3f}).<br>⛔ <strong>Giriş Yapılmama Nedeni:</strong> Kalabalık LONG coşkusu spottan koptu; tepe yakalanma riski yüksek.")
+                                continue
+                            elif c_dir == "SHORT":
+                                ta_setup["confluence_score"] = min(100, c_score + 5)
+                                ta_setup["ta_reasons"] = f"{ta_setup.get('ta_reasons', '')} | 📉 Pozitif Basis Karşıtı (+5)".strip(" |")
+                        elif b_pct <= -0.25 and fr_pct <= -0.05:
+                            if c_dir == "SHORT" and c_score < 84:
+                                add_scanner_log(symbol, "REJECTED", f"📌 <strong>Mevcut Durum:</strong> Aşırı Negatif Basis (%{b_pct:.2f}, Fonlama %{fr_pct:.3f}).<br>⛔ <strong>Giriş Yapılmama Nedeni:</strong> Kalabalık SHORT paniğinde short squeeze riski yüksek.")
+                                continue
+                            elif c_dir == "LONG":
+                                ta_setup["confluence_score"] = min(100, c_score + 5)
+                                ta_setup["ta_reasons"] = f"{ta_setup.get('ta_reasons', '')} | 📈 Negatif Basis Squeeze (+5)".strip(" |")
 
                     obi_data = self.client.get_order_book_imbalance(symbol, limit=20)
                     if obi_data:
