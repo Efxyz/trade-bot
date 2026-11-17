@@ -11,6 +11,7 @@ Features:
 from typing import List, Dict, Optional, Tuple
 import math
 import time
+from datetime import datetime, timezone, timedelta
 from config import (
     TARGET_PROFIT_PCT,
     MAX_SCALP_SL_PCT,
@@ -812,6 +813,52 @@ class TechnicalAnalysisAgent:
 
         # VWAP Aşırı Uzaklaşma Oranı
         vwap_dist_pct = round(((current_price - curr_vwap) / curr_vwap * 100.0), 2) if curr_vwap > 0 else 0.0
+
+        # --- L. Taker Hacim Deltası (CVD) & Asimetrik Seans Volatilitesi ---
+        cvd_ratio = 0.0
+        price_chg_5 = 0.0
+        if len(eval_candles) >= 5:
+            last5 = eval_candles[-5:]
+            tot_v5 = sum(float(c.get("volume", 0.0)) for c in last5)
+            buy_v5 = sum(float(c.get("taker_buy_volume", 0.0)) for c in last5)
+            if tot_v5 > 0 and buy_v5 > 0:
+                sell_v5 = max(0.0, tot_v5 - buy_v5)
+                cvd_ratio = (buy_v5 - sell_v5) / tot_v5
+                p_open5 = float(last5[0].get("open") or 0.0)
+                p_close5 = float(last5[-1].get("close") or 0.0)
+                if p_open5 > 0:
+                    price_chg_5 = ((p_close5 - p_open5) / p_open5) * 100.0
+                if cvd_ratio >= 0.12:
+                    long_score += 4
+                    long_factors.append(f"Taker CVD Alıcı Baskısı (+%{cvd_ratio*100:.0f})")
+                elif cvd_ratio <= -0.12:
+                    short_score += 4
+                    short_factors.append(f"Taker CVD Satıcı Baskısı (-%{abs(cvd_ratio)*100:.0f})")
+
+        # Asimetrik Seans Filtresi: Düşük likiditeli Asya gecesi (03:00-08:00 TSİ) barajı +4 sıkılaştırır
+        try:
+            now_tr = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=3)))
+            if 3 <= now_tr.hour < 8:
+                target_min_score += 4
+            elif 15.5 <= (now_tr.hour + now_tr.minute / 60.0) <= 20.5:
+                long_factors.append("⚡ Altın Seans (LDN/NY)")
+                short_factors.append("⚡ Altın Seans (LDN/NY)")
+        except Exception:
+            pass
+
+        # Taker CVD Aşırı Uyumsuzluk Vetosu (Fiyat yükselirken agresif satıcı baskısı veya tam tersi)
+        if price_chg_5 >= 0.40 and cvd_ratio <= -0.18 and long_score >= target_min_score and long_score > short_score and long_score < 84:
+            return None, (
+                f"📌 <strong>Mevcut Durum:</strong> Taker CVD Ayı Uyumsuzluğu (Fiyat +%{price_chg_5:.2f}, Net Delta -%{abs(cvd_ratio)*100:.0f}).<br>"
+                f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Fiyat yükselirken aktif piyasa satışları baskın (gizli dağıtım / boğa tuzağı).<br>"
+                f"🎯 <strong>Beklenen Şart:</strong> Taker alıcı deltasının pozitife dönmesi."
+            )
+        if price_chg_5 <= -0.40 and cvd_ratio >= 0.18 and short_score >= max(target_min_score, MIN_CONFLUENCE_SCORE_SHORT) and short_score > long_score and short_score < 84:
+            return None, (
+                f"📌 <strong>Mevcut Durum:</strong> Taker CVD Boğa Absorpsiyonu (Fiyat %{price_chg_5:.2f}, Net Delta +%{cvd_ratio*100:.0f}).<br>"
+                f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Fiyat düşerken aktif piyasa alıcıları satışı karşılıyor (dip absorpsiyonu).<br>"
+                f"🎯 <strong>Beklenen Şart:</strong> Satıcı deltasının yeniden baskınlaşması."
+            )
 
         # Short Asimetrisi Kalkanı: Tarihsel kayıpların %100'ü short kaynaklı olduğundan SHORT için baraj 84'tür
         short_min_score = max(target_min_score, MIN_CONFLUENCE_SCORE_SHORT)
