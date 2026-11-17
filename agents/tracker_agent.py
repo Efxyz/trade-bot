@@ -301,7 +301,8 @@ class CounterfactualTrackerAgent:
                 protect_sl = round(entry_price * (1.0 + 0.0025 * ladder_mult), 8) if is_long else round(entry_price * (1.0 - 0.0025 * ladder_mult), 8)
                 if (is_long and protect_sl > current_sl) or (not is_long and protect_sl < current_sl):
                     current_sl = protect_sl
-                    update_signal_status(sig_id, {"stop_loss": current_sl, "ladder_name": f"⏱️ {int(30*ladder_mult)}dk Kâr Kilidi"})
+                    status = "ACTIVE_BE"
+                    update_signal_status(sig_id, {"stop_loss": current_sl, "status": "ACTIVE_BE", "ladder_name": f"⏱️ {int(30*ladder_mult)}dk Kâr Kilidi"})
 
             # 4. HEDEF (TP) VE MERDİVEN STOP KONTROLLERİ (BİRİNCİL ÖNCELİK)
             if not is_closed:
@@ -358,7 +359,7 @@ class CounterfactualTrackerAgent:
                         final_status = "RUNNER_BE_EXIT"  # Free-trade sıfır riskle kapandı, TP1 kârı cepte!
                     elif current_ladder_step >= 2 or peak_profit_pct >= (0.75 * ladder_mult):
                         final_status = f"LADDER_STEP_{current_ladder_step}_EXIT" if current_ladder_step > 0 else "LADDER_PROFIT_EXIT"
-                    elif current_ladder_step == 1 or partial_tp_taken == 2 or (status in ("ACTIVE_BE", "ACTIVE_LADDER") and raw_change >= 0):
+                    elif current_ladder_step == 1 or partial_tp_taken == 2 or raw_change > 0 or (status in ("ACTIVE_BE", "ACTIVE_LADDER") and raw_change >= 0):
                         final_status = "CLOSED_BE"
                     else:
                         final_status = "HIT_SL"
