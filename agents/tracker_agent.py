@@ -40,7 +40,8 @@ from config import (
     ATR_PERIOD,
     ATR_LADDER_MULT,
     MIN_RR_RATIO,
-    MAX_ALLOCATED_MARGIN_PER_TRADE
+    MAX_ALLOCATED_MARGIN_PER_TRADE,
+    ENABLE_LOSING_DCA
 )
 
 class CounterfactualTrackerAgent:
@@ -110,7 +111,7 @@ class CounterfactualTrackerAgent:
             partial_tp_taken = int(sig.get("partial_tp_taken") or 0)
             current_realized_usd = float(sig.get("realized_pnl_usd") or 0.0)
 
-            if entry_limit_2 > 0 and entry_limit_2_hit == 0 and partial_tp_taken == 0:
+            if ENABLE_LOSING_DCA and entry_limit_2 > 0 and entry_limit_2_hit == 0 and partial_tp_taken == 0:
                 is_hit_limit2 = (is_long and current_price <= entry_limit_2) or (not is_long and current_price >= entry_limit_2)
                 new_margin = round(allocated_margin * 1.5, 2)  # %50 ek marjin doldu
                 if is_hit_limit2 and new_margin <= (MAX_ALLOCATED_MARGIN_PER_TRADE * 1.5):
@@ -186,6 +187,8 @@ class CounterfactualTrackerAgent:
                         atr_abs = self._calc_atr(closed_atr_candles, ATR_PERIOD)
                         if atr_abs and entry_price > 0:
                             atr_pct_val = max(0.32, min(2.50, (atr_abs / entry_price) * 100.0))
+                            tf_cap = min(ladder_mult, 1.35)
+                            max_trig_map = {2: 0.85, 3: 1.20, 4: 1.65}
                             active_ladder_steps = []
                             for s_num, cfg in sorted(ATR_LADDER_MULT.items()):
                                 if s_num == 1:
@@ -195,8 +198,11 @@ class CounterfactualTrackerAgent:
                                     step_lbl = "🛡️ Basamak 1 (%35 Kâr Cebe + Nefes Payı BE+)"
                                 else:
                                     static_rung = LADDER_STEPS[s_num - 1]
-                                    trig_val = round(max(static_rung["trigger_raw_pct"] * ladder_mult, atr_pct_val * cfg["trigger"]), 4)
-                                    lock_val = round(max(static_rung["lock_raw_pct"] * ladder_mult, atr_pct_val * (cfg["trigger"] - cfg["lock_distance"])), 4)
+                                    max_t = max_trig_map.get(s_num, 1.65) * tf_cap
+                                    raw_t = max(static_rung["trigger_raw_pct"] * tf_cap, atr_pct_val * cfg["trigger"])
+                                    trig_val = round(min(max_t, raw_t), 4)
+                                    raw_l = max(static_rung["lock_raw_pct"] * tf_cap, atr_pct_val * (cfg["trigger"] - cfg["lock_distance"]))
+                                    lock_val = round(min(trig_val - 0.30, raw_l), 4)
                                     step_lbl = f"🪜 ATR Basamak {s_num}"
                                 active_ladder_steps.append({
                                     "step": s_num,
