@@ -10,11 +10,12 @@ PAIRS_UNIVERSE = [
     ("SOLUSDT", "ETHUSDT"),
     ("AVAXUSDT", "SOLUSDT"),
     ("BTCUSDT", "ETHUSDT"),
-    ("DOGEUSDT", "XRPUSDT")
+    ("DOGEUSDT", "XRPUSDT"),
+    ("BNBUSDT", "ETHUSDT")
 ]
 
 class StatisticalArbitrageAgent:
-    def __init__(self, z_score_entry_threshold: float = 2.0, z_score_exit_threshold: float = 0.4):
+    def __init__(self, z_score_entry_threshold: float = 2.1, z_score_exit_threshold: float = 0.4):
         self.entry_threshold = z_score_entry_threshold
         self.exit_threshold = z_score_exit_threshold
 
@@ -96,16 +97,16 @@ class StatisticalArbitrageAgent:
         }
 
     def evaluate_all_pairs(self, client) -> List[Dict]:
-        """Tüm korele çiftler arasında anlık piyasa-nötr istatistiksel arbitraj fırsatlarını tarar."""
+        """Tüm korele çiftler arasında 15m kapanmış mumlarla piyasa-nötr istatistiksel arbitraj tarar."""
         opportunities = []
         for sym_a, sym_b in PAIRS_UNIVERSE:
             try:
-                candles_a = client.get_klines(sym_a, interval="1m", limit=40)
-                candles_b = client.get_klines(sym_b, interval="1m", limit=40)
-                if not candles_a or not candles_b:
+                candles_a = client.get_klines(sym_a, interval="15m", limit=40)
+                candles_b = client.get_klines(sym_b, interval="15m", limit=40)
+                if not candles_a or not candles_b or len(candles_a) < 20 or len(candles_b) < 20:
                     continue
 
-                res = self.calculate_pair_spread(candles_a, candles_b)
+                res = self.calculate_pair_spread(candles_a[:-1], candles_b[:-1])
                 if res.get("is_signal"):
                     price_a = float(candles_a[-1]["close"])
                     price_b = float(candles_b[-1]["close"])
