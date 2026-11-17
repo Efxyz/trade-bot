@@ -313,6 +313,16 @@ class TradingBotOrchestrator:
                     add_scanner_log(symbol, "REJECTED", ta_reason)
                     continue
 
+                # 4h Makro Pusula & Yapısal Duvar Kalkanı (Sadece TA'yı geçen adaylar için 4h kontrolü)
+                try:
+                    candles_4h = self.client.get_klines(symbol, interval="4h", limit=60)
+                    is_macro_ok, macro_reason, _ = self.ta_agent.check_4h_macro_compass(ta_setup, candles_4h)
+                    if not is_macro_ok:
+                        add_scanner_log(symbol, "REJECTED", macro_reason)
+                        continue
+                except Exception:
+                    pass
+
                 # Sembol + Yön Bazlı Soğuma Molası (Aynı paritede aynı yönde intikam işlemini önle, diğer pariteleri kilitleme)
                 try:
                     from core.database import get_last_loss_for
