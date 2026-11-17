@@ -195,3 +195,8 @@ REGIME_POLICY = {
 # Günlük Oransal Zirve Kâr Kilidi
 DAILY_TRAILING_PROFIT_RATIO = 0.55
 DAILY_TRAILING_PROFIT_MIN_USDT = 25.0
+
+# Gerçek Emir Modu İçin Post-Only (GTX) Maker Komisyon Yapılandırması
+ENABLE_MAKER_POST_ONLY = False         # Sanal simülasyonda muhafazakâr Taker (%0.10) korunur; canlı emirde GTX (%0.04) açılır
+MAKER_FEE_PCT = 0.02                   # %0.02 Binance Futures Maker komisyonu
+MAKER_ROUNDTRIP_FEE_PCT = 0.04         # Giriş + TP Maker toplam %0.04 komisyon
