@@ -421,6 +421,26 @@ def init_db():
             )
         """)
 
+        # Shadow Logging / Filtre Ablasyonu Tablosu (Reddedilen Adayların Pasif Performans Takibi)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS shadow_rejections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                symbol TEXT NOT NULL,
+                direction TEXT NOT NULL,
+                timeframe TEXT DEFAULT '15m',
+                filter_stage TEXT NOT NULL,
+                reject_reason TEXT DEFAULT '',
+                confluence_score INTEGER DEFAULT 0,
+                entry_price REAL NOT NULL,
+                stop_loss REAL NOT NULL,
+                take_profit_1 REAL NOT NULL,
+                outcome TEXT DEFAULT 'PENDING',
+                evaluated_at TIMESTAMP,
+                simulated_r REAL DEFAULT 0.0
+            )
+        """)
+
         conn.commit()
 
 def add_scanner_log_db(symbol: str, status: str, reason: str, details: str = ""):
@@ -2864,6 +2884,102 @@ def format_super_fast_hourly_telegram_message(report: Dict) -> str:
     lines.append("⚡⚡ _SÜPER FAST: Saniyelik Mikro-Tick Yüksek Frekans Motoru_")
 
     return "\n".join(lines)
+
+
+def save_shadow_rejection(data: dict) -> int:
+    """Filtrelerin reddettiği bir adayı pasif olarak shadow_rejections tablosuna kaydeder (30 dk mükerrer korumalı)."""
+    try:
+        symbol = data.get("symbol", "")
+        direction = data.get("direction", "")
+        filter_stage = data.get("filter_stage", "UNKNOWN")
+        entry_price = float(data.get("entry_price") or 0.0)
+        stop_loss = float(data.get("stop_loss") or 0.0)
+        take_profit_1 = float(data.get("take_profit_1") or 0.0)
+        if not symbol or not direction or entry_price <= 0 or stop_loss <= 0 or take_profit_1 <= 0:
+            return 0
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id FROM shadow_rejections
+                WHERE symbol = ? AND direction = ? AND filter_stage = ?
+                  AND created_at >= datetime('now', '-30 minutes')
+                LIMIT 1
+            """, (symbol, direction, filter_stage))
+            if cursor.fetchone():
+                return 0
+            cursor.execute("""
+                INSERT INTO shadow_rejections (
+                    symbol, direction, timeframe, filter_stage, reject_reason,
+                    confluence_score, entry_price, stop_loss, take_profit_1
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                symbol,
+                direction,
+                data.get("timeframe", "15m"),
+                filter_stage,
+                str(data.get("reject_reason", ""))[:300],
+                int(data.get("confluence_score") or 0),
+                entry_price,
+                stop_loss,
+                take_profit_1,
+            ))
+            conn.commit()
+            return cursor.lastrowid or 0
+    except Exception:
+        return 0
+
+
+def get_pending_shadow_rejections(limit: int = 15) -> list:
+    """Henüz sonucu değerlendirilmemiş shadow ret kayıtlarını döndürür."""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM shadow_rejections
+                WHERE outcome = 'PENDING'
+                  AND created_at <= datetime('now', '-15 minutes')
+                ORDER BY created_at ASC
+                LIMIT ?
+            """, (limit,))
+            return [dict(r) for r in cursor.fetchall()]
+    except Exception:
+        return []
+
+
+def update_shadow_rejection(shadow_id: int, outcome: str, simulated_r: float):
+    """Shadow ret kaydının varsayımsal TP/SL sonucunu günceller."""
+    try:
+        with get_db_connection() as conn:
+            conn.execute("""
+                UPDATE shadow_rejections
+                SET outcome = ?, simulated_r = ?, evaluated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (outcome, round(float(simulated_r), 2), shadow_id))
+            conn.commit()
+    except Exception:
+        pass
+
+
+def get_shadow_ablation_summary() -> list:
+    """Her filtre aşamasının elenen adaylardaki gerçek TP/SL isabet istatistiğini döndürür."""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT
+                    filter_stage,
+                    COUNT(*) AS total_logged,
+                    SUM(CASE WHEN outcome = 'WOULD_WIN_TP1' THEN 1 ELSE 0 END) AS would_win,
+                    SUM(CASE WHEN outcome = 'WOULD_LOSE_SL' THEN 1 ELSE 0 END) AS would_lose,
+                    ROUND(AVG(CASE WHEN outcome IN ('WOULD_WIN_TP1', 'WOULD_LOSE_SL') THEN simulated_r END), 2) AS avg_r
+                FROM shadow_rejections
+                GROUP BY filter_stage
+                ORDER BY total_logged DESC
+            """)
+            return [dict(r) for r in cursor.fetchall()]
+    except Exception:
+        return []
+
 
 
 
