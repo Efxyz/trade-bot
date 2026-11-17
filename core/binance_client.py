@@ -507,3 +507,68 @@ class BinanceFuturesClient:
         except Exception:
             return None
 
+    def get_all_premium_basis(self) -> Dict[str, Dict]:
+        """Tek API çağrısıyla tüm USDT.P paritelerinin Spot-Vadeli Basis (%) ve Fonlama Oranını döner (45s Cache)."""
+        cache_key = "all_premium_basis"
+        now = time.time()
+        with BinanceFuturesClient._cache_lock:
+            if cache_key in BinanceFuturesClient._cache:
+                data, exp = BinanceFuturesClient._cache[cache_key]
+                if now < exp:
+                    return data
+
+        if self._is_rate_limited():
+            with BinanceFuturesClient._cache_lock:
+                return BinanceFuturesClient._cache.get(cache_key, ({}, 0))[0]
+
+        url = f"{self.base_url}/fapi/v1/premiumIndex"
+        try:
+            resp = self.session.get(url, timeout=8)
+            if not self._handle_response(resp):
+                return {}
+            resp.raise_for_status()
+            rows = resp.json()
+            basis_map: Dict[str, Dict] = {}
+            for item in rows:
+                sym = item.get("symbol", "")
+                if not sym.endswith("USDT"):
+                    continue
+                mark_px = float(item.get("markPrice") or 0.0)
+                idx_px = float(item.get("indexPrice") or 0.0)
+                fr = float(item.get("lastFundingRate") or 0.0)
+                if idx_px > 0 and mark_px > 0:
+                    basis_pct = ((mark_px - idx_px) / idx_px) * 100.0
+                    basis_map[sym] = {
+                        "mark_price": mark_px,
+                        "index_price": idx_px,
+                        "basis_pct": round(basis_pct, 4),
+                        "funding_rate_pct": round(fr * 100.0, 4)
+                    }
+            with BinanceFuturesClient._cache_lock:
+                BinanceFuturesClient._cache[cache_key] = (basis_map, now + 45.0)
+            return basis_map
+        except Exception:
+            return {}
+
+    @staticmethod
+    def build_post_only_order_params(
+        symbol: str,
+        side: str,
+        quantity: float,
+        limit_price: float,
+        reduce_only: bool = False
+    ) -> Dict:
+        """
+        Gerçek Binance Futures API geçişi için Post-Only (GTX) Maker limit emir şablonu üretir.
+        %0.05 Taker komisyonu yerine %0.02 Maker komisyonu sağlar.
+        """
+        return {
+            "symbol": symbol,
+            "side": side.upper(),
+            "type": "LIMIT",
+            "timeInForce": "GTX",
+            "quantity": quantity,
+            "price": limit_price,
+            "reduceOnly": "true" if reduce_only else "false"
+        }
+
