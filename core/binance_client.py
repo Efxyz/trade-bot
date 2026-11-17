@@ -175,7 +175,8 @@ class BinanceFuturesClient:
                     "low": float(item[3]),
                     "close": float(item[4]),
                     "volume": float(item[5]),
-                    "quote_volume": float(item[7])
+                    "quote_volume": float(item[7]),
+                    "taker_buy_volume": float(item[9]) if len(item) > 9 else 0.0
                 })
             
             # Dinamik TTL: 1m için 15s, 5m için 30s, 15m/1h için 60s (Binance limit kalkanı)
@@ -432,4 +433,77 @@ class BinanceFuturesClient:
 
         except Exception as e:
             return {"status": "NEUTRAL", "summary": f"BTC analizi yapılamadı: {e}", "block_longs": False}
+
+    def get_order_book_imbalance(self, symbol: str, limit: int = 20) -> Optional[Dict]:
+        """Emir defteri ilk 20 kademesindeki alış/satış duvarı dengesizliğini (OBI) döner (15s Cache)."""
+        cache_key = f"obi_{symbol}_{limit}"
+        now = time.time()
+        with BinanceFuturesClient._cache_lock:
+            if cache_key in BinanceFuturesClient._cache:
+                data, exp = BinanceFuturesClient._cache[cache_key]
+                if now < exp:
+                    return data
+
+        if self._is_rate_limited():
+            return None
+
+        url = f"{self.base_url}/fapi/v1/depth"
+        try:
+            resp = self.session.get(url, params={"symbol": symbol, "limit": limit}, timeout=6)
+            if not self._handle_response(resp):
+                return None
+            resp.raise_for_status()
+            book = resp.json()
+            bid_notional = sum(float(p) * float(q) for p, q in book.get("bids", []))
+            ask_notional = sum(float(p) * float(q) for p, q in book.get("asks", []))
+            total_notional = bid_notional + ask_notional
+            if total_notional <= 0 or ask_notional <= 0:
+                return None
+            ratio = round(bid_notional / ask_notional, 2)
+            bid_share_pct = round((bid_notional / total_notional) * 100.0, 1)
+            res = {
+                "bid_notional": round(bid_notional, 2),
+                "ask_notional": round(ask_notional, 2),
+                "imbalance_ratio": ratio,
+                "bid_share_pct": bid_share_pct
+            }
+            with BinanceFuturesClient._cache_lock:
+                BinanceFuturesClient._cache[cache_key] = (res, now + 15.0)
+            return res
+        except Exception:
+            return None
+
+    def get_open_interest_delta(self, symbol: str, period: str = "15m", limit: int = 6) -> Optional[Dict]:
+        """Son periyotlardaki Open Interest (Açık Pozisyon) değişim yüzdesini döner (60s Cache)."""
+        cache_key = f"oi_{symbol}_{period}_{limit}"
+        now = time.time()
+        with BinanceFuturesClient._cache_lock:
+            if cache_key in BinanceFuturesClient._cache:
+                data, exp = BinanceFuturesClient._cache[cache_key]
+                if now < exp:
+                    return data
+
+        if self._is_rate_limited():
+            return None
+
+        url = f"{self.base_url}/futures/data/openInterestHist"
+        try:
+            resp = self.session.get(url, params={"symbol": symbol, "period": period, "limit": limit}, timeout=6)
+            if not self._handle_response(resp):
+                return None
+            resp.raise_for_status()
+            rows = resp.json()
+            if not rows or len(rows) < 2:
+                return None
+            first_oi = float(rows[0].get("sumOpenInterestValue") or rows[0].get("sumOpenInterest") or 0.0)
+            last_oi = float(rows[-1].get("sumOpenInterestValue") or rows[-1].get("sumOpenInterest") or 0.0)
+            if first_oi <= 0:
+                return None
+            oi_change_pct = round(((last_oi - first_oi) / first_oi) * 100.0, 2)
+            res = {"oi_change_pct": oi_change_pct, "latest_oi_val": round(last_oi, 2)}
+            with BinanceFuturesClient._cache_lock:
+                BinanceFuturesClient._cache[cache_key] = (res, now + 60.0)
+            return res
+        except Exception:
+            return None
 
