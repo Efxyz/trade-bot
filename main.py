@@ -74,6 +74,24 @@ class TradingBotOrchestrator:
 
         print("✅ Tüm Ajanlar, BTC Kalkanı ve Binance Futures (USDT.P) hazır.\n")
 
+    def _record_shadow_rejection(self, symbol: str, ta_setup: dict, filter_stage: str, reject_reason: str):
+        """Reddedilen adayı filtre ablasyonu (Shadow Mode) için pasif olarak DB'ye kaydeder."""
+        try:
+            from core.database import save_shadow_rejection
+            save_shadow_rejection({
+                "symbol": symbol,
+                "direction": ta_setup.get("direction", "LONG"),
+                "timeframe": ta_setup.get("timeframe", "15m"),
+                "filter_stage": filter_stage,
+                "reject_reason": reject_reason,
+                "confluence_score": ta_setup.get("confluence_score", 0),
+                "entry_price": ta_setup.get("current_price") or ((float(ta_setup.get("entry_min", 0)) + float(ta_setup.get("entry_max", 0))) / 2.0),
+                "stop_loss": ta_setup.get("stop_loss", 0),
+                "take_profit_1": ta_setup.get("take_profit_1", 0),
+            })
+        except Exception:
+            pass
+
     def _try_open_stat_arb_pair(self, slots_left: int, allowed_timeframes) -> bool:
         """Yönlü işlem bulunamadığında veya BTC yatay testere (DEAD_CHOP) modundayken piyasa-nötr ikili arbitraj açar."""
         if slots_left < 2 or "15m" not in allowed_timeframes:
@@ -372,6 +390,7 @@ class TradingBotOrchestrator:
                     candles_4h = self.client.get_klines(symbol, interval="4h", limit=60)
                     is_macro_ok, macro_reason, _ = self.ta_agent.check_4h_macro_compass(ta_setup, candles_4h)
                     if not is_macro_ok:
+                        self._record_shadow_rejection(symbol, ta_setup, "4H_MACRO", macro_reason)
                         add_scanner_log(symbol, "REJECTED", macro_reason)
                         continue
                 except Exception:
@@ -405,9 +424,11 @@ class TradingBotOrchestrator:
                             ta_setup["confluence_score"] = min(100, c_score + 6)
                             ta_setup["ta_reasons"] = f"{ta_setup.get('ta_reasons', '')} | 💥 Likidasyon Şelalesi Dönüşü (OI %{oi_chg:.1f}, +6)".strip(" |")
                         elif c_dir == "LONG" and p_chg >= 0.50 and oi_chg <= -1.20 and c_score < 84:
+                            self._record_shadow_rejection(symbol, ta_setup, "OI_DELTA", "Sahte Kirilim / Short Squeeze")
                             add_scanner_log(symbol, "REJECTED", f"📌 <strong>Mevcut Durum:</strong> Sahte Kırılım / Short Squeeze (Fiyat +%{p_chg:.2f}, OI -%{abs(oi_chg):.2f}).<br>⛔ <strong>Giriş Yapılmama Nedeni:</strong> Yeni alım gelmeden yalnızca short stopları patladığı için geri dönüş riski yüksek.")
                             continue
                         elif c_dir == "SHORT" and p_chg <= -0.50 and oi_chg <= -1.20 and c_score < 84:
+                            self._record_shadow_rejection(symbol, ta_setup, "OI_DELTA", "Tukenmis Long Tasfiyesi")
                             add_scanner_log(symbol, "REJECTED", f"📌 <strong>Mevcut Durum:</strong> Tükenmiş Long Tasfiyesi (Fiyat %{p_chg:.2f}, OI -%{abs(oi_chg):.2f}).<br>⛔ <strong>Giriş Yapılmama Nedeni:</strong> Tasfiye tamamlanırken dipten tepki sıçraması riski yüksek.")
                             continue
                         elif oi_chg >= 0.80:
@@ -442,9 +463,11 @@ class TradingBotOrchestrator:
                         c_dir = ta_setup.get("direction", "LONG")
                         c_score = int(ta_setup.get("confluence_score", 0))
                         if c_dir == "LONG" and ratio <= 0.28 and c_score < 84:
+                            self._record_shadow_rejection(symbol, ta_setup, "OBI", f"Satis Duvari OBI={ratio:.2f}")
                             add_scanner_log(symbol, "REJECTED", f"📌 <strong>Mevcut Durum:</strong> Tahtada Ağır Satış Duvarı (OBI: {ratio:.2f}).<br>⛔ <strong>Giriş Yapılmama Nedeni:</strong> Emir defterinde satış baskısı alışların 3.5x üzerinde; tepe duvarı riski.")
                             continue
                         if c_dir == "SHORT" and ratio >= 3.50 and c_score < 84:
+                            self._record_shadow_rejection(symbol, ta_setup, "OBI", f"Alis Duvari OBI={ratio:.2f}")
                             add_scanner_log(symbol, "REJECTED", f"📌 <strong>Mevcut Durum:</strong> Tahtada Ağır Alış Duvarı (OBI: {ratio:.2f}).<br>⛔ <strong>Giriş Yapılmama Nedeni:</strong> Emir defterinde alış desteği satışların 3.5x üzerinde; dip duvarı riski.")
                             continue
                 except Exception:
@@ -500,6 +523,7 @@ class TradingBotOrchestrator:
                     client=self.client
                 )
                 if not is_approved:
+                    self._record_shadow_rejection(symbol, ta_setup, "RISK_CHIEF", risk_report.get("reason", "Risk"))
                     add_scanner_log(symbol, "REJECTED", risk_report.get("reason", "Risk kurallarına uymadı"))
                     continue
 
@@ -521,6 +545,7 @@ class TradingBotOrchestrator:
                 win_pct = quant_sim.get("win_probability_pct", 0.0)
 
                 if not quant_sim.get("is_approved", False):
+                    self._record_shadow_rejection(symbol, ta_setup, "MONTE_CARLO", f"Win %{win_pct:.1f}")
                     add_scanner_log(
                         symbol,
                         "REJECTED",
@@ -537,6 +562,7 @@ class TradingBotOrchestrator:
 
                 if not ai_verdict.get("ai_approved", True):
                     critique = ai_verdict.get('ai_critique', '')
+                    self._record_shadow_rejection(symbol, ta_setup, "AI_COMMITTEE", critique[:120])
                     add_scanner_log(symbol, "REJECTED", f"Yatırım Komitesi Veto Etti ({ai_verdict.get('ai_confidence', 0)}/10)", critique[:60])
                     continue
 
@@ -658,46 +684,65 @@ class TradingBotOrchestrator:
                 if not fresh_price or fresh_price <= 0:
                     fresh_price = float(ta_setup["current_price"])
 
-                # Teyit 1: Fiyat Giriş Bölgesini Aştı mı? (Tepe / Dip Kovalamama Kalkanı)
+                # Teyit 1: Fiyat Giriş Bölgesini Aştı mı & Canlı Dolum Fiyatıyla Net R:R Korunuyor mu?
                 entry_min = float(ta_setup["entry_min"])
                 entry_max = float(ta_setup["entry_max"])
+                sl_px = float(ta_setup["stop_loss"])
+                tp1_px = float(ta_setup["take_profit_1"])
+                orig_entry = float(ta_setup.get("current_price") or ((entry_min + entry_max) / 2.0))
+                orig_sl_dist = abs(orig_entry - sl_px)
+                chase_tol = min(orig_entry * 0.0035, orig_sl_dist * 0.15) if orig_sl_dist > 0 else orig_entry * 0.0020
                 is_chasing = False
                 chase_reason = ""
 
                 if ta_setup["direction"] == "LONG":
-                    if fresh_price > entry_max * 1.0035:
+                    if fresh_price > entry_max + chase_tol:
                         is_chasing = True
-                        chase_reason = f"Fiyat yukarı fırladı (Canlı: ${fresh_price}, Tavan: ${entry_max})"
-                    elif fresh_price <= float(ta_setup["stop_loss"]):
+                        chase_reason = f"Fiyat SL-oranlı kovalama sınırını aştı (Canlı: ${fresh_price}, Tavan: ${entry_max + chase_tol:.6f})"
+                    elif fresh_price <= sl_px:
                         is_chasing = True
-                        chase_reason = f"Fiyat stop seviyesinin altına indi (Canlı: ${fresh_price}, SL: ${ta_setup['stop_loss']})"
+                        chase_reason = f"Fiyat stop seviyesinin altına indi (Canlı: ${fresh_price}, SL: ${sl_px})"
                 else:  # SHORT
-                    if fresh_price < entry_min * 0.9965:
+                    if fresh_price < entry_min - chase_tol:
                         is_chasing = True
-                        chase_reason = f"Fiyat aşağı çöktü (Canlı: ${fresh_price}, Taban: ${entry_min})"
-                    elif fresh_price >= float(ta_setup["stop_loss"]):
+                        chase_reason = f"Fiyat SL-oranlı kovalama sınırını aştı (Canlı: ${fresh_price}, Taban: ${entry_min - chase_tol:.6f})"
+                    elif fresh_price >= sl_px:
                         is_chasing = True
-                        chase_reason = f"Fiyat stop seviyesinin üzerine çıktı (Canlı: ${fresh_price}, SL: ${ta_setup['stop_loss']})"
+                        chase_reason = f"Fiyat stop seviyesinin üzerine çıktı (Canlı: ${fresh_price}, SL: ${sl_px})"
+
+                if not is_chasing:
+                    live_sl_dist = abs(fresh_price - sl_px)
+                    live_tp1_dist = (tp1_px - fresh_price) if ta_setup["direction"] == "LONG" else (fresh_price - tp1_px)
+                    live_rr = (live_tp1_dist / live_sl_dist) if live_sl_dist > 0 else 0.0
+                    if live_rr < 1.65:
+                        is_chasing = True
+                        chase_reason = f"Canlı dolum fiyatında R:R bozuldu ({live_rr:.2f} < 1.65)"
+                    else:
+                        ta_setup["risk_reward"] = round(live_rr, 2)
 
                 if is_chasing:
+                    self._record_shadow_rejection(symbol, ta_setup, "LIVE_RR", chase_reason)
                     print(f"⚠️ [{symbol}] İkinci Teyit Başarısız: {chase_reason}. Fırsat elendi, sıradaki adaya geçiliyor.")
                     add_scanner_log(
                         symbol,
                         "TIMEOUT",
                         f"2. Teyitte Elendi: {chase_reason}",
-                        "Kovalama ve Ani Fiyat Kayması Engellendi"
+                        "Kovalama ve R:R Bozulması Engellendi"
                     )
                     continue
 
-                # Teyit 2: Tahta Spread Denetimi (İllikit / Geniş Spread Koruması)
+                # Teyit 2: Tahta Spread Denetimi (SL Mesafesine Oranlı Sıkı Spread Koruması)
                 if fresh_book and fresh_book.get("bidPrice") and fresh_book.get("askPrice"):
                     bid = float(fresh_book["bidPrice"])
                     ask = float(fresh_book["askPrice"])
                     if bid > 0 and ask > 0:
                         spread_pct = ((ask - bid) / bid) * 100.0
-                        if spread_pct > 0.15:
-                            print(f"⚠️ [{symbol}] Geniş Spread (%{spread_pct:.3f} > %0.15). İkinci taramada elendi.")
-                            add_scanner_log(symbol, "REJECTED", f"2. Teyit: Geniş Spread (%{spread_pct:.2f})", "Yüksek Kayma Riski")
+                        sl_pct_dist = (abs(fresh_price - sl_px) / fresh_price) * 100.0 if fresh_price > 0 else 1.0
+                        max_spread_pct = min(0.08, max(0.03, round(sl_pct_dist * 0.08, 4)))
+                        if spread_pct > max_spread_pct:
+                            self._record_shadow_rejection(symbol, ta_setup, "SPREAD", f"Spread %{spread_pct:.3f} > %{max_spread_pct:.3f}")
+                            print(f"⚠️ [{symbol}] Geniş Spread (%{spread_pct:.3f} > %{max_spread_pct:.3f}). İkinci taramada elendi.")
+                            add_scanner_log(symbol, "REJECTED", f"2. Teyit: Geniş Spread (%{spread_pct:.3f} > %{max_spread_pct:.3f})", "SL-Oranlı Kayma Riski")
                             continue
 
                 # Teyit 3: Güncel BTC Ani Çöküş Denetimi
