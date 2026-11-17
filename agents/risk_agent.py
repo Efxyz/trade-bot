@@ -29,6 +29,31 @@ class RiskOfficerAgent:
     def __init__(self):
         pass
 
+    @staticmethod
+    def _calc_return_correlation(candles_a: List[Dict], candles_b: List[Dict], lookback: int = 24) -> float:
+        """İki paritenin son kapanmış mum getirileri arasındaki Pearson korelasyonunu döner [-1, 1]."""
+        import math
+        if not candles_a or not candles_b or len(candles_a) < lookback + 2 or len(candles_b) < lookback + 2:
+            return 0.0
+        ca = [float(c["close"]) for c in candles_a[-(lookback + 2):-1]]
+        cb = [float(c["close"]) for c in candles_b[-(lookback + 2):-1]]
+        n = min(len(ca), len(cb))
+        if n < 10:
+            return 0.0
+        ra = [(ca[i] - ca[i - 1]) / ca[i - 1] for i in range(1, n) if ca[i - 1] > 0]
+        rb = [(cb[i] - cb[i - 1]) / cb[i - 1] for i in range(1, n) if cb[i - 1] > 0]
+        m = min(len(ra), len(rb))
+        if m < 8:
+            return 0.0
+        ra, rb = ra[-m:], rb[-m:]
+        ma = sum(ra) / m
+        mb = sum(rb) / m
+        cov = sum((ra[i] - ma) * (rb[i] - mb) for i in range(m))
+        va = sum((ra[i] - ma) ** 2 for i in range(m))
+        vb = sum((rb[i] - mb) ** 2 for i in range(m))
+        denom = math.sqrt(va * vb)
+        return round(cov / denom, 3) if denom > 0 else 0.0
+
     def evaluate(
         self,
         ta_setup: Dict,
@@ -38,7 +63,8 @@ class RiskOfficerAgent:
         funding_data: Optional[Dict] = None,
         book_ticker: Optional[Dict] = None,
         active_signals: Optional[List[Dict]] = None,
-        current_equity: Optional[float] = None
+        current_equity: Optional[float] = None,
+        client=None
     ) -> Tuple[bool, Dict]:
         """
         Setup'ı dinamik kaldıraç (10x veya 20x), komisyon hesabı, slippage (spread),
@@ -175,8 +201,9 @@ class RiskOfficerAgent:
                         "reason": f"📌 <strong>Mevcut Durum:</strong> {symbol} paritesinde zaten açık bir işlem var.<br>⛔ <strong>Giriş Yapılmama Nedeni:</strong> Çift risk almayı engelleme kuralı.<br>🎯 <strong>Beklenen Şart:</strong> Mevcut pozisyonun kâr veya stopla kapanması."
                     }
 
-            # 1.8 TEK YÖNE YIĞILMA KALKANI (KORELASYON VE HEDGE KORUMASI - MAKS 3)
-            same_dir_count = sum(1 for s in active_signals if s.get("direction") == direction)
+            # 1.8 TEK YÖNE YIĞILMA KALKANI (KORELASYON VE HEDGE KORUMASI - MAKS 4)
+            same_dir_syms = [s.get("symbol") for s in active_signals if s.get("direction") == direction and s.get("symbol")]
+            same_dir_count = len(same_dir_syms)
             if same_dir_count >= MAX_POSITIONS_PER_DIRECTION:
                 opp_dir = "SHORT" if direction == "LONG" else "LONG"
                 return False, {
@@ -187,6 +214,34 @@ class RiskOfficerAgent:
                         f"🎯 <strong>Beklenen Şart:</strong> Portföy dengesi için zıt yönde ({opp_dir}) işlem bulunması veya bir {direction} pozisyonunun kapanması."
                     )
                 }
+
+            # 1.9 PORTFÖY KORELASYON KALKANI (Vibe-Trading İlkesi: Aynı yönde yüksek korelasyonlu toplu stop riskini önle)
+            corr_multiplier = 1.0
+            if client is not None and same_dir_count >= 1:
+                try:
+                    cand_kl_1h = client.get_klines(symbol, interval="1h", limit=30)
+                    high_corr_syms = []
+                    for act_sym in same_dir_syms:
+                        act_kl_1h = client.get_klines(act_sym, interval="1h", limit=30)
+                        rho = self._calc_return_correlation(cand_kl_1h, act_kl_1h, lookback=24)
+                        if rho >= 0.78:
+                            high_corr_syms.append((act_sym, rho))
+                    if len(high_corr_syms) >= 2:
+                        pairs_txt = ", ".join([f"{s} (r={r})" for s, r in high_corr_syms[:2]])
+                        return False, {
+                            "decision": "REJECT",
+                            "reason": (
+                                f"📌 <strong>Mevcut Durum:</strong> Portföy Korelasyon Kalkanı ({direction}: {pairs_txt}).<br>"
+                                f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Aynı yönde zaten 2 yüksek korelasyonlu (r >= 0.78) pozisyon açık; toplu stop riski engellendi.<br>"
+                                f"🎯 <strong>Beklenen Şart:</strong> Farklı/düşük korelasyonlu parite veya mevcut pozisyonun BE+ olması."
+                            )
+                        }
+                    elif len(high_corr_syms) == 1:
+                        corr_multiplier = 0.75
+                except Exception:
+                    corr_multiplier = 1.0
+        else:
+            corr_multiplier = 1.0
 
         # Vadeye Göre Dinamik Stop-Loss Tavanı (15m Kısa / 30m Orta / 1h Uzun)
         timeframe = ta_setup.get("timeframe") or ("1h" if "1h" in str(ta_setup.get("trade_horizon")) else ("30m" if "30m" in str(ta_setup.get("trade_horizon")) else "15m"))
@@ -260,10 +315,12 @@ class RiskOfficerAgent:
         dynamic_max_margin = round(active_equity * 0.20, 1)
         allocated_margin = round(max(30.0, min(dynamic_max_margin, calculated_margin)), 1)
 
-        # 5.1. Haber Kararlandırma Konseyi Pozisyon Büyüklüğü & Yüzdelik Kararı (News Council Multiplier)
+        # 5.1. Haber Kararlandırma Konseyi & Korelasyon Çarpanı
         news_multiplier = float(news_analysis.get("pos_multiplier", 1.0)) if news_analysis else 1.0
         if news_multiplier > 0 and news_multiplier != 1.0:
             allocated_margin = round(max(25.0, min(dynamic_max_margin * 1.25, allocated_margin * news_multiplier)), 1)
+        if corr_multiplier < 1.0:
+            allocated_margin = round(max(25.0, allocated_margin * corr_multiplier), 1)
 
         # Komisyon dahil sert risk tavanı: 20x veya geniş SL'de dahi tek işlem kaybı target_risk_usd'yi aşamaz
         if total_sl_loss_fraction > 0:
