@@ -412,6 +412,17 @@ class CounterfactualTrackerAgent:
                     else:
                         print(f"⏳ [{symbol}] [{sig_tf}] Fiyat hafif ekside ({raw_c*100:.2f}%) ama son kapanan mum EMA20 desteğini koruyor -> Panik kesim önlendi.")
 
+            # 5b. 2-MUM MOMENTUM İPTALİ (Hummingbot İlkesi: İlk 2 kapanmış mumda yön teyidi gelmezse ölü sermayeyi kurtar)
+            two_candle_min = 30 if sig_tf == "15m" else (60 if sig_tf == "30m" else 120)
+            if not is_closed and current_ladder_step == 0 and partial_tp_taken == 0 and minutes_open >= two_candle_min:
+                raw_c_2b = ((current_price - entry_price) / entry_price) if is_long else ((entry_price - current_price) / entry_price)
+                if peak_profit_pct < 0.25 and (-0.0040 <= raw_c_2b <= -0.0010):
+                    is_closed = True
+                    final_status = "MOMENTUM_STAGNATION_EXIT"
+                    exit_price = current_price
+                    raw_change = raw_c_2b
+                    print(f"⚡ [{symbol}] [{sig_tf}] 2-Mum Momentum İptali ({minutes_open:.0f} dk, Zirve: +%{peak_profit_pct:.2f}, Anlık: {raw_c_2b*100:+.2f}%) -> Ölü sermaye serbest bırakıldı.")
+
             # 6. ZAMAN AŞIMI (TIMEOUT / VADEYE GÖRE HAREKETSİZLİK ÇIKIŞI)
             if not is_closed and minutes_open >= effective_max_hold:
                 raw_change = ((current_price - entry_price) / entry_price) if is_long else ((entry_price - current_price) / entry_price)
