@@ -115,12 +115,12 @@ SIDE_STOPLOSS_COOLDOWN_MINUTES = 45        # Kilitlenen yön 45 dakika boyunca y
 # ========================================================
 # Her zaman diliminin bağımsız günlük kotası vardır.
 # Bir vadenin (örneğin 15m) kotası dolduğunda diğer vadeler (30m ve 1h) fırsat aramaya kesintisiz devam eder!
-DAILY_MAX_TRADES_15M = 5              # ⚡ 15m (Kısa Vade): Günde azami 5 işlem
-DAILY_MAX_TRADES_30M = 4              # 🎯 30m (Orta Vade): Günde azami 4 işlem
-DAILY_MAX_TRADES_1H = 3               # 👑 1h (Uzun Vade): Günde azami 3 işlem
+DAILY_MAX_TRADES_15M = 10             # ⚡ 15m (Kısa Vade): Günde azami 10 işlem
+DAILY_MAX_TRADES_30M = 8              # 🎯 30m (Orta Vade): Günde azami 8 işlem
+DAILY_MAX_TRADES_1H = 6               # 👑 1h (Uzun Vade): Günde azami 6 işlem
 
-DAILY_BASE_MAX_TRADES = 12            # Toplam tavan referansı (5 + 4 + 3)
-DAILY_MAX_NEW_TRADES = 12             # Geriye dönük uyumluluk aliası
+DAILY_BASE_MAX_TRADES = 24            # Toplam tavan referansı (10 + 8 + 6)
+DAILY_MAX_NEW_TRADES = 24             # Geriye dönük uyumluluk aliası
 PROFIT_STEP_FOR_BONUS_TRADES = 15.0   # Her +$15 net kârda her vadeye +1 ekstra kota slotu eklenir
 BONUS_TRADES_PER_STEP = 1             # Her kâr adımında her vade kotasına ilave hak
 ENABLE_CIRCUIT_BREAKER = True         # Güvenlik Kalkanı: Günlük -$50 kayıpta taramayı 24s dondur
