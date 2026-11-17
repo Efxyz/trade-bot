@@ -381,8 +381,9 @@ class CounterfactualTrackerAgent:
                 effective_early_inval_min += 25  # 2. Kademe DCA dolduysa toparlanma nefesi
                 effective_inval_loss *= 1.35
 
-            # Eğer henüz SL'e çarpmamışsa, vadeye göre erken süreyi geçmişse ve ladder_step == 0 ise:
-            if not is_closed and EARLY_INVALIDATION_ENABLED and current_ladder_step == 0 and minutes_open >= effective_early_inval_min:
+            # Eğer henüz SL'e çarpmamışsa, vadeye göre erken süreyi geçmişse ve ladder_step == 0 ise (Pair hedge bacakları hariç):
+            is_pair_trade = int(sig.get("is_pair_trade") or 0)
+            if not is_closed and is_pair_trade == 0 and EARLY_INVALIDATION_ENABLED and current_ladder_step == 0 and minutes_open >= effective_early_inval_min:
                 raw_c = ((current_price - entry_price) / entry_price) if is_long else ((entry_price - current_price) / entry_price)
                 if raw_c <= -(effective_inval_loss / 100.0):
                     # Yapısal Mum Kapanışı Teyidi: Sadece fitil iğnesiyle değil, kapanan mum EMA20 aleyhine döndüyse kes
@@ -413,8 +414,9 @@ class CounterfactualTrackerAgent:
                         print(f"⏳ [{symbol}] [{sig_tf}] Fiyat hafif ekside ({raw_c*100:.2f}%) ama son kapanan mum EMA20 desteğini koruyor -> Panik kesim önlendi.")
 
             # 5b. 2-MUM MOMENTUM İPTALİ (Hummingbot İlkesi: İlk 2 kapanmış mumda yön teyidi gelmezse ölü sermayeyi kurtar)
+            # Not: Market-Neutral Pair Trade bacakları (is_pair_trade == 1) spread dengesi gereği tek bacaklı iptalden muaf tutulur.
             two_candle_min = 30 if sig_tf == "15m" else (60 if sig_tf == "30m" else 120)
-            if not is_closed and current_ladder_step == 0 and partial_tp_taken == 0 and minutes_open >= two_candle_min:
+            if not is_closed and is_pair_trade == 0 and current_ladder_step == 0 and partial_tp_taken == 0 and minutes_open >= two_candle_min:
                 raw_c_2b = ((current_price - entry_price) / entry_price) if is_long else ((entry_price - current_price) / entry_price)
                 if peak_profit_pct < 0.25 and (-0.0040 <= raw_c_2b <= -0.0010):
                     is_closed = True
