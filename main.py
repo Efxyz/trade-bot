@@ -135,11 +135,13 @@ class TradingBotOrchestrator:
             get_today_trades_count_by_timeframe,
             get_today_net_dollar_loss,
             get_today_net_dollar_pnl,
-            get_and_update_today_peak_profit
+            get_and_update_today_peak_profit,
+            get_open_unprotected_risk_usdt
         )
 
         if ENABLE_CIRCUIT_BREAKER:
             today_loss = get_today_net_dollar_loss()
+            open_risk = get_open_unprotected_risk_usdt()
             if today_loss >= DAILY_MAX_DRAWDOWN_USDT:
                 msg = (
                     f"Günlük azami kayıp limiti (${DAILY_MAX_DRAWDOWN_USDT:.2f}) aşıldı! "
@@ -148,6 +150,14 @@ class TradingBotOrchestrator:
                 )
                 print(f"🛑 [Acil Durum Sigortası / Circuit Breaker] {msg}")
                 add_scanner_log("CIRCUIT BREAKER", "PROTECTED", msg, "Acil Durum Sermaye Sigortası")
+                return
+            if today_loss > 0 and (today_loss + open_risk) >= (DAILY_MAX_DRAWDOWN_USDT * 1.15):
+                msg = (
+                    f"Birleşik Risk Kalkanı devrede! Gerçekleşmiş zarar (-${today_loss:.2f}) + BE+ olmamış açık risk "
+                    f"(${open_risk:.2f}) günlük sigortaya (${DAILY_MAX_DRAWDOWN_USDT:.2f}) dayandı. Mevcut pozisyonlar korunana kadar yeni giriş durduruldu."
+                )
+                print(f"🛡️ [Birleşik Risk Kalkanı] {msg}")
+                add_scanner_log("RİSK KALKANI", "PROTECTED", msg, "Açık+Kapanmış Risk Koruması")
                 return
 
         today_pnl = get_today_net_dollar_pnl()
