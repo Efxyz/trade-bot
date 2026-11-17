@@ -74,6 +74,56 @@ class TradingBotOrchestrator:
 
         print("✅ Tüm Ajanlar, BTC Kalkanı ve Binance Futures (USDT.P) hazır.\n")
 
+    def _try_open_stat_arb_pair(self, slots_left: int, allowed_timeframes) -> bool:
+        """Yönlü işlem bulunamadığında veya BTC yatay testere (DEAD_CHOP) modundayken piyasa-nötr ikili arbitraj açar."""
+        if slots_left < 2 or "15m" not in allowed_timeframes:
+            return False
+        try:
+            from agents.pairs_stat_arb_agent import StatisticalArbitrageAgent
+            from core.database import get_active_and_pending_signals
+            active_syms_now = {s.get("symbol") for s in (get_active_and_pending_signals() or [])}
+            pair_opps = StatisticalArbitrageAgent(z_score_entry_threshold=2.1).evaluate_all_pairs(self.client)
+            for popp in pair_opps:
+                sa, sb = popp["sym_a"], popp["sym_b"]
+                if sa in active_syms_now or sb in active_syms_now:
+                    continue
+                pa, pb = popp["price_a"], popp["price_b"]
+                la, lb = popp["leg_a_direction"], popp["leg_b_direction"]
+                sl_pct_p, tp1_pct_p, tp2_pct_p = 1.20, 2.20, 3.50
+                for leg_sym, leg_px, leg_dir, peer_sym in [(sa, pa, la, sb), (sb, pb, lb, sa)]:
+                    sl_px = round(leg_px * (1 - sl_pct_p / 100) if leg_dir == "LONG" else leg_px * (1 + sl_pct_p / 100), 6)
+                    tp1_px = round(leg_px * (1 + tp1_pct_p / 100) if leg_dir == "LONG" else leg_px * (1 - tp1_pct_p / 100), 6)
+                    tp2_px = round(leg_px * (1 + tp2_pct_p / 100) if leg_dir == "LONG" else leg_px * (1 - tp2_pct_p / 100), 6)
+                    sig_pair = {
+                        "symbol": leg_sym,
+                        "direction": leg_dir,
+                        "leverage": 10,
+                        "entry_min": round(leg_px * 0.9995, 6),
+                        "entry_max": round(leg_px * 1.0005, 6),
+                        "actual_entry_price": leg_px,
+                        "stop_loss": sl_px,
+                        "take_profit_1": tp1_px,
+                        "take_profit_2": tp2_px,
+                        "risk_reward": 1.83,
+                        "risk_grade": "Grade A (Piyasa-Nötr Pair)",
+                        "allocated_margin_usdt": 65.0,
+                        "risk_usd": 8.45,
+                        "news_summary": f"Piyasa-Nötr Stat-Arb ({popp['pair_name']})",
+                        "ta_reasons": popp["reason"],
+                        "chart_entry_png": "",
+                        "is_pair_trade": 1,
+                        "pair_symbol": peer_sym,
+                        "timeframe": "15m",
+                        "trade_horizon": "Kısa Vade (15m Pair)"
+                    }
+                    save_signal(sig_pair)
+                add_scanner_log(f"{sa}/{sb}", "APPROVED", popp["reason"], f"Pair Z={popp['z_score']}")
+                print(f"⚖️ [Piyasa-Nötr Pair] {sa} ({la}) + {sb} ({lb}) | Z={popp['z_score']}")
+                return True
+        except Exception as pair_err:
+            print(f"⚠️ Pair Arbitraj kontrol hatası: {pair_err}")
+        return False
+
     def run_cycle(self):
         """Tek bir tam analiz ve takip döngüsü yürütür."""
         print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 🔍 Döngü Başladı...")
@@ -136,25 +186,27 @@ class TradingBotOrchestrator:
             get_today_net_dollar_loss,
             get_today_net_dollar_pnl,
             get_and_update_today_peak_profit,
-            get_open_unprotected_risk_usdt
+            get_open_unprotected_risk_usdt,
+            get_current_equity
         )
 
         if ENABLE_CIRCUIT_BREAKER:
             today_loss = get_today_net_dollar_loss()
             open_risk = get_open_unprotected_risk_usdt()
-            if today_loss >= DAILY_MAX_DRAWDOWN_USDT:
+            effective_max_dd = max(DAILY_MAX_DRAWDOWN_USDT, round(get_current_equity() * 0.035, 2))
+            if today_loss >= effective_max_dd:
                 msg = (
-                    f"Günlük azami kayıp limiti (${DAILY_MAX_DRAWDOWN_USDT:.2f}) aşıldı! "
+                    f"Günlük azami kayıp limiti (${effective_max_dd:.2f}) aşıldı! "
                     f"Bugünkü net zarar: -${today_loss:.2f}. Acil durum sigortası devreye girdi, "
                     f"tüm yeni girişler gün sonuna kadar donduruldu."
                 )
                 print(f"🛑 [Acil Durum Sigortası / Circuit Breaker] {msg}")
                 add_scanner_log("CIRCUIT BREAKER", "PROTECTED", msg, "Acil Durum Sermaye Sigortası")
                 return
-            if today_loss > 0 and (today_loss + open_risk) >= (DAILY_MAX_DRAWDOWN_USDT * 1.15):
+            if today_loss > 0 and (today_loss + open_risk) >= (effective_max_dd * 1.15):
                 msg = (
                     f"Birleşik Risk Kalkanı devrede! Gerçekleşmiş zarar (-${today_loss:.2f}) + BE+ olmamış açık risk "
-                    f"(${open_risk:.2f}) günlük sigortaya (${DAILY_MAX_DRAWDOWN_USDT:.2f}) dayandı. Mevcut pozisyonlar korunana kadar yeni giriş durduruldu."
+                    f"(${open_risk:.2f}) günlük sigortaya (${effective_max_dd:.2f}) dayandı. Mevcut pozisyonlar korunana kadar yeni giriş durduruldu."
                 )
                 print(f"🛡️ [Birleşik Risk Kalkanı] {msg}")
                 add_scanner_log("RİSK KALKANI", "PROTECTED", msg, "Açık+Kapanmış Risk Koruması")
@@ -237,6 +289,8 @@ class TradingBotOrchestrator:
             detailed_msg = btc_regime.get("detailed_reason") or summary_msg
             print(f"🛑 [BTC Ölü Piyasa Freni] {summary_msg}")
             add_scanner_log("BTC KALKANI", "PROTECTED", detailed_msg, "Sermaye Koruma Modu (0 Risk)")
+            if "CRASH" not in str(btc_regime.get("status", "")).upper():
+                self._try_open_stat_arb_pair(slots_left, allowed_timeframes)
             return
 
         # 2.5 SEMBOL + YÖN BAZLI SOĞUMA MOLASI: Aday döngüsünde TA kurulumu sonrası kontrol edilir (Global dondurma kaldırıldı)
@@ -546,51 +600,7 @@ class TradingBotOrchestrator:
         # =========================================================================
         if not shortlist_candidates:
             print("💤 Bu döngüde kurallara tam uyan yönlü A+ kurulum bulunamadı (Piyasa-Nötr İkili Arbitraj kontrol ediliyor)...")
-            if slots_left >= 2 and "15m" in allowed_timeframes:
-                try:
-                    from agents.pairs_stat_arb_agent import StatisticalArbitrageAgent
-                    from core.database import get_active_and_pending_signals
-                    active_syms_now = {s.get("symbol") for s in (get_active_and_pending_signals() or [])}
-                    pair_opps = StatisticalArbitrageAgent(z_score_entry_threshold=2.1).evaluate_all_pairs(self.client)
-                    for popp in pair_opps:
-                        sa, sb = popp["sym_a"], popp["sym_b"]
-                        if sa in active_syms_now or sb in active_syms_now:
-                            continue
-                        pa, pb = popp["price_a"], popp["price_b"]
-                        la, lb = popp["leg_a_direction"], popp["leg_b_direction"]
-                        sl_pct_p, tp1_pct_p, tp2_pct_p = 1.20, 2.20, 3.50
-                        for leg_sym, leg_px, leg_dir, peer_sym in [(sa, pa, la, sb), (sb, pb, lb, sa)]:
-                            sl_px = round(leg_px * (1 - sl_pct_p / 100) if leg_dir == "LONG" else leg_px * (1 + sl_pct_p / 100), 6)
-                            tp1_px = round(leg_px * (1 + tp1_pct_p / 100) if leg_dir == "LONG" else leg_px * (1 - tp1_pct_p / 100), 6)
-                            tp2_px = round(leg_px * (1 + tp2_pct_p / 100) if leg_dir == "LONG" else leg_px * (1 - tp2_pct_p / 100), 6)
-                            sig_pair = {
-                                "symbol": leg_sym,
-                                "direction": leg_dir,
-                                "leverage": 10,
-                                "entry_min": round(leg_px * 0.9995, 6),
-                                "entry_max": round(leg_px * 1.0005, 6),
-                                "actual_entry_price": leg_px,
-                                "stop_loss": sl_px,
-                                "take_profit_1": tp1_px,
-                                "take_profit_2": tp2_px,
-                                "risk_reward": 1.83,
-                                "risk_grade": "Grade A (Piyasa-Nötr Pair)",
-                                "allocated_margin_usdt": 65.0,
-                                "risk_usd": 8.45,
-                                "news_summary": f"Piyasa-Nötr Stat-Arb ({popp['pair_name']})",
-                                "ta_reasons": popp["reason"],
-                                "chart_entry_png": "",
-                                "is_pair_trade": 1,
-                                "pair_symbol": peer_sym,
-                                "timeframe": "15m",
-                                "trade_horizon": "Kısa Vade (15m Pair)"
-                            }
-                            save_signal(sig_pair)
-                        add_scanner_log(f"{sa}/{sb}", "APPROVED", popp["reason"], f"Pair Z={popp['z_score']}")
-                        print(f"⚖️ [Piyasa-Nötr Pair] {sa} ({la}) + {sb} ({lb}) | Z={popp['z_score']}")
-                        break
-                except Exception as pair_err:
-                    print(f"⚠️ Pair Arbitraj kontrol hatası: {pair_err}")
+            self._try_open_stat_arb_pair(slots_left, allowed_timeframes)
         else:
             # 1. Adayları Kalite Skoruna Göre En İyiden En Düşüğe Sırala (Tournament Leaderboard)
             shortlist_candidates.sort(key=lambda x: x["quality_score"], reverse=True)
