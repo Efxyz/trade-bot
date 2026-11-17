@@ -323,6 +323,41 @@ class TradingBotOrchestrator:
                 except Exception:
                     pass
 
+                # Open Interest (OI) + Emir Defteri Duvar Baskısı (OBI) Mikroyapı Kalkanı
+                try:
+                    oi_data = self.client.get_open_interest_delta(symbol, period="15m")
+                    if oi_data and len(candles_15m) >= 6:
+                        closed_15 = candles_15m[:-1]
+                        p_ref = float(closed_15[-4]["open"])
+                        p_end = float(closed_15[-1]["close"])
+                        p_chg = ((p_end - p_ref) / p_ref) * 100.0 if p_ref > 0 else 0.0
+                        oi_chg = float(oi_data.get("oi_change_pct", 0.0))
+                        c_dir = ta_setup.get("direction", "LONG")
+                        c_score = int(ta_setup.get("confluence_score", 0))
+                        if c_dir == "LONG" and p_chg >= 0.50 and oi_chg <= -1.20 and c_score < 84:
+                            add_scanner_log(symbol, "REJECTED", f"📌 <strong>Mevcut Durum:</strong> Sahte Kırılım / Short Squeeze (Fiyat +%{p_chg:.2f}, OI -%{abs(oi_chg):.2f}).<br>⛔ <strong>Giriş Yapılmama Nedeni:</strong> Yeni alım gelmeden yalnızca short stopları patladığı için geri dönüş riski yüksek.")
+                            continue
+                        if c_dir == "SHORT" and p_chg <= -0.50 and oi_chg <= -1.20 and c_score < 84:
+                            add_scanner_log(symbol, "REJECTED", f"📌 <strong>Mevcut Durum:</strong> Tükenmiş Long Tasfiyesi (Fiyat %{p_chg:.2f}, OI -%{abs(oi_chg):.2f}).<br>⛔ <strong>Giriş Yapılmama Nedeni:</strong> Tasfiye tamamlanırken dipten tepki sıçraması riski yüksek.")
+                            continue
+                        if oi_chg >= 0.80:
+                            ta_setup["confluence_score"] = min(100, c_score + 4)
+                            ta_setup["ta_reasons"] = f"{ta_setup.get('ta_reasons', '')} | 📈 Organik OI (+%{oi_chg:.1f}, +4)".strip(" |")
+
+                    obi_data = self.client.get_order_book_imbalance(symbol, limit=20)
+                    if obi_data:
+                        ratio = float(obi_data.get("imbalance_ratio", 1.0))
+                        c_dir = ta_setup.get("direction", "LONG")
+                        c_score = int(ta_setup.get("confluence_score", 0))
+                        if c_dir == "LONG" and ratio <= 0.28 and c_score < 84:
+                            add_scanner_log(symbol, "REJECTED", f"📌 <strong>Mevcut Durum:</strong> Tahtada Ağır Satış Duvarı (OBI: {ratio:.2f}).<br>⛔ <strong>Giriş Yapılmama Nedeni:</strong> Emir defterinde satış baskısı alışların 3.5x üzerinde; tepe duvarı riski.")
+                            continue
+                        if c_dir == "SHORT" and ratio >= 3.50 and c_score < 84:
+                            add_scanner_log(symbol, "REJECTED", f"📌 <strong>Mevcut Durum:</strong> Tahtada Ağır Alış Duvarı (OBI: {ratio:.2f}).<br>⛔ <strong>Giriş Yapılmama Nedeni:</strong> Emir defterinde alış desteği satışların 3.5x üzerinde; dip duvarı riski.")
+                            continue
+                except Exception:
+                    pass
+
                 # Sembol + Yön Bazlı Soğuma Molası (Aynı paritede aynı yönde intikam işlemini önle, diğer pariteleri kilitleme)
                 try:
                     from core.database import get_last_loss_for
