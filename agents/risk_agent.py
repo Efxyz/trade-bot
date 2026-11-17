@@ -265,6 +265,12 @@ class RiskOfficerAgent:
         if news_multiplier > 0 and news_multiplier != 1.0:
             allocated_margin = round(max(25.0, min(dynamic_max_margin * 1.25, allocated_margin * news_multiplier)), 1)
 
+        # Komisyon dahil sert risk tavanı: 20x veya geniş SL'de dahi tek işlem kaybı target_risk_usd'yi aşamaz
+        if total_sl_loss_fraction > 0:
+            hard_risk_cap_margin = round(max(25.0, target_risk_usd / total_sl_loss_fraction), 1)
+            if allocated_margin > hard_risk_cap_margin:
+                allocated_margin = hard_risk_cap_margin
+
         actual_risk_usd = round(allocated_margin * total_sl_loss_fraction, 2)
 
         # 6. RİSK SINIFLANDIRMASI (GRADE A+, A, B, C)
