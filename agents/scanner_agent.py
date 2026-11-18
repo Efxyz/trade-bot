@@ -7,6 +7,7 @@ from typing import List, Dict, Set
 from collections import deque
 from datetime import datetime
 import time
+import threading
 from core.binance_client import BinanceFuturesClient
 from config import MIN_24H_VOLUME_USDT, EXCLUDED_SYMBOLS_BLACKLIST
 
@@ -18,6 +19,7 @@ _SCANNED_COOLDOWN: Dict[str, float] = {}
 COOLDOWN_HOT_SECONDS = 90  # Sıcak volatilite liderleri için 90 sn (Sürekli radar altında)
 COOLDOWN_ROTATION_SECONDS = 180  # Genel piyasa rotasyonu için 3 dk (Eski 15 dk hantallığına son)
 _ROTATION_INDEX = 0
+_COOLDOWN_LOCK = threading.Lock()
 
 # Son 1 saat içindeki kontrol sıklığı takibi
 _HOURLY_CHECK_TIMESTAMPS: Dict[str, List[float]] = {}
@@ -26,30 +28,32 @@ def cleanup_stale_cooldowns(max_age_seconds: float = 3600.0):
     """Bellek sızıntısı ve süresiz büyüme kalkanı: Eski soğuma ve saatlik kontrol geçmişlerini temizler."""
     global _SCANNED_COOLDOWN, _HOURLY_CHECK_TIMESTAMPS
     now = time.time()
-    # 1. Soğuma kayıtlarını temizle
-    stale_cooldown_keys = [k for k, v in _SCANNED_COOLDOWN.items() if (now - v) > max_age_seconds]
-    for k in stale_cooldown_keys:
-        del _SCANNED_COOLDOWN[k]
+    with _COOLDOWN_LOCK:
+        # 1. Soğuma kayıtlarını temizle
+        stale_cooldown_keys = [k for k, v in _SCANNED_COOLDOWN.items() if (now - v) > max_age_seconds]
+        for k in stale_cooldown_keys:
+            del _SCANNED_COOLDOWN[k]
 
-    # 2. Saatlik kontrol zaman damgalarını buda
-    stale_hourly_keys = []
-    for k, timestamps in list(_HOURLY_CHECK_TIMESTAMPS.items()):
-        valid = [t for t in timestamps if (now - t) <= max_age_seconds]
-        if valid:
-            _HOURLY_CHECK_TIMESTAMPS[k] = valid
-        else:
-            stale_hourly_keys.append(k)
-    for k in stale_hourly_keys:
-        del _HOURLY_CHECK_TIMESTAMPS[k]
+        # 2. Saatlik kontrol zaman damgalarını buda
+        stale_hourly_keys = []
+        for k, timestamps in list(_HOURLY_CHECK_TIMESTAMPS.items()):
+            valid = [t for t in timestamps if (now - t) <= max_age_seconds]
+            if valid:
+                _HOURLY_CHECK_TIMESTAMPS[k] = valid
+            else:
+                stale_hourly_keys.append(k)
+        for k in stale_hourly_keys:
+            del _HOURLY_CHECK_TIMESTAMPS[k]
 
 def record_check_and_get_hourly_count(symbol: str) -> int:
     """Belirtilen coinin son 1 saat içindeki kontrol edilme sayısını günceller ve döner."""
     now = time.time()
-    past_checks = _HOURLY_CHECK_TIMESTAMPS.get(symbol, [])
-    valid_checks = [t for t in past_checks if (now - t) <= 3600]
-    valid_checks.append(now)
-    _HOURLY_CHECK_TIMESTAMPS[symbol] = valid_checks
-    return len(valid_checks)
+    with _COOLDOWN_LOCK:
+        past_checks = _HOURLY_CHECK_TIMESTAMPS.get(symbol, [])
+        valid_checks = [t for t in past_checks if (now - t) <= 3600]
+        valid_checks.append(now)
+        _HOURLY_CHECK_TIMESTAMPS[symbol] = valid_checks
+        return len(valid_checks)
 
 def add_scanner_log(symbol: str, status: str, reason: str, details: str = ""):
     time_str = datetime.now().strftime("%H:%M:%S")
@@ -130,18 +134,21 @@ class MarketScannerAgent:
         if not liquid_tickers:
             return []
 
+        with _COOLDOWN_LOCK:
+            cooldown_snap = dict(_SCANNED_COOLDOWN)
+
         # 0. Havuz: Çekirdek Likit Majörler (Kurumsal SMC Kurulumları İçin Öncelikli)
         CORE_MAJORS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "DOGEUSDT", "SUIUSDT", "AVAXUSDT", "NEARUSDT"]
         pool_majors = [
             t for t in liquid_tickers
-            if t["symbol"] in CORE_MAJORS and (now - _SCANNED_COOLDOWN.get(t["symbol"], 0)) >= COOLDOWN_HOT_SECONDS
+            if t["symbol"] in CORE_MAJORS and (now - cooldown_snap.get(t["symbol"], 0)) >= COOLDOWN_HOT_SECONDS
         ]
         selected_symbols = {t["symbol"] for t in pool_majors}
 
         # 1. Havuz: Taze Volatilite / Hacim Liderleri (Son 90 sn taranmamışlar)
         fresh_movers = [
             t for t in liquid_tickers
-            if t["symbol"] not in selected_symbols and (now - _SCANNED_COOLDOWN.get(t["symbol"], 0)) >= COOLDOWN_HOT_SECONDS
+            if t["symbol"] not in selected_symbols and (now - cooldown_snap.get(t["symbol"], 0)) >= COOLDOWN_HOT_SECONDS
         ]
         sorted_movers = sorted(
             fresh_movers,
@@ -154,27 +161,28 @@ class MarketScannerAgent:
         # 2. Havuz: Tüm Piyasa Sıralı Rotasyonu (Kalan 200+ coini baştan sona hızla tarar)
         remaining_tickers = [
             t for t in liquid_tickers
-            if t["symbol"] not in selected_symbols and (now - _SCANNED_COOLDOWN.get(t["symbol"], 0)) >= COOLDOWN_ROTATION_SECONDS
+            if t["symbol"] not in selected_symbols and (now - cooldown_snap.get(t["symbol"], 0)) >= COOLDOWN_ROTATION_SECONDS
         ]
         # Eğer soğuma süresi yüzünden coin kalmadıysa süresi en eski olanları al
         if len(remaining_tickers) < 10:
             remaining_tickers = [t for t in liquid_tickers if t["symbol"] not in selected_symbols]
 
         # Piyasa rotasyon penceresi (her döngü 8 parite ileri kayar)
-        n_rem = len(remaining_tickers)
-        pool_rotation = []
-        if n_rem > 0:
-            start_idx = _ROTATION_INDEX % n_rem
-            _ROTATION_INDEX = (start_idx + 8) % n_rem
-            # Dairesel seçim
-            for i in range(min(8, n_rem)):
-                idx = (start_idx + i) % n_rem
-                pool_rotation.append(remaining_tickers[idx])
+        with _COOLDOWN_LOCK:
+            n_rem = len(remaining_tickers)
+            pool_rotation = []
+            if n_rem > 0:
+                start_idx = _ROTATION_INDEX % n_rem
+                _ROTATION_INDEX = (start_idx + 8) % n_rem
+                # Dairesel seçim
+                for i in range(min(8, n_rem)):
+                    idx = (start_idx + i) % n_rem
+                    pool_rotation.append(remaining_tickers[idx])
 
-        candidates = (pool_majors + pool_movers + pool_rotation)[:limit]
+            candidates = (pool_majors + pool_movers + pool_rotation)[:limit]
 
-        # Seçilen coinleri soğuma zaman damgasıyla işaretle
-        for c in candidates:
-            _SCANNED_COOLDOWN[c["symbol"]] = now
+            # Seçilen coinleri soğuma zaman damgasıyla işaretle
+            for c in candidates:
+                _SCANNED_COOLDOWN[c["symbol"]] = now
 
         return candidates
