@@ -927,6 +927,60 @@ def get_active_positions_count() -> int:
         cursor.execute("SELECT COUNT(*) FROM signals WHERE status IN ('PENDING_ENTRY', 'ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')")
         return cursor.fetchone()[0]
 
+def _get_local_today_start_str() -> str:
+    """closed_at / entered_at (datetime.now() ile yazılan) sütunları için Türkiye günü (00:00 TSİ) başlangıcını yerel saat diliminde döner."""
+    from datetime import timezone, timedelta
+    tr_tz = timezone(timedelta(hours=3))
+    now_tr = datetime.now(timezone.utc).astimezone(tr_tz)
+    today_start_tr = now_tr.replace(hour=0, minute=0, second=0, microsecond=0)
+    return today_start_tr.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _get_closed_at_tr_shift_modifier() -> str:
+    """Sunucu saati ile TSİ (UTC+3) arasındaki farkı SQLite datetime() modifier olarak döner (Windows TSİ: '+0 hours', Railway UTC: '+3 hours')."""
+    from datetime import timezone
+    local_offset_hours = int(round((datetime.now() - datetime.now(timezone.utc).replace(tzinfo=None)).total_seconds() / 3600.0))
+    diff_to_tr = 3 - local_offset_hours
+    return f"{diff_to_tr:+d} hours"
+
+
+QUOTA_RESET_FLOOR_UTC = "2026-11-18 02:00:30"
+
+
+def get_quota_reset_watermark_utc() -> str:
+    """Bugünkü işlem kotası sıfırlama eşik zamanını (UTC) döner (DB watermark >= statik taban)."""
+    floor = QUOTA_RESET_FLOOR_UTC
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("CREATE TABLE IF NOT EXISTS system_state (key TEXT PRIMARY KEY, value TEXT, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+            cursor.execute("SELECT value FROM system_state WHERE key = 'quota_reset_utc'")
+            row = cursor.fetchone()
+            db_val = str(row[0]).strip() if row and row[0] else ""
+            if db_val and db_val > floor:
+                return db_val
+    except Exception:
+        pass
+    return floor
+
+
+def reset_today_trade_quota_db() -> str:
+    """Bugünkü işlem kotasını geçmiş işlemleri silmeden sıfırlar (UTC watermark günceller)."""
+    from datetime import datetime, timezone, timedelta
+    # +1s: aynı saniye içinde daha önce açılmış işlemleri de kesin olarak eşik altında bırakır
+    next_sec_utc = (datetime.now(timezone.utc) + timedelta(seconds=1)).strftime("%Y-%m-%d %H:%M:%S")
+    watermark = max(next_sec_utc, QUOTA_RESET_FLOOR_UTC)
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("CREATE TABLE IF NOT EXISTS system_state (key TEXT PRIMARY KEY, value TEXT, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        cursor.execute(
+            "INSERT OR REPLACE INTO system_state (key, value, updated_at) VALUES ('quota_reset_utc', ?, CURRENT_TIMESTAMP)",
+            (watermark,)
+        )
+        conn.commit()
+    return watermark
+
+
 def get_today_trades_count(timeframe: Optional[str] = None) -> int:
     """
     Bugün (Türkiye Saati ile 00:00'dan itibaren) açılan işlem sayısını döner.
@@ -936,7 +990,7 @@ def get_today_trades_count(timeframe: Optional[str] = None) -> int:
     tr_tz = timezone(timedelta(hours=3))
     now_tr = datetime.now(timezone.utc).astimezone(tr_tz)
     today_start_tr = now_tr.replace(hour=0, minute=0, second=0, microsecond=0)
-    today_start = today_start_tr.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    today_start = max(today_start_tr.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"), get_quota_reset_watermark_utc())
     with get_db_connection() as conn:
         cursor = conn.cursor()
         if timeframe:
@@ -963,11 +1017,7 @@ def get_today_trades_count_by_timeframe() -> Dict[str, int]:
 
 def get_today_net_dollar_loss() -> float:
     """Bugün (Türkiye Saati ile 00:00'dan itibaren) kapanan işlemlerin net dolar bazlı toplam kaybını kontrol eder (Circuit Breaker)."""
-    from datetime import datetime, timezone, timedelta
-    tr_tz = timezone(timedelta(hours=3))
-    now_tr = datetime.now(timezone.utc).astimezone(tr_tz)
-    today_start_tr = now_tr.replace(hour=0, minute=0, second=0, microsecond=0)
-    today_start = today_start_tr.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    today_start = _get_local_today_start_str()
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -986,11 +1036,7 @@ def get_today_net_dollar_loss() -> float:
 
 def get_today_net_dollar_pnl() -> float:
     """Bugün (Türkiye Saati ile 00:00'dan itibaren) kapanan işlemlerin net dolar bazlı kâr/zararını döner (+ veya -)."""
-    from datetime import datetime, timezone, timedelta
-    tr_tz = timezone(timedelta(hours=3))
-    now_tr = datetime.now(timezone.utc).astimezone(tr_tz)
-    today_start_tr = now_tr.replace(hour=0, minute=0, second=0, microsecond=0)
-    today_start = today_start_tr.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    today_start = _get_local_today_start_str()
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -1297,8 +1343,7 @@ def get_performance_stats() -> Dict:
         from datetime import datetime, timezone, timedelta
         tr_tz = timezone(timedelta(hours=3))
         now_tr = datetime.now(timezone.utc).astimezone(tr_tz)
-        today_start_tr = now_tr.replace(hour=0, minute=0, second=0, microsecond=0)
-        today_start = today_start_tr.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        today_start = _get_local_today_start_str()
         today_date_str = now_tr.strftime("%Y-%m-%d")
 
         cursor.execute("""
@@ -1342,14 +1387,15 @@ def check_and_auto_archive_daily_pnl():
     Geçmiş ve bugünkü günlerin kapanış bilançolarını kontrol eder.
     Her günün net PnL'ini daily_pnl_archive tablosuna kalıcı olarak mühürler.
     """
+    tr_shift = _get_closed_at_tr_shift_modifier()
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT DISTINCT substr(datetime(closed_at, '+3 hours'), 1, 10) as c_date
+            SELECT DISTINCT substr(datetime(closed_at, ?), 1, 10) as c_date
             FROM signals
             WHERE closed_at IS NOT NULL
               AND status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
-        """)
+        """, (tr_shift,))
         distinct_dates = [r["c_date"] for r in cursor.fetchall() if r["c_date"]]
 
         for d_str in distinct_dates:
@@ -1364,9 +1410,9 @@ def check_and_auto_archive_daily_pnl():
                     SUM(COALESCE(allocated_margin_usdt, 200.0) * (simulated_pnl_pct / 100.0)) as net_dollar
                 FROM signals
                 WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
-                  AND datetime(closed_at, '+3 hours') >= ? AND datetime(closed_at, '+3 hours') <= ?
+                  AND datetime(closed_at, ?) >= ? AND datetime(closed_at, ?) <= ?
                   AND simulated_pnl_pct IS NOT NULL
-            """, (d_start, d_end))
+            """, (tr_shift, d_start, tr_shift, d_end))
             r = cursor.fetchone()
             if r and (r["t_count"] or 0) > 0:
                 t_cnt = r["t_count"] or 0
@@ -1505,8 +1551,11 @@ def close_single_signal_db(symbol_or_id: Union[str, int], client=None) -> Option
                 gross_pnl_pct = ?,
                 fee_pct = ?,
                 allocated_margin_usdt = ?
-            WHERE id = ?
+            WHERE id = ? AND status IN ('ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'PENDING_ENTRY', 'ACTIVE_PARTIAL_TP1')
         """, (now_str, exit_price, net_pnl_pct, gross_pnl_pct, fee_pct, final_margin_to_save, sig_id))
+        if cursor.rowcount == 0:
+            conn.commit()
+            return None
         conn.commit()
 
     sig["status"] = "MANUAL_CLOSE"
@@ -1595,6 +1644,13 @@ def close_positions_by_outcome_db(outcome: str, client=None) -> Dict:
         fee_pct = round(0.10 * leverage, 2)
         net_pnl_pct = round(gross_pnl_pct - fee_pct, 2)
 
+        partial_tp_taken = int(sig.get("partial_tp_taken") or 0)
+        allocated_margin = float(sig.get("allocated_margin_usdt") or 200.0)
+        prev_realized_usd = float(sig.get("realized_pnl_usd") or 0.0)
+        net_pnl_pct, gross_pnl_pct, _ = reconcile_partial_pnl(
+            allocated_margin, partial_tp_taken, prev_realized_usd, net_pnl_pct, fee_pct, "MANUAL_CLOSE"
+        )
+
         is_candidate = False
         if target_group in ("profit", "green", "kar"):
             if net_pnl_pct > 0:
@@ -1631,6 +1687,11 @@ def close_all_active_signals_db(client=None) -> int:
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     closed_count = 0
 
+    try:
+        from core.binance_streamer import get_live_price
+    except Exception:
+        get_live_price = None
+
     with get_db_connection() as conn:
         cursor = conn.cursor()
         for sig in active_signals:
@@ -1638,14 +1699,17 @@ def close_all_active_signals_db(client=None) -> int:
             symbol = sig["symbol"]
             direction = sig["direction"]
             leverage = sig.get("leverage") or 10
-            entry_price = sig.get("actual_entry_price") or sig["entry_min"]
+            entry_price = float(sig.get("actual_entry_price") or sig.get("entry_min") or 0.0)
 
-            # Anlık güncel fiyat
+            # Anlık güncel fiyat (önce WebSocket, yoksa REST ticker, yoksa entry)
             exit_price = entry_price
-            if tickers and symbol in tickers:
-                exit_price = tickers[symbol].get("lastPrice", entry_price)
+            ws_p = get_live_price(symbol) if get_live_price else None
+            if ws_p and float(ws_p) > 0:
+                exit_price = float(ws_p)
+            elif tickers and symbol in tickers:
+                exit_price = float(tickers[symbol].get("lastPrice", entry_price) or entry_price)
 
-            raw_change = ((exit_price - entry_price) / entry_price) if direction == "LONG" else ((entry_price - exit_price) / entry_price)
+            raw_change = (((exit_price - entry_price) / entry_price) if direction == "LONG" else ((entry_price - exit_price) / entry_price)) if entry_price > 0 else 0.0
             gross_pnl_pct = round(raw_change * leverage * 100, 2)
             fee_pct = round(0.10 * leverage, 2)
             net_pnl_pct = round(gross_pnl_pct - fee_pct, 2)
@@ -1666,8 +1730,10 @@ def close_all_active_signals_db(client=None) -> int:
                     gross_pnl_pct = ?,
                     fee_pct = ?,
                     allocated_margin_usdt = ?
-                WHERE id = ?
+                WHERE id = ? AND status IN ('ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'PENDING_ENTRY', 'ACTIVE_PARTIAL_TP1')
             """, (now_str, exit_price, net_pnl_pct, gross_pnl_pct, fee_pct, final_margin_to_save, sig_id))
+            if cursor.rowcount == 0:
+                continue
             closed_count += 1
 
             # Tauric Reflection kaydı
