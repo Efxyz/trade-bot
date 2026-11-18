@@ -594,7 +594,7 @@ HTML_OFFICE_TEMPLATE = """
         .debate-tabs {
             display: flex; gap: 6px; align-items: center;
         }
-        .debate-tab-btn {
+        .scan-tab-btn, .debate-tab-btn {
             background: rgba(255, 255, 255, 0.04);
             border: 1px solid var(--panel-border);
             color: var(--text-muted);
@@ -605,7 +605,11 @@ HTML_OFFICE_TEMPLATE = """
             cursor: pointer;
             transition: all 0.2s;
         }
-        .debate-tab-btn.active {
+        .scan-tab-btn:hover, .debate-tab-btn:hover {
+            color: var(--text-main);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+        .scan-tab-btn.active, .debate-tab-btn.active {
             background: rgba(56, 189, 248, 0.16);
             border-color: #38bdf8;
             color: #38bdf8;
@@ -1570,8 +1574,14 @@ HTML_OFFICE_TEMPLATE = """
 
             <!-- Üst: 📡 Analiz Masası (Neden Elendi / Uygun Bulundu & Kontrol Sıklığı) -->
             <div class="panel">
-                <div class="panel-header">
-                    <span id="scanPanelTitle">📡 15M TARAMA & SCALP MASASI (200+ PARİTE ROTASYONU)</span>
+                <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                        <span id="scanPanelTitle" style="font-weight: 800; font-size: 11px; margin-right: 4px;">📡 TARAMA:</span>
+                        <button class="scan-tab-btn active" id="tabScanAll" onclick="switchScanTab('all')">TÜMÜ</button>
+                        <button class="scan-tab-btn" id="tabScan15" onclick="switchScanTab('15m')">⚡ 15M</button>
+                        <button class="scan-tab-btn" id="tabScan30" onclick="switchScanTab('30m')">🎯 30M</button>
+                        <button class="scan-tab-btn" id="tabScan1h" onclick="switchScanTab('1h')">👑 1H</button>
+                    </div>
                     <span class="counter" id="logCount">Canlı Rotasyon</span>
                 </div>
                 <div class="log-list" id="logList">
@@ -1712,6 +1722,7 @@ HTML_OFFICE_TEMPLATE = """
         // Sol Panel Görünüm Modları: 'btc' (Sadece BTC), 'positions' (Sadece Pozisyonlar), 'split' (İkili)
         let currentLeftView = localStorage.getItem('leftViewMode') || 'btc';
         let currentBtcInterval = localStorage.getItem('btcInterval') || '15';
+        let currentScanTab = localStorage.getItem('activeScanTab') || 'all';
         let tvWidget = null;
         let lastRenderedInterval = null;
 
@@ -1771,7 +1782,7 @@ HTML_OFFICE_TEMPLATE = """
                     brandBadge.style.background = 'linear-gradient(135deg, #f59e0b, #ea580c)';
                 }
                 if (scanTitle) {
-                    scanTitle.innerHTML = '⚡ 1M TARAMA & FAST SCALP MASASI (15 LİKİT PARİTE)';
+                    scanTitle.innerHTML = '⚡ FAST TARAMA:';
                 }
             } else {
                 if (banner) banner.style.display = 'none';
@@ -1780,7 +1791,7 @@ HTML_OFFICE_TEMPLATE = """
                     brandBadge.style.background = 'linear-gradient(135deg, #0284c7, #2563eb)';
                 }
                 if (scanTitle) {
-                    scanTitle.innerHTML = '📡 15M TARAMA & SCALP MASASI (200+ PARİTE ROTASYONU)';
+                    scanTitle.innerHTML = '📡 TARAMA:';
                 }
             }
 
@@ -1952,6 +1963,15 @@ HTML_OFFICE_TEMPLATE = """
         });
 
         let activeRightTab = 'debate';
+        function switchScanTab(tab) {
+            currentScanTab = tab;
+            try { localStorage.setItem('activeScanTab', tab); } catch(e) {}
+            prevLogsHtml = '';
+            if (window.lastTerminalData) {
+                renderAll(window.lastTerminalData);
+            }
+        }
+
         function switchRightTab(tab) {
             activeRightTab = tab;
             const debateList = document.getElementById('debateList');
@@ -2575,35 +2595,75 @@ HTML_OFFICE_TEMPLATE = """
                 }
             }
 
-            // 3. Sağ Üst: 📡 Tarama Günlüğü (Standart / FAST)
+            // 3. Sağ Üst: 📡 Tarama Günlüğü (Standart / FAST - 15m / 30m / 1h Sekmeli Filtreleme)
             const logs = logsList;
-            if (Array.isArray(logs) && logs.length > 0) {
+            if (Array.isArray(logs)) {
                 const logList = document.getElementById('logList');
-                let logHtml = '';
-                logs.forEach(l => {
-                    const isAppr = l.status === 'APPROVED';
-                    const isProt = l.status === 'PROTECTED';
-                    let statusClass = isAppr ? 'approved' : (isProt ? 'protected' : 'rejected');
-                    let statusBadge = isAppr ? '<span class="badge-appr">✅ FIRSAT BULUNDU</span>' : (isProt ? '<span class="badge-prot">🛡️ SERMAYE KORUMASI</span>' : '<span class="badge-rej">❌ ELENDİ</span>');
+                const logCountEl = document.getElementById('logCount');
 
-                    let reasonTxt = l.reason || '';
-                    if (reasonTxt.indexOf('[Son 1 Saatte') !== -1) {
-                        const parts = reasonTxt.split('[Son 1 Saatte');
-                        const prefix = parts[0];
-                        const testPart = parts[1].replace(']', '').trim();
-                        reasonTxt = prefix + '<br><span style="color:#38bdf8; font-weight:600; background:rgba(56,189,248,0.12); padding:1px 6px; border-radius:3px; display:inline-block; margin-top:4px;">⏱️ Bu Saatte ' + testPart + '</span>';
-                    }
-                    logHtml += `
-                        <div class="log-item ${statusClass}">
-                            <div class="log-top">
-                                <span class="log-sym">${l.symbol}</span>
-                                ${statusBadge}
-                                <span class="log-time">${formatTurkeyTime(l.time)}</span>
-                            </div>
-                            <div class="log-reason">${reasonTxt} ${l.details ? `<br><span style="font-size:10px; color:#38bdf8; opacity:0.85; font-style:italic;">💡 Mod: ${l.details}</span>` : ''}</div>
-                        </div>
-                    `;
+                // Sekme Butonlarının Aktiflik Durumunu Eşitle
+                const tabAll = document.getElementById('tabScanAll');
+                const tab15 = document.getElementById('tabScan15');
+                const tab30 = document.getElementById('tabScan30');
+                const tab1h = document.getElementById('tabScan1h');
+                if (tabAll && tab15 && tab30 && tab1h) {
+                    tabAll.classList.toggle('active', currentScanTab === 'all');
+                    tab15.classList.toggle('active', currentScanTab === '15m');
+                    tab30.classList.toggle('active', currentScanTab === '30m');
+                    tab1h.classList.toggle('active', currentScanTab === '1h');
+                }
+
+                // Vadeye Göre Filtrele
+                const filteredLogs = logs.filter(l => {
+                    if (currentScanTab === 'all') return true;
+                    const rStr = ((l.reason || '') + ' ' + (l.details || '')).toLowerCase();
+                    const is15 = rStr.includes('15m');
+                    const is30 = rStr.includes('30m');
+                    const is1h = rStr.includes('1h');
+                    // Genel piyasa ve kasa koruma logları her sekmede görünsün
+                    const isGeneralShield = (l.status === 'PROTECTED') || rStr.includes('btc kalkanı') || rStr.includes('kasa kalkanı') || rStr.includes('circuit');
+
+                    if (currentScanTab === '15m') return is15 || isGeneralShield || (!is30 && !is1h);
+                    if (currentScanTab === '30m') return is30 || isGeneralShield;
+                    if (currentScanTab === '1h') return is1h || isGeneralShield;
+                    return true;
                 });
+
+                if (logCountEl) {
+                    const tabName = currentScanTab === 'all' ? 'Tümü' : (currentScanTab === '15m' ? '15M' : (currentScanTab === '30m' ? '30M' : '1H'));
+                    logCountEl.innerText = `${tabName} (${filteredLogs.length})`;
+                }
+
+                let logHtml = '';
+                if (filteredLogs.length === 0) {
+                    logHtml = `<div style="text-align: center; color: var(--text-muted); padding: 25px; font-size: 11px;">📡 ${currentScanTab.toUpperCase()} vadesinde henüz elenen/onaylanan tarama kaydı yok.</div>`;
+                } else {
+                    filteredLogs.forEach(l => {
+                        const isAppr = l.status === 'APPROVED';
+                        const isProt = l.status === 'PROTECTED';
+                        let statusClass = isAppr ? 'approved' : (isProt ? 'protected' : 'rejected');
+                        let statusBadge = isAppr ? '<span class="badge-appr">✅ FIRSAT BULUNDU</span>' : (isProt ? '<span class="badge-prot">🛡️ SERMAYE KORUMASI</span>' : '<span class="badge-rej">❌ ELENDİ</span>');
+
+                        let reasonTxt = l.reason || '';
+                        if (reasonTxt.indexOf('[Son 1 Saatte') !== -1) {
+                            const parts = reasonTxt.split('[Son 1 Saatte');
+                            const prefix = parts[0];
+                            const testPart = parts[1].replace(']', '').trim();
+                            reasonTxt = prefix + '<br><span style="color:#38bdf8; font-weight:600; background:rgba(56,189,248,0.12); padding:1px 6px; border-radius:3px; display:inline-block; margin-top:4px;">⏱️ Bu Saatte ' + testPart + '</span>';
+                        }
+                        logHtml += `
+                            <div class="log-item ${statusClass}">
+                                <div class="log-top">
+                                    <span class="log-sym">${l.symbol}</span>
+                                    ${statusBadge}
+                                    <span class="log-time">${formatTurkeyTime(l.time)}</span>
+                                </div>
+                                <div class="log-reason">${reasonTxt} ${l.details ? `<br><span style="font-size:10px; color:#38bdf8; opacity:0.85; font-style:italic;">💡 Mod: ${l.details}</span>` : ''}</div>
+                            </div>
+                        `;
+                    });
+                }
+
                 if (logHtml !== prevLogsHtml) {
                     logList.innerHTML = logHtml;
                     prevLogsHtml = logHtml;
