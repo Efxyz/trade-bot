@@ -6,6 +6,7 @@ and Background Telegram Command Listening.
 """
 import sys
 import time
+import threading
 import argparse
 from datetime import datetime, timezone, timedelta
 
@@ -55,10 +56,18 @@ class TradingBotOrchestrator:
         self.ai_analyst = AIAnalystAgent()
         self.quant_sim = QuantSimulationAgent(default_simulations=10000, win_threshold_pct=48.0)
         self.last_daily_report_date = None
+        self._cycle_lock = threading.Lock()
 
         # Canlı WebSocket Veri Boru Hattını Başlat
         try:
             start_streamer()
+            try:
+                from core.database import get_active_and_pending_signals
+                for act_sig in (get_active_and_pending_signals() or []):
+                    if act_sig.get("symbol"):
+                        add_stream_symbol(act_sig["symbol"])
+            except Exception:
+                pass
             print("⚡ [WebSocket Streamer] Canlı emir akışı ve fiyat soketi bağlandı.")
         except Exception as ws_err:
             print(f"⚠️ WebSocket başlatılamadı: {ws_err}")
@@ -127,6 +136,9 @@ class TradingBotOrchestrator:
                         "stop_loss": sl_px,
                         "take_profit_1": tp1_px,
                         "take_profit_2": tp2_px,
+                        "sl_pct": sl_pct_p,
+                        "tp1_pct": tp1_pct_p,
+                        "tp2_pct": tp2_pct_p,
                         "risk_reward": 1.83,
                         "risk_grade": "Grade A (Piyasa-Nötr Pair)",
                         "allocated_margin_usdt": pair_leg_margin,
@@ -140,6 +152,7 @@ class TradingBotOrchestrator:
                         "trade_horizon": "Kısa Vade (15m Pair)"
                     }
                     save_signal(sig_pair)
+                    add_stream_symbol(leg_sym)
                 add_scanner_log(f"{sa}/{sb}", "APPROVED", popp["reason"], f"Pair Z={popp['z_score']}")
                 print(f"⚖️ [Piyasa-Nötr Pair] {sa} ({la}) + {sb} ({lb}) | Z={popp['z_score']}")
                 return True
@@ -148,7 +161,17 @@ class TradingBotOrchestrator:
         return False
 
     def run_cycle(self):
-        """Tek bir tam analiz ve takip döngüsü yürütür."""
+        """Tek bir tam analiz ve takip döngüsü yürütür (Thread-Safe)."""
+        if not self._cycle_lock.acquire(blocking=False):
+            print("⏳ [Orkestratör] Tarama döngüsü zaten çalışıyor, mükerrer çağrı atlandı.")
+            return
+        try:
+            return self._run_cycle_locked()
+        finally:
+            self._cycle_lock.release()
+
+    def _run_cycle_locked(self):
+        """Kilit korumalı tam analiz ve takip döngüsü."""
         print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 🔍 Döngü Başladı...")
 
         # 0.5 GÜN SONU OTOMATİK TELEGRAM RAPORU (Kalıcı DB Loglu + Ertesi Gün Telafi Korumalı)
@@ -348,7 +371,11 @@ class TradingBotOrchestrator:
             hot_syms = [h["symbol"] for h in hot_items if h["symbol"] not in excluded_symbols]
             if hot_syms:
                 print(f"🔥 [WebSocket Canlı Balina Akışı] {len(hot_syms)} sıcak parite analiz sırasına eklendi: {', '.join(hot_syms[:4])}")
-                hot_tickers = [{"symbol": s} for s in hot_syms]
+                all_24h = self.client.get_24hr_tickers() or {}
+                hot_tickers = [
+                    all_24h.get(s, {"symbol": s, "lastPrice": 0.0, "quoteVolume": 0.0, "priceChangePercent": 0.0})
+                    for s in hot_syms
+                ]
                 candidates = hot_tickers + [c for c in candidates if c["symbol"] not in hot_syms]
 
         print(f"⚡ 200+ likit parite arasından seçilen {len(candidates)} farklı parite analiz havuzuna alındı.")
