@@ -1313,7 +1313,8 @@ HTML_OFFICE_TEMPLATE = """
                 </div>
                 <div class="top-stat" style="border: 1px solid rgba(168, 85, 247, 0.35); background: rgba(168, 85, 247, 0.08); border-radius: 6px; padding: 2px 8px;" title="Bugünkü Toplam İşlem Kotası ve Vade Dağılımı (TSİ 00:00 - 23:59 Sıfırlanır)">
                     <span class="lbl">Günlük Kota:</span>
-                    <span class="val" id="topTimelineQuota" style="color: #c084fc; font-weight: 700; font-size: 11px; white-space: nowrap;">0/24 Toplam (⚡0/10 • 🎯0/8 • 👑0/6)</span>
+                    <span class="val" id="topTimelineQuota" style="color: #c084fc; font-weight: 700; font-size: 11px; white-space: nowrap;">0/15 Toplam (⚡0/6 • 🎯0/5 • 👑0/4)</span>
+                    <button id="btnResetQuotaTop" onclick="resetDailyQuota()" title="Geçmiş işlemleri silmeden bugünkü kotayı ve gün içi kilitleri sıfırla (Güne yeniden başla)" style="margin-left: 4px; background: rgba(168, 85, 247, 0.22); color: #e9d5ff; border: 1px solid rgba(168, 85, 247, 0.45); border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 700; cursor: pointer; line-height: 1.3;">🔄 Sıfırla</button>
                 </div>
             </div>
 
@@ -1430,8 +1431,9 @@ HTML_OFFICE_TEMPLATE = """
                     <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                         <span class="sum-badge all">🎯 Toplam: <strong id="totalActiveCount">0</strong> Aktif (<strong id="totalActiveDollar">$0.00</strong>)</span>
                         <span class="sum-badge quota" style="background: rgba(168,85,247,0.15); border: 1px solid rgba(168,85,247,0.35); color: #c084fc;" title="Bugünkü Toplam İşlem Kotası ve Vade Dağılımı">
-                            📊 Günlük Kota: <strong id="barDailyQuota" style="color: #38bdf8;">0/24 İşlem</strong> 
-                            <span id="barDailyQuotaDetails" style="font-size: 10px; color: var(--text-muted); margin-left: 4px;">(⚡0/10 • 🎯0/8 • 👑0/6)</span>
+                            📊 Günlük Kota: <strong id="barDailyQuota" style="color: #38bdf8;">0/15 İşlem</strong> 
+                            <span id="barDailyQuotaDetails" style="font-size: 10px; color: var(--text-muted); margin-left: 4px;">(⚡0/6 • 🎯0/5 • 👑0/4)</span>
+                            <button id="btnResetQuotaBar" onclick="resetDailyQuota()" title="Geçmiş işlemleri silmeden bugünkü kotayı ve gün içi kilitleri sıfırla (Güne yeniden başla)" style="margin-left: 6px; background: rgba(168, 85, 247, 0.25); color: #e9d5ff; border: 1px solid rgba(168, 85, 247, 0.5); border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 700; cursor: pointer;">🔄 Sıfırla</button>
                         </span>
                     </div>
                     <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
@@ -2294,10 +2296,10 @@ HTML_OFFICE_TEMPLATE = """
             const tlQuotaEl = document.getElementById('topTimelineQuota');
             if (tlQuotaEl && data.timeline_quotas) {
                 const tq = data.timeline_quotas;
-                const q15 = tq['15m'] || { used: 0, max: 10 };
-                const q30 = tq['30m'] || { used: 0, max: 8 };
-                const q1h = tq['1h'] || { used: 0, max: 6 };
-                const qTot = tq['total'] || { used: (q15.used + q30.used + q1h.used), max: 24 };
+                const q15 = tq['15m'] || { used: 0, max: 6 };
+                const q30 = tq['30m'] || { used: 0, max: 5 };
+                const q1h = tq['1h'] || { used: 0, max: 4 };
+                const qTot = tq['total'] || { used: (q15.used + q30.used + q1h.used), max: 15 };
 
                 const is15Full = q15.used >= q15.max;
                 const is30Full = q30.used >= q30.max;
@@ -2316,10 +2318,10 @@ HTML_OFFICE_TEMPLATE = """
             const barQuotaDetails = document.getElementById('barDailyQuotaDetails');
             if (barQuotaEl && data.timeline_quotas) {
                 const tq = data.timeline_quotas;
-                const q15 = tq['15m'] || { used: 0, max: 10 };
-                const q30 = tq['30m'] || { used: 0, max: 8 };
-                const q1h = tq['1h'] || { used: 0, max: 6 };
-                const qTot = tq['total'] || { used: (q15.used + q30.used + q1h.used), max: 24 };
+                const q15 = tq['15m'] || { used: 0, max: 6 };
+                const q30 = tq['30m'] || { used: 0, max: 5 };
+                const q1h = tq['1h'] || { used: 0, max: 4 };
+                const qTot = tq['total'] || { used: (q15.used + q30.used + q1h.used), max: 15 };
                 barQuotaEl.innerText = `${qTot.used}/${qTot.max} İşlem`;
                 barQuotaEl.style.color = (qTot.used >= qTot.max) ? 'var(--red)' : '#38bdf8';
                 if (barQuotaDetails) {
@@ -3348,6 +3350,40 @@ HTML_OFFICE_TEMPLATE = """
                 }
             } catch(e) {}
             if (btn) btn.innerText = '🗑️ Geçmişi Temizle';
+        }
+
+        async function resetDailyQuota() {
+            const msg = "🔄 Geçmiş işlem kayıtlarınız SİLİNMEDEN bugünkü işlem kotası, tempo kilidi ve gün içi zarar/zirve kilitleri sıfırlanacaktır.\n\nGüne yeniden başlamak istediğinize emin misiniz?";
+            if (!confirm(msg)) return;
+            const pin = await getAdminPin();
+            if (!pin) return;
+            const btns = [
+                document.getElementById('btnResetQuotaTop'),
+                document.getElementById('btnResetQuotaBar')
+            ].filter(Boolean);
+            btns.forEach(b => { b.disabled = true; b.innerText = '⏳...'; });
+            try {
+                const res = await fetch('/api/reset-quota', {
+                    method: 'POST',
+                    headers: { 'X-Admin-Pin': pin }
+                });
+                if (res.status === 401) {
+                    sessionStorage.removeItem('admin_pin');
+                    alert('🔒 Hata: Geçersiz Yönetici Güvenlik PIN Kodu!');
+                } else {
+                    const data = await res.json();
+                    if (res.ok && data.status === 'reset') {
+                        await fetchTerminal();
+                        alert('✅ Bugünkü işlem kotası ve gün içi kilitler sıfırlandı! (0/15 • ⚡0/6 • 🎯0/5 • 👑0/4)');
+                    } else {
+                        alert('⚠️ Kota sıfırlanamadı: ' + (data.message || 'Bilinmeyen hata'));
+                    }
+                }
+            } catch(e) {
+                alert('⚠️ Bağlantı hatası: ' + e);
+            } finally {
+                btns.forEach(b => { b.disabled = false; b.innerText = '🔄 Sıfırla'; });
+            }
         }
 
         async function runAutonomousTrainingNow() {
