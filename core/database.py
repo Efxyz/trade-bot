@@ -964,8 +964,21 @@ def get_quota_reset_watermark_utc() -> str:
     return floor
 
 
+def _get_local_quota_reset_start_str() -> str:
+    """closed_at / entered_at sütunları için Türkiye günü başlangıcı ile kota sıfırlama watermark'ının büyüğünü sunucu yerel saatinde döner."""
+    from datetime import datetime, timezone
+    base_start = _get_local_today_start_str()
+    try:
+        wm_utc_str = get_quota_reset_watermark_utc()
+        wm_dt = datetime.strptime(wm_utc_str[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        wm_local_str = wm_dt.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+        return max(base_start, wm_local_str)
+    except Exception:
+        return base_start
+
+
 def reset_today_trade_quota_db() -> str:
-    """Bugünkü işlem kotasını geçmiş işlemleri silmeden sıfırlar (UTC watermark günceller)."""
+    """Bugünkü işlem kotasını geçmiş işlemleri silmeden sıfırlar (UTC watermark günceller ve gün içi kilitleri temizler)."""
     from datetime import datetime, timezone, timedelta
     # +1s: aynı saniye içinde daha önce açılmış işlemleri de kesin olarak eşik altında bırakır
     next_sec_utc = (datetime.now(timezone.utc) + timedelta(seconds=1)).strftime("%Y-%m-%d %H:%M:%S")
@@ -977,6 +990,7 @@ def reset_today_trade_quota_db() -> str:
             "INSERT OR REPLACE INTO system_state (key, value, updated_at) VALUES ('quota_reset_utc', ?, CURRENT_TIMESTAMP)",
             (watermark,)
         )
+        cursor.execute("DELETE FROM system_state WHERE key LIKE 'peak_pnl_%'")
         conn.commit()
     return watermark
 
@@ -1016,8 +1030,8 @@ def get_today_trades_count_by_timeframe() -> Dict[str, int]:
     }
 
 def get_today_net_dollar_loss() -> float:
-    """Bugün (Türkiye Saati ile 00:00'dan itibaren) kapanan işlemlerin net dolar bazlı toplam kaybını kontrol eder (Circuit Breaker)."""
-    today_start = _get_local_today_start_str()
+    """Bugün (Türkiye Saati ile 00:00'dan veya kota sıfırlamasından itibaren) kapanan işlemlerin net dolar bazlı toplam kaybını kontrol eder (Circuit Breaker)."""
+    today_start = _get_local_quota_reset_start_str()
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -1280,11 +1294,15 @@ def get_all_signals(limit: int = 50) -> List[Dict]:
         return [dict(row) for row in cursor.fetchall()]
 
 def get_last_signal_created_at() -> Optional[str]:
-    """En son açılan sinyalin oluşturulma/giriş zamanını döndürür (eski işlem kapanışından etkilenmez)."""
+    """En son açılan sinyalin oluşturulma/giriş zamanını döndürür (eski işlem kapanışından etkilenmez; kota sıfırlamasını baz alır)."""
     try:
+        watermark_utc = get_quota_reset_watermark_utc()
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT entered_at, created_at FROM signals ORDER BY id DESC LIMIT 1")
+            cursor.execute(
+                "SELECT entered_at, created_at FROM signals WHERE created_at >= ? ORDER BY id DESC LIMIT 1",
+                (watermark_utc,)
+            )
             row = cursor.fetchone()
             if row:
                 return row["entered_at"] or row["created_at"]
