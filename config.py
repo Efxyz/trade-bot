@@ -58,9 +58,9 @@ ESTIMATED_SLIPPAGE_PCT = 0.02          # %0.02 Tahmini kayma payı
 ENABLE_LADDER_PROFIT = True
 
 LADDER_STEPS = [
-    # Basamak 1: %35 Kısmi Kâr Cebe + Nefes Alan BE+ Kalkanı (+%0.50 Ham / -%0.15 Nefes Payı Stop)
-    # Fiyat +%0.50 kâra ulaştığında pozisyonun %35'i nakit kâr alınır, kalan %65'in stopu girişin -%0.15 gerisine çekilir (erken boğulmayı önler, net sonuç >= $0 garanti!)
-    {"step": 1, "trigger_raw_pct": 0.50, "lock_raw_pct": -0.15, "name": "🛡️ Basamak 1 (%35 Kâr Cebe + Nefes Payı BE+)"},
+    # Basamak 1: %35 Kısmi Kâr Cebe + Nefes Alan BE+ Kalkanı (+%0.50 Ham / -%0.10 Nefes Payı Stop)
+    # Fiyat +%0.50 kâra ulaştığında pozisyonun %35'i nakit kâr alınır, kalan %65'in stopu girişin -%0.10 gerisine çekilir (gerçek net kâr >= +0.10% garantili!)
+    {"step": 1, "trigger_raw_pct": 0.50, "lock_raw_pct": -0.10, "name": "🛡️ Basamak 1 (%35 Kâr Cebe + Nefes Payı BE+)"},
 
     # Basamak 2: Komisyon Korumalı Sağlıklı Kâr Kilidi (%0.35 Kilit)
     # Fiyat +%0.75 kâra ulaştığında stop'u +%0.35'e çek (erken boğulmayı önler, güçlü net kâr kilitler)
