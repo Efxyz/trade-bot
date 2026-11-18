@@ -1001,11 +1001,11 @@ class TechnicalAnalysisAgent:
                     f"🎯 <strong>Beklenen Şart:</strong> RSI'ın {MIN_RSI_LONG}+ üzerine çıkıp alıcıların güçlenmesi."
                 )
 
-            # 20x Sniper Tetikleyici: Skor 85+, Dar Stop (%1.20 altı) VE testeresiz verimli piyasa (CHOPPY / KER < 0.20 yasak)
-            is_sniper_20x = (long_score >= 85 and sl_pct <= MAX_SL_PCT_20X and regime_name != "CHOPPY" and regime_metrics.get("ker", 0.5) >= 0.20)
-            leverage = 20 if is_sniper_20x else 10
-            grade = "Grade A+ (20x Sniper)" if is_sniper_20x else "Grade A"
-            setup_type = f"{timeframe} {leverage}x SMC SNIPER" if is_sniper_20x else f"{timeframe} {leverage}x SMC SCALP"
+            # 20x Sniper devre dışı: Tüm işlemler 10x Standart (%67.5 canlı WR)
+            is_sniper_20x = False
+            leverage = 10
+            grade = "Grade A"
+            setup_type = f"{timeframe} {leverage}x SMC SCALP"
 
             # 🛡️ Yapısal Destek Tabanlı Akıllı Stop İyileştirmesi (Fitil Avı Koruması)
             structural_supports = []
@@ -1199,11 +1199,11 @@ class TechnicalAnalysisAgent:
                     f"🎯 <strong>Beklenen Şart:</strong> Boğa momentumunun zayıflayıp 55 altına inmesi."
                 )
 
-            # 20x Sniper Tetikleyici: Skor 85+, Dar Stop (%1.20 altı) VE testeresiz verimli piyasa (CHOPPY / KER < 0.20 yasak)
-            is_sniper_20x = (short_score >= 85 and sl_pct <= MAX_SL_PCT_20X and regime_name != "CHOPPY" and regime_metrics.get("ker", 0.5) >= 0.20)
-            leverage = 20 if is_sniper_20x else 10
-            grade = "Grade A+ (20x Sniper)" if is_sniper_20x else "Grade A"
-            setup_type = f"{timeframe} {leverage}x SMC SNIPER" if is_sniper_20x else f"{timeframe} {leverage}x SMC SCALP"
+            # 20x Sniper devre dışı: Tüm işlemler 10x Standart (%67.5 canlı WR)
+            is_sniper_20x = False
+            leverage = 10
+            grade = "Grade A"
+            setup_type = f"{timeframe} {leverage}x SMC SCALP"
 
             # 🛡️ Yapısal Direnç Tabanlı Akıllı Stop İyileştirmesi (Fitil Avı Koruması)
             structural_resistances = []
