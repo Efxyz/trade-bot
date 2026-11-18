@@ -112,8 +112,22 @@ class NotifierAgent:
 
         if status in ("HIT_TP", "HIT_TP1", "HIT_TP2"):
             status_text = "🎯 Hedef Vuruldu (Vur-Kaç Kar Alındı!)"
+        elif status == "HIT_TP2_RUNNER":
+            status_text = "🚀 Runner TP2 Hedefi Vuruldu (Tam Kâr Alındı!)"
+        elif status == "RUNNER_BE_EXIT":
+            status_text = "🏃 Free-Trade Runner Çıkışı (TP1 Kârı Cepte)"
+        elif status == "TIMEOUT_PROFIT_EXIT":
+            status_text = "⏱️ Süre Dolumu Kârlı Çıkış"
         elif status == "TIMEOUT_EXIT":
-            status_text = "⏱️ 45dk Zaman Aşımı (Hareketsizlikten Çıkıldı)"
+            status_text = "⏱️ Zaman Aşımı (Hareketsizlikten Çıkıldı)"
+        elif status == "MOMENTUM_STAGNATION_EXIT":
+            status_text = "⚡ 2-Mum Momentum İptali (Ölü Sermaye Kurtarıldı)"
+        elif status == "EARLY_INVALIDATION_EXIT":
+            status_text = "🛡️ Akıllı Yapısal Erken Zarar Kes"
+        elif status == "PAIR_MEAN_REVERSION_EXIT":
+            status_text = "⚖️ Pair Spread Ortalamaya Dönüş Çıkışı"
+        elif status == "PAIR_PARTNER_CLOSED_EXIT":
+            status_text = "⚖️ Pair Eşzamanlı Partner Çıkışı"
         elif status == "CLOSED_BE":
             status_text = "🛡️ Başabaş Kapandı (Break-Even)"
         elif status == "HIT_SL":
