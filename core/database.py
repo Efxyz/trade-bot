@@ -2997,6 +2997,60 @@ def get_shadow_ablation_summary() -> list:
         return []
 
 
+def format_shadow_ablation_telegram_message(target_date_str: Optional[str] = None) -> str:
+    """Shadow Ablasyon (filtre performans) verilerini sade ve net Telegram raporu haline getirir."""
+    from datetime import datetime, timezone, timedelta
+    tr_tz = timezone(timedelta(hours=3))
+    date_lbl = target_date_str or datetime.now(timezone.utc).astimezone(tr_tz).strftime("%Y-%m-%d")
+
+    summary = get_shadow_ablation_summary() or []
+    pending_count = 0
+    try:
+        with get_db_connection() as conn:
+            row = conn.execute("SELECT COUNT(*) FROM shadow_rejections WHERE outcome = 'PENDING'").fetchone()
+            pending_count = int(row[0]) if row else 0
+    except Exception:
+        pending_count = 0
+
+    total_logged = sum(int(s.get("total_logged") or 0) for s in summary)
+    total_lose = sum(int(s.get("would_lose") or 0) for s in summary)
+    total_win = sum(int(s.get("would_win") or 0) for s in summary)
+    saved_usd_est = round(max(0, total_lose - total_win) * 15.0, 2)
+
+    lines = [
+        "🕵️ *SHADOW ABLASYON (FİLTRE PERFORMANS) RAPORU*",
+        f"🗓️ `{date_lbl}` | _Reddedilen Adayların Pasif Sağlaması_",
+        "━━━━━━━━━━━━━━━━━━━",
+    ]
+    if total_logged == 0:
+        lines.append("ℹ️ _Henüz değerlendirilmiş shadow ret kaydı birikmedi._")
+        return "\n".join(lines)
+
+    lines.append(f"🔎 *Toplam Elenen Aday:* `{total_logged}` (⏳ Bekleyen: `{pending_count}`)")
+    lines.append(f"🛡️ *Kurtarılan Zarar (SL Olacaktı):* `{total_lose}` işlem")
+    lines.append(f"🎯 *Kaçan Fırsat (TP Olacaktı):* `{total_win}` işlem")
+    lines.append(f"💰 *Tahmini Net Korunan Sermaye:* *~${saved_usd_est:.2f}*")
+    lines.append("━━━━━━━━━━━━━━━━━━━")
+
+    for s in summary:
+        stage = s.get("filter_stage", "UNKNOWN")
+        tot = int(s.get("total_logged") or 0)
+        wl = int(s.get("would_lose") or 0)
+        ww = int(s.get("would_win") or 0)
+        avg_r = s.get("avg_r")
+        avg_r_str = f"{avg_r:+.2f}R" if avg_r is not None else "bekliyor"
+        if wl == 0 and ww == 0:
+            badge = "⏳ Veri Toplanıyor"
+        elif wl >= ww:
+            badge = "🛡️ Kâr Korudu"
+        else:
+            badge = "⚠️ Fazla Sıkı"
+        lines.append(f"• *{stage}*: `{tot}` ret | 🛑 SL:`{wl}` • 🎯 TP:`{ww}` | Ort:`{avg_r_str}` → {badge}")
+
+    return "\n".join(lines)
+
+
+
 
 
 
