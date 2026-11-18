@@ -863,47 +863,146 @@ HTML_OFFICE_TEMPLATE = """
 
         /* 📱 Mobil ve Tablet Cihazlar İçin Tam Duyarlı (Responsive) Tasarım */
         @media (max-width: 1024px) {
-            body {
-                height: auto;
+            html, body {
+                height: auto !important;
                 min-height: 100vh;
-                overflow-y: auto;
+                overflow-x: hidden !important;
+                overflow-y: auto !important;
+                -webkit-overflow-scrolling: touch;
                 user-select: auto;
             }
             .topbar-container {
-                height: auto;
+                height: auto !important;
+                position: relative;
             }
             .topbar-system, .topbar-finance {
-                height: auto;
-                min-height: 42px;
-                padding: 8px 12px;
+                height: auto !important;
+                min-height: unset;
+                padding: 6px 10px;
                 flex-wrap: wrap;
-                gap: 8px;
+                gap: 6px;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
             }
             .topbar-right {
                 width: 100%;
-                justify-content: space-between;
+                justify-content: flex-start;
                 flex-wrap: wrap;
                 gap: 6px;
             }
+            .top-stat-group {
+                flex-wrap: wrap;
+                gap: 4px 6px;
+                width: 100%;
+            }
+            .top-stat {
+                font-size: 10px;
+                padding: 2px 6px;
+            }
             .workspace {
-                display: flex;
-                flex-direction: column;
-                height: auto;
-                overflow: visible;
-                padding: 8px;
-                gap: 12px;
+                display: flex !important;
+                flex-direction: column !important;
+                height: auto !important;
+                overflow: visible !important;
+                padding: 6px !important;
+                gap: 10px !important;
             }
-            .active-two-cols {
-                grid-template-columns: 1fr;
-                height: auto;
-                max-height: 480px;
-            }
-            .bottom-panel {
-                height: auto;
-                min-height: 280px;
+            .right-split {
+                display: flex !important;
+                flex-direction: column !important;
+                gap: 10px !important;
+                overflow: visible !important;
+                height: auto !important;
             }
             .panel {
+                min-height: 240px;
+                height: auto;
+                overflow: visible;
+            }
+            .panel-header {
+                padding: 6px 10px;
+                flex-wrap: wrap;
+                gap: 6px;
+            }
+            .btc-chart-wrapper {
+                min-height: 320px !important;
+                height: 320px !important;
+                max-height: 380px;
+            }
+            .active-two-cols {
+                grid-template-columns: 1fr !important;
+                height: auto !important;
+                max-height: 480px;
+            }
+            .log-list, .debate-list, .cards-list {
+                max-height: 340px;
+                min-height: 200px;
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            .bottom-panel {
+                height: auto !important;
                 min-height: 260px;
+            }
+            .table-scroll {
+                overflow-x: auto !important;
+                -webkit-overflow-scrolling: touch;
+                width: 100%;
+            }
+            table {
+                min-width: 640px;
+            }
+            th, td {
+                padding: 6px 8px;
+                font-size: 10px;
+            }
+            .office-hud-bar {
+                height: auto !important;
+                min-height: 38px;
+                padding: 6px !important;
+                flex-wrap: wrap !important;
+                gap: 6px !important;
+            }
+            .office-hud-controls {
+                flex-wrap: wrap !important;
+                gap: 4px !important;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .brand {
+                font-size: 11px;
+            }
+            .brand-badge {
+                width: 18px;
+                height: 18px;
+                font-size: 10px;
+            }
+            .view-tab-btn {
+                padding: 3px 6px;
+                font-size: 9.5px;
+            }
+            .tf-btn {
+                padding: 1px 4px;
+                font-size: 9px;
+            }
+            .scan-tab-btn, .debate-tab-btn {
+                padding: 2px 6px;
+                font-size: 9px;
+            }
+            .active-summary-bar {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 6px;
+                padding: 6px 8px;
+            }
+            .active-summary-bar > div {
+                width: 100%;
+                justify-content: space-between;
+            }
+            .btc-chart-wrapper {
+                min-height: 260px !important;
+                height: 260px !important;
             }
         }
 
