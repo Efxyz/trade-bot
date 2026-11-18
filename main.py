@@ -98,8 +98,11 @@ class TradingBotOrchestrator:
         try:
             from agents.pairs_stat_arb_agent import StatisticalArbitrageAgent
             from core.database import get_active_and_pending_signals
-            active_syms_now = {s.get("symbol") for s in (get_active_and_pending_signals() or [])}
-            pair_opps = StatisticalArbitrageAgent(z_score_entry_threshold=2.1).evaluate_all_pairs(self.client)
+            active_pair_sigs = get_active_and_pending_signals() or []
+            if any(int(s.get("is_pair_trade") or 0) == 1 for s in active_pair_sigs):
+                return False
+            active_syms_now = {s.get("symbol") for s in active_pair_sigs}
+            pair_opps = StatisticalArbitrageAgent(z_score_entry_threshold=2.35).evaluate_all_pairs(self.client)
             for popp in pair_opps:
                 sa, sb = popp["sym_a"], popp["sym_b"]
                 if sa in active_syms_now or sb in active_syms_now:
@@ -297,6 +300,24 @@ class TradingBotOrchestrator:
 
         slots_left = MAX_CONCURRENT_TRADES - active_count
         print(f"🛡️ [Kasa Kalkanı] Aktif Pozisyon: {active_count}/{MAX_CONCURRENT_TRADES} | Kalan İşlem Kotası: {slots_left}")
+
+        # 1.9 KÜRESEL İŞLEM TEMPOSU KORUMASI (Son işlemden bu yana min 12 dk bekleme -> kota erimesini önler)
+        try:
+            from core.database import get_all_signals
+            recent_sigs = get_all_signals(limit=1) or []
+            if recent_sigs:
+                last_created = str(recent_sigs[0].get("created_at") or "")[:19]
+                if last_created:
+                    last_dt = datetime.strptime(last_created, "%Y-%m-%d %H:%M:%S")
+                    mins_since = (datetime.now() - last_dt).total_seconds() / 60.0
+                    if 0 <= mins_since < 12.0:
+                        wait_min = int(12.0 - mins_since) + 1
+                        msg_pace = f"Son işlemden bu yana 12 dk soğuma/tempo koruması aktif ({wait_min} dk kaldı)."
+                        print(f"⏱️ [Tempo Koruması] {msg_pace}")
+                        add_scanner_log("TEMPO KALKANI", "PROTECTED", msg_pace, "Peş Peşe İşlem Engellendi")
+                        return
+        except Exception:
+            pass
 
         # 2. BTC Piyasa Çöküş ve Ölü Piyasa Kalkanı Kontrolü
         btc_regime = self.client.get_btc_regime()
@@ -637,9 +658,18 @@ class TradingBotOrchestrator:
             # 2. İkinci Teyit Taraması ve Seçim Döngüsü (Fresh Re-Validation Scan)
             from core.binance_streamer import get_live_price
             for cand in shortlist_candidates:
-                if found_setups_count >= slots_left:
-                    print(f"🛡️ [Kasa Kalkanı] İzin verilen işlem kotası ({slots_left}) doldu. Turnuva tamamlandı.")
+                if found_setups_count >= min(1, slots_left):
+                    print(f"🛡️ [Kasa & Seçicilik Kalkanı] Bu döngü için en iyi şampiyon açıldı (1 işlem/döngü sınırı). Turnuva tamamlandı.")
                     break
+
+                if float(cand.get("quality_score") or 0.0) < 68.0:
+                    add_scanner_log(
+                        cand["symbol"],
+                        "REJECTED",
+                        f"Turnuva Kalite Barajı Altında ({cand['quality_score']}/100 < 68.0)",
+                        "Yüksek Seçicilik Kalkanı"
+                    )
+                    continue
 
                 cand_tf = cand["timeframe"]
                 if cand_tf not in allowed_timeframes:
@@ -750,6 +780,16 @@ class TradingBotOrchestrator:
                 # =========================================================================
                 ta_setup["leverage"] = leverage
                 ta_setup["risk_grade"] = risk_report["risk_grade"]
+
+                # Canlı dolum fiyatına göre sert risk tavanı (komisyon dahil risk_usd'yi asla aşma)
+                if fresh_price > 0 and sl_px > 0:
+                    live_sl_pct = (abs(fresh_price - sl_px) / fresh_price) * 100.0
+                    total_loss_frac = (live_sl_pct * leverage + 0.10 * leverage) / 100.0
+                    if total_loss_frac > 0:
+                        risk_report["allocated_margin_usdt"] = round(
+                            min(float(risk_report["allocated_margin_usdt"]), float(risk_report["risk_usd"]) / total_loss_frac),
+                            1
+                        )
 
                 signal_data = {
                     "symbol": symbol,
