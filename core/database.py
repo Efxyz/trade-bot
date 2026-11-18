@@ -886,6 +886,8 @@ def save_signal(data: Dict) -> int:
         timeframe = data.get("timeframe", "15m")
         trade_horizon = data.get("trade_horizon", "Kısa Vade (15m)")
         entry_limit_2 = data.get("entry_limit_2", 0.0)
+        is_pair_trade = int(data.get("is_pair_trade") or 0)
+        pair_symbol = str(data.get("pair_symbol") or "")
 
         cursor.execute("""
             INSERT INTO signals (
@@ -894,8 +896,9 @@ def save_signal(data: Dict) -> int:
                 stop_loss, take_profit_1, take_profit_2, risk_reward,
                 risk_grade, news_summary, ta_reasons, chart_entry_png, status,
                 allocated_margin_usdt, risk_usd, highest_price, lowest_price,
-                debate_json, entry_limit_2, timeframe, trade_horizon
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?, ?, ?, ?)
+                debate_json, entry_limit_2, timeframe, trade_horizon,
+                is_pair_trade, pair_symbol
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             data["symbol"], data["direction"], data.get("leverage", 10),
             data["entry_min"], data["entry_max"],
@@ -910,7 +913,9 @@ def save_signal(data: Dict) -> int:
             debate_json_str,
             entry_limit_2,
             timeframe,
-            trade_horizon
+            trade_horizon,
+            is_pair_trade,
+            pair_symbol
         ))
         conn.commit()
         return cursor.lastrowid
