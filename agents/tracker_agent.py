@@ -192,9 +192,9 @@ class CounterfactualTrackerAgent:
                             active_ladder_steps = []
                             for s_num, cfg in sorted(ATR_LADDER_MULT.items()):
                                 if s_num == 1:
-                                    # Basamak 1: Hızlı BE+ Sermaye Kalkanı (kazanan scalplerin tam SL olmasını önler)
-                                    trig_val = round(min(0.45 * ladder_mult, max(0.38, atr_pct_val * 0.48)), 4)
-                                    lock_val = round(-0.08 * ladder_mult, 4)
+                                    # Basamak 1: Hızlı BE+ Sermaye Kalkanı (nefes payı genişletildi: erken boğulmayı önler)
+                                    trig_val = round(min(0.55 * ladder_mult, max(0.48, atr_pct_val * 0.55)), 4)
+                                    lock_val = round(-0.15 * ladder_mult, 4)
                                     step_lbl = "🛡️ Basamak 1 (%35 Kâr Cebe + Nefes Payı BE+)"
                                 else:
                                     static_rung = LADDER_STEPS[s_num - 1]
