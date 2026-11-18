@@ -6205,6 +6205,29 @@ def update_terminal_cache_loop():
                         learning_reports = get_learning_reports_db(limit=15)
                     except Exception:
                         pass
+
+                # Bağımsız Gün Sonu & Shadow Telegram Rapor Zamanlayıcısı (Her 60 sn kontrol)
+                if not hasattr(update_terminal_cache_loop, "_last_daily_report_check_ts"):
+                    update_terminal_cache_loop._last_daily_report_check_ts = 0.0
+                if time.time() - update_terminal_cache_loop._last_daily_report_check_ts > 60:
+                    update_terminal_cache_loop._last_daily_report_check_ts = time.time()
+                    try:
+                        from datetime import timezone, timedelta
+                        from core.database import is_daily_report_sent_db, mark_daily_report_sent_db
+                        from agents.notifier_agent import NotifierAgent
+                        now_tr = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=3)))
+                        today_tr = now_tr.strftime("%Y-%m-%d")
+                        yest_tr = (now_tr - timedelta(days=1)).strftime("%Y-%m-%d")
+                        if not is_daily_report_sent_db(yest_tr):
+                            rep_y = NotifierAgent().send_daily_summary_report(target_date_str=yest_tr)
+                            if rep_y.get("sent", False):
+                                mark_daily_report_sent_db(yest_tr)
+                        if now_tr.hour == 23 and now_tr.minute >= 50 and not is_daily_report_sent_db(today_tr):
+                            rep_t = NotifierAgent().send_daily_summary_report(target_date_str=today_tr)
+                            if rep_t.get("sent", False):
+                                mark_daily_report_sent_db(today_tr)
+                    except Exception:
+                        pass
             except Exception:
                 with _cache_lock:
                     stats = _terminal_cache.get("stats", {})
@@ -6395,6 +6418,7 @@ def api_audit_live():
     result = {
         "server_utc": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
         "hours": hours,
+        "telegram_configured": bool(os.getenv("TELEGRAM_BOT_TOKEN") and os.getenv("TELEGRAM_CHAT_ID")),
         "equities": {
             "standard": round(float(get_current_equity()), 2),
             "fast": round(float(fast_stats.get("current_equity", 1000.0)), 2),
@@ -6402,6 +6426,7 @@ def api_audit_live():
         },
         "bots": {},
         "shadow_ablation": get_shadow_ablation_summary(),
+        "daily_reports_sent": [],
         "recent_scanner_logs": [],
     }
     with get_db_connection() as conn:
@@ -6423,12 +6448,22 @@ def api_audit_live():
                 result["bots"][bot_key] = {"error": str(e)}
         try:
             cur.execute("""
-                SELECT timestamp, symbol, status, reason, details
+                SELECT created_at, time_str, symbol, status, reason, details
                 FROM scanner_logs
                 ORDER BY id DESC
                 LIMIT 20
             """)
             result["recent_scanner_logs"] = [dict(r) for r in cur.fetchall()]
+        except Exception:
+            pass
+        try:
+            cur.execute("""
+                SELECT date_str, sent_at
+                FROM daily_report_sent_log
+                ORDER BY date_str DESC
+                LIMIT 10
+            """)
+            result["daily_reports_sent"] = [dict(r) for r in cur.fetchall()]
         except Exception:
             pass
     return jsonify(result)
