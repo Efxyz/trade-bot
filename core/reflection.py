@@ -35,16 +35,16 @@ class ReflectorEngine:
         minutes_open = trade_data.get("minutes_open", 0)
 
         # 1. KÂR / ZARAR TÜRÜNE GÖRE STRATEJİK DERS ÇIKARIMI
-        if status == "HIT_TP":
+        if status in ("HIT_TP", "HIT_TP1", "HIT_TP2", "HIT_TP2_RUNNER", "TIMEOUT_PROFIT_EXIT"):
             thesis_evaluation = "Kurumsal tez ve SMC likidite hedefi tam başarıyla gerçekleşti."
             lesson = (
-                f"{symbol} {direction} işleminde +%{pnl_pct} net kâr elde edildi. "
+                f"{symbol} {direction} işleminde ({status}) +%{pnl_pct} net kâr elde edildi. "
                 f"SMC konsepti ve hacim desteği mükemmel çalıştı. "
                 f"Ders: Yüksek güven skorlu kurulumlarda TP hedefine sadık kalmak yüksek alfa üretiyor."
             )
             outcome_type = "WIN"
 
-        elif "LADDER" in status:
+        elif "LADDER" in status or status == "TRAILING_STOP_EXIT":
             thesis_evaluation = f"Fiyat kâra geçtikten sonra trend yoruldu, Merdiven Kâr Sistemi devreye girdi ({ladder_name})."
             lesson = (
                 f"{symbol} {direction} işleminde Merdiven Kâr Kilidi ile +%{pnl_pct} net kâr kasaya alındı. "
@@ -52,26 +52,29 @@ class ReflectorEngine:
             )
             outcome_type = "WIN_LADDER"
 
-        elif status == "CLOSED_BE":
-            thesis_evaluation = "İşlem komisyon kurtaran başabaş seviyesinde güvenle kapatıldı."
+        elif status in ("CLOSED_BE", "RUNNER_BE_EXIT"):
+            thesis_evaluation = "İşlem komisyon kurtaran başabaş veya kısmi TP korumalı Runner BE seviyesinde güvenle kapatıldı."
             lesson = (
-                f"{symbol} {direction} işleminde momentum zayıflayınca Başa-Baş Stop devreye girdi (Net: {'+' if pnl_pct >= 0 else ''}%{pnl_pct}). "
-                f"Ders: İnatlaşmayıp komisyonu güvenceye almak gereksiz sermaye erimesini önledi."
+                f"{symbol} {direction} işleminde momentum zayıflayınca {status} devreye girdi (Net: {'+' if pnl_pct >= 0 else ''}%{pnl_pct}). "
+                f"Ders: İnatlaşmayıp kârı ve komisyonu güvenceye almak gereksiz sermaye erimesini önledi."
             )
             outcome_type = "BE"
 
-        elif status == "TIMEOUT_EXIT":
+        elif status in ("TIMEOUT_EXIT", "MOMENTUM_STAGNATION_EXIT"):
             thesis_evaluation = f"Pozisyon {int(minutes_open)} dakika boyunca hedefe gitmedi, testere piyasasında yataya bağladı."
             lesson = (
-                f"{symbol} {direction} işlemi 90 dakika zaman aşımı nedeniyle kapatıldı (Net: {'+' if pnl_pct >= 0 else ''}%{pnl_pct}). "
+                f"{symbol} {direction} işlemi {status} nedeniyle kapatıldı (Net: {'+' if pnl_pct >= 0 else ''}%{pnl_pct}). "
                 f"Ders: Mikro-scalpingte hareketsiz pozisyonda beklemek fırsat maliyetidir; sermaye hemen likit edildi."
             )
             outcome_type = "TIMEOUT"
 
-        elif status == "HIT_SL":
-            thesis_evaluation = "Stop-loss seviyesine vuruldu, kurumsal tez geçersiz kaldı."
+        elif status in ("HIT_SL", "EARLY_INVALIDATION_EXIT"):
+            thesis_evaluation = "Stop-loss veya yapısal erken zarar kes seviyesine vuruldu, kurumsal tez geçersiz kaldı."
             # Neden stop oldu analizi
-            if minutes_open < 10:
+            if status == "EARLY_INVALIDATION_EXIT":
+                failure_reason = "İlk mumlarda momentum teyidi alınamadı ve EMA20 aleyhine kapandı."
+                action_rule = "Erken yapısal geçersiz kılma kalkanı büyük stop kaybını önledi."
+            elif minutes_open < 10:
                 failure_reason = "Girişten hemen sonra likidite avı fitili geldi (ani ters volatilite)."
                 action_rule = "Aşırı oynak anlarda breakout yerine pullback teyidi beklenmeli."
             elif pnl_pct <= -15.0:
@@ -82,10 +85,15 @@ class ReflectorEngine:
                 action_rule = "BTC Dead Chop veya zıt trend halindeyken bu yönde işleme girilmemeli."
 
             lesson = (
-                f"{symbol} {direction} işleminde stop olundu (-%{abs(pnl_pct)} marjin kaybı). "
+                f"{symbol} {direction} işleminde {status} gerçekleşti (Net: {'+' if pnl_pct >= 0 else ''}%{pnl_pct}). "
                 f"{failure_reason} Ders: {action_rule}"
             )
             outcome_type = "LOSS"
+
+        elif status in ("PAIR_MEAN_REVERSION_EXIT", "PAIR_PARTNER_CLOSED_EXIT"):
+            thesis_evaluation = "Piyasa-nötr istatistiksel arbitraj çifti çıkışı gerçekleştirildi."
+            lesson = f"{symbol} {direction} pair bacağı {status} ile Net {'+' if pnl_pct >= 0 else ''}%{pnl_pct} ile kapatıldı."
+            outcome_type = "PAIR_EXIT"
 
         else:
             thesis_evaluation = "Manuel veya harici kapanış gerçekleştirildi."
