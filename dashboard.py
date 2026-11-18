@@ -6576,6 +6576,63 @@ def api_data():
     with _cache_lock:
         return jsonify(_terminal_cache)
 
+
+@app.route("/api/audit/live", methods=["GET"])
+@require_admin_pin
+def api_audit_live():
+    """Canlı Railway veritabanındaki tüm botların son işlemlerini, açık pozisyonları ve shadow ablasyon özetini döndürür."""
+    from core.database import (
+        get_db_connection,
+        get_current_equity,
+        get_fast_performance_stats,
+        get_super_fast_performance_stats,
+        get_shadow_ablation_summary,
+    )
+    hours = max(1, min(168, int(request.args.get("hours", 36))))
+    cutoff_expr = f"-{hours} hours"
+    fast_stats = get_fast_performance_stats() or {}
+    sf_stats = get_super_fast_performance_stats() or {}
+    result = {
+        "server_utc": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+        "hours": hours,
+        "equities": {
+            "standard": round(float(get_current_equity()), 2),
+            "fast": round(float(fast_stats.get("current_equity", 1000.0)), 2),
+            "super_fast": round(float(sf_stats.get("current_equity", 1000.0)), 2),
+        },
+        "bots": {},
+        "shadow_ablation": get_shadow_ablation_summary(),
+        "recent_scanner_logs": [],
+    }
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        for bot_key, tbl in [("standard", "signals"), ("fast", "fast_signals"), ("super_fast", "super_fast_signals")]:
+            try:
+                cur.execute(f"""
+                    SELECT id, created_at, closed_at, symbol, direction, leverage, status,
+                           actual_entry_price, exit_price, stop_loss, take_profit_1,
+                           simulated_pnl_pct, gross_pnl_pct, fee_pct, allocated_margin_usdt, risk_usd
+                    FROM {tbl}
+                    WHERE created_at >= datetime('now', ?)
+                       OR status IN ('ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'PENDING')
+                    ORDER BY id DESC
+                    LIMIT 60
+                """, (cutoff_expr,))
+                result["bots"][bot_key] = [dict(r) for r in cur.fetchall()]
+            except Exception as e:
+                result["bots"][bot_key] = {"error": str(e)}
+        try:
+            cur.execute("""
+                SELECT timestamp, symbol, status, reason, details
+                FROM scanner_logs
+                ORDER BY id DESC
+                LIMIT 20
+            """)
+            result["recent_scanner_logs"] = [dict(r) for r in cur.fetchall()]
+        except Exception:
+            pass
+    return jsonify(result)
+
 @app.route("/api/news/coin-investigations", methods=["GET"])
 def api_news_coin_investigations():
     from core.database import get_coin_news_investigations_db
