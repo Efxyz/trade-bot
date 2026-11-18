@@ -169,8 +169,8 @@ class TradingBotOrchestrator:
             except Exception as rep_err:
                 print(f"⚠️ Telafi gün sonu raporu gönderme hatası: {rep_err}")
 
-        # Günün kapanış penceresi: TSİ 23:55 - 23:59 arası o günün raporunu kalıcı mühürle gönder
-        if now_tr.hour == 23 and now_tr.minute >= 55 and not is_daily_report_sent_db(today_str):
+        # Günün kapanış penceresi: TSİ 23:50 - 23:59 arası o günün raporunu + Shadow raporunu kalıcı mühürle gönder
+        if now_tr.hour == 23 and now_tr.minute >= 50 and not is_daily_report_sent_db(today_str):
             try:
                 print(f"📅 [Gün Sonu Raporu] {today_str} gün sonu raporu Telegram'a otomatik gönderiliyor... (TSİ {now_tr.strftime('%H:%M')})")
                 rep_t = self.notifier.send_daily_summary_report(target_date_str=today_str)
