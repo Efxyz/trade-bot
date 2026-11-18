@@ -6217,34 +6217,12 @@ def update_terminal_cache_loop():
                     debates = _terminal_cache.get("committee_debates", [])
                     reflections = _terminal_cache.get("trade_reflections", [])
 
-            # FAST Bot Pozisyon Takibi (TP / SL / Ladder / Timeout Anlık Denetimi)
-            try:
-                from agents.fast_tracker_agent import FastCounterfactualTrackerAgent
-                if not hasattr(update_terminal_cache_loop, "_fast_tracker_inst"):
-                    from agents.notifier_agent import NotifierAgent
-                    update_terminal_cache_loop._fast_tracker_inst = FastCounterfactualTrackerAgent(client, notifier=NotifierAgent())
-                update_terminal_cache_loop._fast_tracker_inst.update_open_trades()
-            except Exception:
-                pass
-
-            # FAST Bot İstatistikleri & Veritabanı
-            try:
-                from core.database import (
-                    get_fast_performance_stats, get_fast_active_and_pending_signals,
-                    get_fast_all_signals, get_fast_scanner_logs_db
-                )
-                FAST_MAX_CONCURRENT_TRADES = 10
-                fast_stats = get_fast_performance_stats()
-                fast_active_signals = get_fast_active_and_pending_signals()
-                fast_all_sigs = get_fast_all_signals(limit=40)
-                fast_history = [s for s in fast_all_sigs if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER", "ACTIVE_PARTIAL_TP1")]
-                fast_scanner_logs = get_fast_scanner_logs_db(limit=40)
-            except Exception:
-                with _cache_lock:
-                    fast_stats = _terminal_cache.get("fast_stats", {})
-                    fast_active_signals = []
-                    fast_history = _terminal_cache.get("fast_trade_history", [])
-                    fast_scanner_logs = _terminal_cache.get("fast_scanner_logs", [])
+            # FAST Bot devre dışı (saniyelik ölü SQLite sorguları kaldırıldı)
+            FAST_MAX_CONCURRENT_TRADES = 0
+            fast_stats = {}
+            fast_active_signals = []
+            fast_history = []
+            fast_scanner_logs = []
 
             # 4. Standart Aktif Pozisyonlar ve Çizgi Fiyatları
             active_positions = []
@@ -6317,171 +6295,17 @@ def update_terminal_cache_loop():
                 sig_dict["recent_candles"] = cached_klines.get(symbol, [])
                 active_positions.append(sig_dict)
 
-            # 5. FAST Scalper Aktif Pozisyonlar ve Çizgi Fiyatları (1m Mumlar)
+            # 5 & 6. FAST / SÜPER FAST Scalper devre dışı (boş önbellek değerleri)
             fast_active_positions = []
             fast_total_unrealized_pnl = 0.0
             fast_total_unrealized_dollar = 0.0
-
-            for fsig in fast_active_signals:
-                fsymbol = fsig["symbol"]
-                f_ws_price = get_live_price(fsymbol)
-                f_ticker = cached_tickers.get(fsymbol, {})
-                f_entry_price = fsig.get("actual_entry_price") or fsig["entry_min"]
-                f_live_price = f_ws_price if f_ws_price else f_ticker.get("lastPrice", f_entry_price)
-                f_leverage = fsig.get("leverage", 10)
-                f_direction = fsig["direction"]
-
-                f_gross_pnl_pct = 0.0
-                f_fee_pct = round(0.10 * f_leverage, 2)
-                f_net_pnl_pct = 0.0
-                if f_entry_price > 0:
-                    if f_direction == "LONG":
-                        f_raw_diff = (f_live_price - f_entry_price) / f_entry_price
-                    else:
-                        f_raw_diff = (f_entry_price - f_live_price) / f_entry_price
-                    f_gross_pnl_pct = round(f_raw_diff * f_leverage * 100, 2)
-                    f_net_pnl_pct = round(f_gross_pnl_pct - f_fee_pct, 2)
-                    fast_total_unrealized_pnl += f_net_pnl_pct
-
-                f_pos_margin = float(fsig.get("allocated_margin_usdt") or 100.0)
-                f_pos_dollar = round(f_pos_margin * (f_net_pnl_pct / 100.0), 2)
-                fast_total_unrealized_dollar += f_pos_dollar
-
-                # 1m hızlı mum verisi çek
-                try:
-                    f_klines = client.get_klines(fsymbol, interval="1m", limit=16)
-                    if f_klines:
-                        cached_fast_klines[fsymbol] = f_klines
-                except Exception:
-                    pass
-
-                f_entered_str = fsig.get("entered_at") or fsig.get("created_at")
-                f_elapsed_str = "1 dk"
-                if f_entered_str:
-                    try:
-                        t_str = str(f_entered_str).replace('T', ' ').split('.')[0]
-                        dt = datetime.strptime(t_str, "%Y-%m-%d %H:%M:%S")
-                        diff_sec = max(0, int((datetime.now() - dt).total_seconds()))
-                        mins = diff_sec // 60
-                        secs = diff_sec % 60
-                        if mins == 0:
-                            f_elapsed_str = f"{secs} sn"
-                        elif mins < 60:
-                            f_elapsed_str = f"{mins} dk"
-                        else:
-                            f_elapsed_str = f"{mins // 60} sa {mins % 60} dk"
-                    except Exception:
-                        pass
-
-                fsig_dict = dict(fsig)
-                fsig_dict["elapsed_str"] = f_elapsed_str
-                fsig_dict["live_price"] = f_live_price
-                fsig_dict["unrealized_pnl_pct"] = f_net_pnl_pct
-                fsig_dict["unrealized_pnl_dollar"] = f_pos_dollar
-                fsig_dict["allocated_margin_usdt"] = f_pos_margin
-                fsig_dict["gross_pnl_pct"] = f_gross_pnl_pct
-                fsig_dict["fee_pct"] = f_fee_pct
-                fsig_dict["ladder_step"] = fsig.get("ladder_step") or 0
-                fsig_dict["ladder_name"] = fsig.get("ladder_name") or ""
-                fsig_dict["recent_candles"] = cached_fast_klines.get(fsymbol, [])
-                fast_active_positions.append(fsig_dict)
-
-            # SÜPER FAST Bot Pozisyon Takibi (Saniyelik TP / SL / Ladder / Timeout Anlık Denetimi)
-            try:
-                from agents.super_fast_tracker_agent import SuperFastCounterfactualTrackerAgent
-                if not hasattr(update_terminal_cache_loop, "_super_fast_tracker_inst"):
-                    update_terminal_cache_loop._super_fast_tracker_inst = SuperFastCounterfactualTrackerAgent(client)
-                update_terminal_cache_loop._super_fast_tracker_inst.update_open_trades()
-            except Exception:
-                pass
-
-            # SÜPER FAST Bot İstatistikleri & Veritabanı
-            try:
-                from core.database import (
-                    get_super_fast_performance_stats, get_super_fast_active_and_pending_signals,
-                    get_super_fast_all_signals, get_super_fast_scanner_logs_db
-                )
-                SUPER_FAST_MAX_CONCURRENT_TRADES = 20
-                super_fast_stats = get_super_fast_performance_stats()
-                super_fast_active_signals = get_super_fast_active_and_pending_signals()
-                super_fast_all_sigs = get_super_fast_all_signals(limit=50)
-                super_fast_history = [s for s in super_fast_all_sigs if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER", "ACTIVE_PARTIAL_TP1")]
-                super_fast_scanner_logs = get_super_fast_scanner_logs_db(limit=50)
-            except Exception:
-                with _cache_lock:
-                    super_fast_stats = _terminal_cache.get("super_fast_stats", {})
-                    super_fast_active_signals = []
-                    super_fast_history = _terminal_cache.get("super_fast_trade_history", [])
-                    super_fast_scanner_logs = _terminal_cache.get("super_fast_scanner_logs", [])
-
-            # 6. SÜPER FAST Scalper Aktif Pozisyonlar ve Çizgi Fiyatları
+            SUPER_FAST_MAX_CONCURRENT_TRADES = 0
+            super_fast_stats = {}
             super_fast_active_positions = []
             super_fast_total_unrealized_pnl = 0.0
             super_fast_total_unrealized_dollar = 0.0
-
-            for sfsig in super_fast_active_signals:
-                sfsymbol = sfsig["symbol"]
-                sf_ws_price = get_live_price(sfsymbol)
-                sf_ticker = cached_tickers.get(sfsymbol, {})
-                sf_entry_price = sfsig.get("actual_entry_price") or sfsig["entry_min"]
-                sf_live_price = sf_ws_price if sf_ws_price else sf_ticker.get("lastPrice", sf_entry_price)
-                sf_leverage = sfsig.get("leverage", 10)
-                sf_direction = sfsig["direction"]
-
-                sf_gross_pnl_pct = 0.0
-                sf_fee_pct = round(0.10 * sf_leverage, 2)
-                sf_net_pnl_pct = 0.0
-                if sf_entry_price > 0:
-                    if sf_direction == "LONG":
-                        sf_raw_diff = (sf_live_price - sf_entry_price) / sf_entry_price
-                    else:
-                        sf_raw_diff = (sf_entry_price - sf_live_price) / sf_entry_price
-                    sf_gross_pnl_pct = round(sf_raw_diff * sf_leverage * 100, 2)
-                    sf_net_pnl_pct = round(sf_gross_pnl_pct - sf_fee_pct, 2)
-                    super_fast_total_unrealized_pnl += sf_net_pnl_pct
-
-                sf_pos_margin = float(sfsig.get("allocated_margin_usdt") or 50.0)
-                sf_pos_dollar = round(sf_pos_margin * (sf_net_pnl_pct / 100.0), 2)
-                super_fast_total_unrealized_dollar += sf_pos_dollar
-
-                # 1m hızlı mum verisi (grafik için)
-                try:
-                    sf_klines = client.get_klines(sfsymbol, interval="1m", limit=16)
-                    if sf_klines:
-                        cached_fast_klines[sfsymbol] = sf_klines
-                except Exception:
-                    pass
-
-                sf_entered_str = sfsig.get("entered_at") or sfsig.get("created_at")
-                sf_elapsed_str = "1 dk"
-                if sf_entered_str:
-                    try:
-                        t_str = str(sf_entered_str).replace('T', ' ').split('.')[0]
-                        dt = datetime.strptime(t_str, "%Y-%m-%d %H:%M:%S")
-                        diff_sec = max(0, int((datetime.now() - dt).total_seconds()))
-                        mins = diff_sec // 60
-                        secs = diff_sec % 60
-                        if mins == 0:
-                            sf_elapsed_str = f"{secs} sn"
-                        elif mins < 60:
-                            sf_elapsed_str = f"{mins} dk"
-                        else:
-                            sf_elapsed_str = f"{mins // 60} sa {mins % 60} dk"
-                    except Exception:
-                        pass
-
-                sfsig_dict = dict(sfsig)
-                sfsig_dict["elapsed_str"] = sf_elapsed_str
-                sfsig_dict["live_price"] = sf_live_price
-                sfsig_dict["unrealized_pnl_pct"] = sf_net_pnl_pct
-                sfsig_dict["unrealized_pnl_dollar"] = sf_pos_dollar
-                sfsig_dict["allocated_margin_usdt"] = sf_pos_margin
-                sfsig_dict["gross_pnl_pct"] = sf_gross_pnl_pct
-                sfsig_dict["fee_pct"] = sf_fee_pct
-                sfsig_dict["ladder_step"] = sfsig.get("ladder_step") or 0
-                sfsig_dict["ladder_name"] = sfsig.get("ladder_name") or ""
-                sfsig_dict["recent_candles"] = cached_fast_klines.get(sfsymbol, [])
-                super_fast_active_positions.append(sfsig_dict)
+            super_fast_history = []
+            super_fast_scanner_logs = []
 
             # Vade Kotaları Bilgisini Derle
             try:
