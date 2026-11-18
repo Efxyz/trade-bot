@@ -58,9 +58,9 @@ ESTIMATED_SLIPPAGE_PCT = 0.02          # %0.02 Tahmini kayma payı
 ENABLE_LADDER_PROFIT = True
 
 LADDER_STEPS = [
-    # Basamak 1: %35 Kısmi Kâr Cebe + Nefes Alan BE+ Kalkanı (+%0.45 Ham / -%0.08 Nefes Payı Stop)
-    # Fiyat +%0.45 kâra ulaştığında pozisyonun %35'i nakit kâr alınır, kalan %65'in stopu girişin -%0.08 gerisine çekilir (retestte atılmaz, net sonuç >= $0 garanti!)
-    {"step": 1, "trigger_raw_pct": 0.45, "lock_raw_pct": -0.08, "name": "🛡️ Basamak 1 (%35 Kâr Cebe + Nefes Payı BE+)"},
+    # Basamak 1: %35 Kısmi Kâr Cebe + Nefes Alan BE+ Kalkanı (+%0.50 Ham / -%0.15 Nefes Payı Stop)
+    # Fiyat +%0.50 kâra ulaştığında pozisyonun %35'i nakit kâr alınır, kalan %65'in stopu girişin -%0.15 gerisine çekilir (erken boğulmayı önler, net sonuç >= $0 garanti!)
+    {"step": 1, "trigger_raw_pct": 0.50, "lock_raw_pct": -0.15, "name": "🛡️ Basamak 1 (%35 Kâr Cebe + Nefes Payı BE+)"},
 
     # Basamak 2: Komisyon Korumalı Sağlıklı Kâr Kilidi (%0.35 Kilit)
     # Fiyat +%0.75 kâra ulaştığında stop'u +%0.35'e çek (erken boğulmayı önler, güçlü net kâr kilitler)
@@ -82,9 +82,9 @@ LADDER_DYNAMIC_CHANNEL_PCT = 0.30
 # Geçmiş 30 ve 90 günlük testlerde kasayı en çok eriten, kronik stop-hunt ve testere pariteleri
 EXCLUDED_SYMBOLS_BLACKLIST = ["LINKUSDT", "ARBUSDT", "INJUSDT", "APTUSDT"]
 
-# Dinamik Kaldıraç (10x ve 20x)
+# Dinamik Kaldıraç (Yüksek 20x kaldıracın komisyon ve SL aşındırması nedeniyle tüm işlemler 10x'e sabitlendi)
 LEVERAGE_STANDARD = 10  # 10x ile %1 fiyat hareketi = +%10 marjin karı
-LEVERAGE_HIGH = 20      # 20x ile %1 fiyat hareketi = +%20 marjin karı
+LEVERAGE_HIGH = 10      # 20x devre dışı -> Tüm işlemler 10x (%67.5 canlı WR)
 
 # ========================================================
 # RİSK / ÖDÜL VE VOLATİLİTE AYARLARI (KESKİN NİŞANCI & GÜRÜLTÜ KORUMASI)
@@ -116,21 +116,21 @@ SIDE_STOPLOSS_COOLDOWN_MINUTES = 45        # Kilitlenen yön 45 dakika boyunca y
 # ========================================================
 # Her zaman diliminin bağımsız günlük kotası vardır.
 # Bir vadenin (örneğin 15m) kotası dolduğunda diğer vadeler (30m ve 1h) fırsat aramaya kesintisiz devam eder!
-DAILY_MAX_TRADES_15M = 10             # ⚡ 15m (Kısa Vade): Günde azami 10 işlem
-DAILY_MAX_TRADES_30M = 8              # 🎯 30m (Orta Vade): Günde azami 8 işlem
-DAILY_MAX_TRADES_1H = 6               # 👑 1h (Uzun Vade): Günde azami 6 işlem
+DAILY_MAX_TRADES_15M = 6              # ⚡ 15m (Kısa Vade): Günde azami 6 işlem (Keskin Nişancı Kotası)
+DAILY_MAX_TRADES_30M = 5              # 🎯 30m (Orta Vade): Günde azami 5 işlem
+DAILY_MAX_TRADES_1H = 4               # 👑 1h (Uzun Vade): Günde azami 4 işlem
 
-DAILY_BASE_MAX_TRADES = 24            # Toplam tavan referansı (10 + 8 + 6)
-DAILY_MAX_NEW_TRADES = 24             # Geriye dönük uyumluluk aliası
+DAILY_BASE_MAX_TRADES = 15            # Toplam tavan referansı (6 + 5 + 4)
+DAILY_MAX_NEW_TRADES = 15             # Geriye dönük uyumluluk aliası
 PROFIT_STEP_FOR_BONUS_TRADES = 15.0   # Her +$15 net kârda her vadeye +1 ekstra kota slotu eklenir
 BONUS_TRADES_PER_STEP = 1             # Her kâr adımında her vade kotasına ilave hak
 ENABLE_CIRCUIT_BREAKER = True         # Güvenlik Kalkanı: Günlük -$35 kayıpta taramayı 24s dondur
 DAILY_MAX_DRAWDOWN_USDT = 35.0       # Günlük Acil Durum Sigortası (Circuit Breaker): -$35 kayıpta taramayı dondur
 DAILY_TRAILING_PROFIT_LOCK_ENABLED = True # Günlük Zirve Kâr Kilidi (Kazanılan kârı asla geri vermeme kalkanı)
 
-# SMC & Confluence Kalite Eşiği (Dengeli Kurumsal SMC Kalibrasyonu - 15 Kasım Canlı Saha Ayarı)
-MIN_CONFLUENCE_SCORE = 60            # 60+ Grade A fırsatlar için optimize edildi (Eski: 65/68/72/82)
-MIN_CONFLUENCE_SCORE_SHORT = 64      # Short Kalite Eşiği: 64+ (Eski: 68/70/74/84)
+# SMC & Confluence Kalite Eşiği (Yüksek Seçicilik Kalibrasyonu - Kota Korumalı)
+MIN_CONFLUENCE_SCORE = 68            # Yalnızca A+ 68+ puanlı kurulumlar kabul edilir
+MIN_CONFLUENCE_SCORE_SHORT = 70      # Short Kalite Eşiği: 70+
 
 # Likidite ve Slippage / Spread Koruması (Jesse & Hummingbot Standartları)
 MAX_ORDERBOOK_SPREAD_PCT = 0.12     # En iyi alış/satış makası %0.12'den genişse likidite tuzağı kabul edilir
