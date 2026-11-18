@@ -12,6 +12,7 @@ Includes:
 - Realistic Binance Futures Net Fee Accounting (Deducts 0.10% roundtrip Taker fee * leverage).
 """
 import os
+import threading
 from datetime import datetime
 from typing import Dict, List, Optional
 import matplotlib
@@ -45,6 +46,8 @@ from config import (
 )
 
 class CounterfactualTrackerAgent:
+    _track_lock = threading.Lock()
+
     def __init__(self, client: BinanceFuturesClient, output_dir=CHARTS_DIR):
         self.client = client
         self.output_dir = output_dir
@@ -71,6 +74,10 @@ class CounterfactualTrackerAgent:
         - Komisyonları daima stop seviyesine dahil ederek net sıfır zarar / garantili kâr sağlar.
         - 45 dakikayı geçen pozisyonları kapatıp sermayeyi boşaltır.
         """
+        with CounterfactualTrackerAgent._track_lock:
+            return self._update_tracked_trades_locked(notifier=notifier)
+
+    def _update_tracked_trades_locked(self, notifier=None) -> List[Dict]:
         signals = get_active_and_pending_signals()
         if not signals:
             return []
@@ -243,7 +250,8 @@ class CounterfactualTrackerAgent:
                             }
                             # Basamak 1: %35 Kısmi Kârı Cebe Al + Kalan %65'e -%0.08 Nefes Paylı Sıfır Risk Stopu
                             if step_num == 1 and partial_tp_taken == 0:
-                                step1_net_pct = max(3.0, (peak_profit_pct * leverage) - (BINANCE_ROUNDTRIP_FEE_PCT * leverage))
+                                step1_exec_pct = min(peak_profit_pct, max(trigger_pct, raw_profit_pct))
+                                step1_net_pct = max(3.0, (step1_exec_pct * leverage) - (BINANCE_ROUNDTRIP_FEE_PCT * leverage))
                                 step1_usd = round((allocated_margin * 0.35) * (step1_net_pct / 100.0), 2)
                                 current_realized_usd = round(current_realized_usd + step1_usd, 2)
                                 allocated_margin = round(allocated_margin * 0.65, 2)
@@ -325,9 +333,12 @@ class CounterfactualTrackerAgent:
                     current_realized_usd = round(current_realized_usd + realized_usd, 2)
                     new_partial_state = 3 if partial_tp_taken == 2 else 1
 
-                    # Stop-Loss'u hemen giriş fiyatına (Break-Even) çek:
+                    # Stop-Loss'u hemen giriş fiyatına (Break-Even) çek (ancak daha kârlı kilitlenmiş merdiven stopunu asla geri gevşetme!):
                     be_sl = round(entry_price * (1.0005 if is_long else 0.9995), 8)
-                    current_sl = be_sl
+                    if is_long:
+                        current_sl = max(current_sl, be_sl)
+                    else:
+                        current_sl = min(current_sl, be_sl)
                     current_ladder_step = max(current_ladder_step, 2)
                     ladder_name = f"🎯 TP1 %50 Kilit (+${current_realized_usd}) | 🏃 Free-Trade Runner"
 
@@ -344,7 +355,7 @@ class CounterfactualTrackerAgent:
                     allocated_margin = half_margin
                     print(f"🎯 [{symbol}] TP1 Vuruldu! Kâr Cebe Alındı (Toplam Kilit: +${current_realized_usd}). Free-Trade Runner TP2'ye koşuyor!")
 
-                elif partial_tp_taken in (1, 3) and is_hit_tp2:
+                if partial_tp_taken in (1, 3) and is_hit_tp2:
                     # Runner hedefe (TP2) ulaştı! Kalan pozisyon da tepe fiyattan kapatıldı!
                     is_closed = True
                     final_status = "HIT_TP2_RUNNER"
@@ -638,20 +649,32 @@ class CounterfactualTrackerAgent:
         ax.axhline(sig["stop_loss"], color="#ef4444", linestyle="-", linewidth=1.4, label=f"SL: {sig['stop_loss']}")
         ax.axhline(sig["take_profit_1"], color="#10b981", linestyle="-", linewidth=1.4, label=f"Kar Hedefi (TP): {sig['take_profit_1']}")
 
-        if outcome == "HIT_TP":
-            outcome_title = "[🎯 VUR-KAÇ HEDEFİ ALINDI]"
+        if outcome in ("HIT_TP", "HIT_TP1", "HIT_TP2"):
+            outcome_title = "[VUR-KAC HEDEFI ALINDI]"
+        elif outcome == "HIT_TP2_RUNNER":
+            outcome_title = "[RUNNER TP2 HEDEFI VURULDU]"
+        elif outcome == "RUNNER_BE_EXIT":
+            outcome_title = "[FREE-TRADE RUNNER CIKISI]"
         elif outcome.startswith("LADDER_STEP_") or outcome == "LADDER_PROFIT_EXIT":
-            outcome_title = "[🪜 MERDİVEN KÂR KİLİDİ]"
+            outcome_title = "[MERDIVEN KAR KILIDI]"
         elif outcome == "TRAILING_STOP_EXIT":
-            outcome_title = "[⚡ İZ SÜREN DİNAMİK KANAL]"
+            outcome_title = "[IZ SUREN DINAMIK KANAL]"
         elif outcome == "CLOSED_BE":
-            outcome_title = "[🛡️ KOMİSYON KORUMALI BE+]"
+            outcome_title = "[KOMISYON KORUMALI BE+]"
+        elif outcome == "TIMEOUT_PROFIT_EXIT":
+            outcome_title = "[SURE DOLUMU KARLI CIKIS]"
         elif outcome == "TIMEOUT_EXIT":
-            outcome_title = f"[⏱️ ZAMAN AŞIMI - {MAX_HOLD_MINUTES}dk]"
+            outcome_title = f"[ZAMAN ASIMI - {MAX_HOLD_MINUTES}dk]"
+        elif outcome == "MOMENTUM_STAGNATION_EXIT":
+            outcome_title = "[2-MUM MOMENTUM IPTALI]"
+        elif outcome == "EARLY_INVALIDATION_EXIT":
+            outcome_title = "[ERKEN YAPISAL ZARAR KES]"
+        elif outcome in ("PAIR_MEAN_REVERSION_EXIT", "PAIR_PARTNER_CLOSED_EXIT"):
+            outcome_title = "[STAT-ARB PAIR CIKISI]"
         elif outcome == "MANUAL_CLOSE":
-            outcome_title = "[🛑 EL İLE KAPATILDI]"
+            outcome_title = "[EL ILE KAPATILDI]"
         else:
-            outcome_title = "[🛑 STOP LOSS]"
+            outcome_title = "[STOP LOSS]"
 
         outcome_text = f"{outcome_title}: {'+' if pnl_pct > 0 else ''}{pnl_pct}% PnL ({leverage}x)"
 
