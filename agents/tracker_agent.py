@@ -554,7 +554,11 @@ class CounterfactualTrackerAgent:
                 if is_pair_trade == 1 and pair_peer and pair_peer in active_syms_set:
                     try:
                         from core.database import close_single_signal_db
-                        partner_closed = close_single_signal_db(pair_peer, client=self.client)
+                        partner_closed = close_single_signal_db(
+                            pair_peer,
+                            client=self.client,
+                            close_status="PAIR_PARTNER_CLOSED_EXIT"
+                        )
                         if partner_closed:
                             active_syms_set.discard(pair_peer)
                             print(f"⚖️ [{symbol}/{pair_peer}] Eşzamanlı Pair Kapanışı: {pair_peer} da kapatıldı.")
