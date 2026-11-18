@@ -901,14 +901,21 @@ class TradingBotOrchestrator:
 
                 time.sleep(0.15)
 
-            # Kotaya takılan diğer iyi fırsatları logda belirt
+            # Kotaya takılan veya kalite barajı altında kalan diğer fırsatları açık ve net logla
             for unselected in shortlist_candidates:
                 if unselected["symbol"] not in excluded_symbols:
+                    u_score = float(unselected.get("quality_score") or 0.0)
+                    if found_setups_count > 0:
+                        reason_msg = f"Turnuva Kotası Doldu (Kalite Skoru: {u_score}/100)"
+                        detail_msg = f"Turnuva şampiyonu ({found_setups_count} adet işlem) açıldığı için döngü kotası tamamlandı"
+                    else:
+                        reason_msg = f"Turnuva Kalite Barajı Altında ({u_score}/100 < 68.0 Barajı)"
+                        detail_msg = "En yüksek puanlı adaylar yarıştı ancak 68.0 A+ kalite barajını aşamadı (Sermaye Koruma)"
                     add_scanner_log(
                         unselected["symbol"],
                         "REJECTED",
-                        f"Turnuva Kotası Doldu (Kalite Skoru: {unselected['quality_score']}/100)",
-                        f"Daha yüksek kaliteli fırsatlar ({found_setups_count} adet) önceliklendirildi"
+                        reason_msg,
+                        detail_msg
                     )
 
         if found_setups_count == 0:
