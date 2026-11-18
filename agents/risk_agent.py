@@ -35,8 +35,18 @@ class RiskOfficerAgent:
         import math
         if not candles_a or not candles_b or len(candles_a) < lookback + 2 or len(candles_b) < lookback + 2:
             return 0.0
-        ca = [float(c["close"]) for c in candles_a[-(lookback + 2):-1]]
-        cb = [float(c["close"]) for c in candles_b[-(lookback + 2):-1]]
+        closed_a = candles_a[:-1]
+        closed_b = candles_b[:-1]
+        map_a = {c["timestamp"]: float(c["close"]) for c in closed_a if c.get("timestamp") is not None}
+        map_b = {c["timestamp"]: float(c["close"]) for c in closed_b if c.get("timestamp") is not None}
+        common_ts = sorted(set(map_a.keys()) & set(map_b.keys()))
+        if len(common_ts) >= lookback + 1:
+            used_ts = common_ts[-(lookback + 1):]
+            ca = [map_a[t] for t in used_ts]
+            cb = [map_b[t] for t in used_ts]
+        else:
+            ca = [float(c["close"]) for c in closed_a[-lookback - 1:]]
+            cb = [float(c["close"]) for c in closed_b[-lookback - 1:]]
         n = min(len(ca), len(cb))
         if n < 10:
             return 0.0
