@@ -78,10 +78,13 @@ class CounterfactualTrackerAgent:
         tickers = self.client.get_24hr_tickers()
         resolved_trades = []
         now = datetime.now()
+        active_syms_set = {s["symbol"] for s in signals}
 
         for sig in signals:
             sig_id = sig["id"]
             symbol = sig["symbol"]
+            if symbol not in active_syms_set:
+                continue
             ticker = tickers.get(symbol)
             if not ticker:
                 continue
@@ -192,9 +195,9 @@ class CounterfactualTrackerAgent:
                             active_ladder_steps = []
                             for s_num, cfg in sorted(ATR_LADDER_MULT.items()):
                                 if s_num == 1:
-                                    # Basamak 1: Hızlı BE+ Sermaye Kalkanı (nefes payı genişletildi: erken boğulmayı önler)
+                                    # Basamak 1: Hızlı BE+ Sermaye Kalkanı (nefes payı ve gerçek başabaş -%0.10 kilidi)
                                     trig_val = round(min(0.55 * ladder_mult, max(0.48, atr_pct_val * 0.55)), 4)
-                                    lock_val = round(-0.15 * ladder_mult, 4)
+                                    lock_val = round(-0.10 * ladder_mult, 4)
                                     step_lbl = "🛡️ Basamak 1 (%35 Kâr Cebe + Nefes Payı BE+)"
                                 else:
                                     static_rung = LADDER_STEPS[s_num - 1]
@@ -425,9 +428,15 @@ class CounterfactualTrackerAgent:
                     raw_change = raw_c_2b
                     print(f"⚡ [{symbol}] [{sig_tf}] 2-Mum Momentum İptali ({minutes_open:.0f} dk, Zirve: +%{peak_profit_pct:.2f}, Anlık: {raw_c_2b*100:+.2f}%) -> Ölü sermaye serbest bırakıldı.")
 
-            # 5c. STAT-ARB SPREAD ORTALAMAYA DÖNÜŞ ÇIKIŞI (|Z| <= 0.40 ise pair bacaklarını eşzamanlı kapat)
+            # 5c. STAT-ARB SPREAD ORTALAMAYA DÖNÜŞ ÇIKIŞI (|Z| <= 0.40 veya partner bacak kapanmışsa eşzamanlı kapat)
             pair_peer = sig.get("pair_symbol") or ""
-            if not is_closed and is_pair_trade == 1 and pair_peer and minutes_open >= 15:
+            if not is_closed and is_pair_trade == 1 and pair_peer and pair_peer not in active_syms_set:
+                is_closed = True
+                final_status = "PAIR_PARTNER_CLOSED_EXIT"
+                exit_price = current_price
+                raw_change = ((current_price - entry_price) / entry_price) if is_long else ((entry_price - current_price) / entry_price)
+                print(f"⚖️ [{symbol}] Partner bacak ({pair_peer}) kapalı olduğu için hedge'siz kalmamak adına kapatıldı.")
+            elif not is_closed and is_pair_trade == 1 and pair_peer and minutes_open >= 15:
                 try:
                     from agents.pairs_stat_arb_agent import StatisticalArbitrageAgent
                     z_now = StatisticalArbitrageAgent().get_pair_live_zscore(self.client, symbol, pair_peer)
@@ -529,6 +538,17 @@ class CounterfactualTrackerAgent:
 
                 if notifier:
                     notifier.send_outcome_report(resolved_info)
+
+                active_syms_set.discard(symbol)
+                if is_pair_trade == 1 and pair_peer and pair_peer in active_syms_set:
+                    try:
+                        from core.database import close_single_signal_db
+                        partner_closed = close_single_signal_db(pair_peer, client=self.client)
+                        if partner_closed:
+                            active_syms_set.discard(pair_peer)
+                            print(f"⚖️ [{symbol}/{pair_peer}] Eşzamanlı Pair Kapanışı: {pair_peer} da kapatıldı.")
+                    except Exception:
+                        pass
 
         try:
             self.evaluate_shadow_rejections(max_items=8)
