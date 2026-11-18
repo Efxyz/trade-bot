@@ -153,11 +153,11 @@ class SelfTuningEngine:
             except Exception:
                 pass
 
-            if status == "TIMEOUT_EXIT":
+            if status in ("TIMEOUT_EXIT", "MOMENTUM_STAGNATION_EXIT"):
                 timeout += 1
-            elif status == "CLOSED_BE" or abs(pnl) < 1.0:
+            elif status in ("CLOSED_BE", "RUNNER_BE_EXIT") or abs(pnl) < 1.0:
                 be_friction += 1
-            elif status == "HIT_SL" and duration_mins < 15:
+            elif status in ("HIT_SL", "EARLY_INVALIDATION_EXIT") and duration_mins < 15:
                 wick_hunt += 1
             else:
                 reversal += 1
@@ -204,7 +204,7 @@ class SelfTuningEngine:
         short_wr = (short_wins / len(shorts) * 100.0) if shorts else 50.0
         long_wr = (long_wins / len(longs) * 100.0) if longs else 50.0
 
-        timeouts = len([t for t in trades if t.get("status") == "TIMEOUT_EXIT"])
+        timeouts = len([t for t in trades if t.get("status") in ("TIMEOUT_EXIT", "MOMENTUM_STAGNATION_EXIT")])
         timeout_ratio = timeouts / len(trades) if trades else 0.0
 
         if timeout_ratio >= 0.35:
@@ -345,7 +345,7 @@ class SelfTuningEngine:
                 })
                 hypotheses.append(f"💡 [Kalite Optimizasyonu]: Kazanma oranını %65+ üzerine çekmek için minimum SMC giriş barajı {new_conf}/100 seviyesine yükseltildi; zayıf sinyaller ayıklandı.")
         elif win_rate >= 65.0 and expectancy >= 0.40:
-            new_conf = max(SAFETY_GUARDRAILS["MIN_CONFLUENCE_FLOOR"], min(curr_conf - 1, 64))
+            new_conf = max(SAFETY_GUARDRAILS["MIN_CONFLUENCE_FLOOR"], curr_conf - 1)
             if new_conf != curr_conf:
                 tuned["min_confluence_score"] = new_conf
                 param_deltas.append({
