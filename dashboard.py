@@ -6139,7 +6139,6 @@ try:
         get_fast_all_signals, get_fast_scanner_logs_db
     )
     from core.self_tuning_engine import SelfTuningEngine
-    from fast_config import FAST_MAX_CONCURRENT_TRADES
     _terminal_cache["stats"] = get_performance_stats() or {}
     _terminal_cache["scanner_logs"] = get_scanner_logs_db(limit=40) or []
     _terminal_cache["news_feed"] = get_news_feed_db(limit=25) or []
@@ -6151,29 +6150,6 @@ try:
     _terminal_cache["committee_debates"] = get_latest_debates_db(limit=8) or []
     _terminal_cache["trade_reflections"] = get_recent_reflections_db(limit=15) or []
     _terminal_cache["tuning_info"] = SelfTuningEngine.run_autonomous_training_cycle(auto_commit=True) or {}
-
-    # FAST Bot Başlangıç Önbellek Verileri
-    _terminal_cache["fast_stats"] = get_fast_performance_stats() or {}
-    _terminal_cache["fast_scanner_logs"] = get_fast_scanner_logs_db(limit=40) or []
-    _all_fast_init = get_fast_all_signals(limit=40) or []
-    _terminal_cache["fast_trade_history"] = [s for s in _all_fast_init if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER", "ACTIVE_PARTIAL_TP1")]
-    _terminal_cache["fast_active_positions"] = get_fast_active_and_pending_signals() or []
-    _terminal_cache["fast_total_unrealized_pnl"] = 0.0
-    _terminal_cache["fast_max_concurrent_trades"] = FAST_MAX_CONCURRENT_TRADES
-
-    # SÜPER FAST Bot Başlangıç Önbellek Verileri (Saniyelik HFT)
-    from core.database import (
-        get_super_fast_performance_stats, get_super_fast_active_and_pending_signals,
-        get_super_fast_all_signals, get_super_fast_scanner_logs_db
-    )
-    from super_fast_config import SUPER_FAST_MAX_CONCURRENT_TRADES
-    _terminal_cache["super_fast_stats"] = get_super_fast_performance_stats() or {}
-    _terminal_cache["super_fast_scanner_logs"] = get_super_fast_scanner_logs_db(limit=40) or []
-    _all_super_init = get_super_fast_all_signals(limit=40) or []
-    _terminal_cache["super_fast_trade_history"] = [s for s in _all_super_init if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER", "ACTIVE_PARTIAL_TP1")]
-    _terminal_cache["super_fast_active_positions"] = get_super_fast_active_and_pending_signals() or []
-    _terminal_cache["super_fast_total_unrealized_pnl"] = 0.0
-    _terminal_cache["super_fast_max_concurrent_trades"] = SUPER_FAST_MAX_CONCURRENT_TRADES
 except Exception:
     pass
 _cache_lock = threading.Lock()
@@ -6257,7 +6233,7 @@ def update_terminal_cache_loop():
                     get_fast_performance_stats, get_fast_active_and_pending_signals,
                     get_fast_all_signals, get_fast_scanner_logs_db
                 )
-                from fast_config import FAST_MAX_CONCURRENT_TRADES
+                FAST_MAX_CONCURRENT_TRADES = 10
                 fast_stats = get_fast_performance_stats()
                 fast_active_signals = get_fast_active_and_pending_signals()
                 fast_all_sigs = get_fast_all_signals(limit=40)
@@ -6425,7 +6401,7 @@ def update_terminal_cache_loop():
                     get_super_fast_performance_stats, get_super_fast_active_and_pending_signals,
                     get_super_fast_all_signals, get_super_fast_scanner_logs_db
                 )
-                from super_fast_config import SUPER_FAST_MAX_CONCURRENT_TRADES
+                SUPER_FAST_MAX_CONCURRENT_TRADES = 20
                 super_fast_stats = get_super_fast_performance_stats()
                 super_fast_active_signals = get_super_fast_active_and_pending_signals()
                 super_fast_all_sigs = get_super_fast_all_signals(limit=50)
@@ -6814,32 +6790,15 @@ def api_clear_history():
 _fast_orchestrator = None
 
 def get_fast_orchestrator():
-    global _fast_orchestrator
-    if _fast_orchestrator is None:
-        from fast_engine import FastTradingBotOrchestrator
-        _fast_orchestrator = FastTradingBotOrchestrator()
-    return _fast_orchestrator
+    return None
 
 @app.route("/api/fast/data")
 def api_fast_data():
-    with _cache_lock:
-        return jsonify({
-            "ws_connected": _terminal_cache.get("ws_connected", False),
-            "btc_regime": _terminal_cache.get("btc_regime", {}),
-            "stats": _terminal_cache.get("fast_stats", {}),
-            "max_concurrent_trades": _terminal_cache.get("fast_max_concurrent_trades", 10),
-            "total_unrealized_pnl": _terminal_cache.get("fast_total_unrealized_pnl", 0.0),
-            "active_positions": _terminal_cache.get("fast_active_positions", []),
-            "scanner_logs": _terminal_cache.get("fast_scanner_logs", []),
-            "trade_history": _terminal_cache.get("fast_trade_history", []),
-            "bot_mode": "fast"
-        })
+    return jsonify({"status": "disabled", "bot_mode": "fast", "active_positions": [], "trade_history": [], "scanner_logs": []})
 
 @app.route("/api/fast/scan", methods=["POST"])
 def api_fast_scan():
-    orch = get_fast_orchestrator()
-    threading.Thread(target=orch.run_cycle, daemon=True).start()
-    return jsonify({"status": "FAST 1m scan started in background"})
+    return jsonify({"status": "disabled", "message": "FAST stratejisi kaldirildi"})
 
 @app.route("/api/fast/close-all-positions", methods=["POST"])
 @require_admin_pin
@@ -6883,26 +6842,11 @@ def api_fast_reset_all():
 _super_fast_orchestrator = None
 
 def get_super_fast_orchestrator():
-    global _super_fast_orchestrator
-    if _super_fast_orchestrator is None:
-        from super_fast_engine import SuperFastTradingBotOrchestrator
-        _super_fast_orchestrator = SuperFastTradingBotOrchestrator()
-    return _super_fast_orchestrator
+    return None
 
 @app.route("/api/superfast/data")
 def api_super_fast_data():
-    with _cache_lock:
-        return jsonify({
-            "ws_connected": _terminal_cache.get("ws_connected", False),
-            "btc_regime": _terminal_cache.get("btc_regime", {}),
-            "stats": _terminal_cache.get("super_fast_stats", {}),
-            "max_concurrent_trades": _terminal_cache.get("super_fast_max_concurrent_trades", 20),
-            "total_unrealized_pnl": _terminal_cache.get("super_fast_total_unrealized_pnl", 0.0),
-            "active_positions": _terminal_cache.get("super_fast_active_positions", []),
-            "scanner_logs": _terminal_cache.get("super_fast_scanner_logs", []),
-            "trade_history": _terminal_cache.get("super_fast_trade_history", []),
-            "bot_mode": "superfast"
-        })
+    return jsonify({"status": "disabled", "bot_mode": "superfast", "active_positions": [], "trade_history": [], "scanner_logs": []})
 
 @app.route("/api/superfast/scan", methods=["POST"])
 def api_super_fast_scan():
@@ -6955,34 +6899,7 @@ def is_port_in_use(port: int) -> bool:
 def start_dashboard(orchestrator=None, port=5000, auto_open=True):
     global _orchestrator, _fast_orchestrator, _super_fast_orchestrator, _updater_started
     _orchestrator = orchestrator
-
-    try:
-        from config import ENABLE_FAST_ENGINE, ENABLE_SUPER_FAST_ENGINE
-    except Exception:
-        ENABLE_FAST_ENGINE = False
-        ENABLE_SUPER_FAST_ENGINE = False
-
-    if ENABLE_FAST_ENGINE and _fast_orchestrator is None:
-        try:
-            from fast_engine import FastTradingBotOrchestrator
-            _fast_orchestrator = FastTradingBotOrchestrator()
-            threading.Thread(target=_fast_orchestrator.run_forever, daemon=True, name="FastBotThread").start()
-            print("⚡ [FAST Scalper 1m] Bağımsız Fon Kasalı Motor Arka Planda Başlatıldı (Kasa: $1000 USDT).")
-        except Exception as fast_err:
-            print(f"⚠️ FAST Scalper başlatılamadı: {fast_err}")
-    elif not ENABLE_FAST_ENGINE:
-        print("⏸️ [FAST Motoru] Uyku modunda (Tüm API bant genişliği 3-Vadeli Ana Motora ayrıldı).")
-
-    if ENABLE_SUPER_FAST_ENGINE and _super_fast_orchestrator is None:
-        try:
-            from super_fast_engine import SuperFastTradingBotOrchestrator
-            _super_fast_orchestrator = SuperFastTradingBotOrchestrator()
-            threading.Thread(target=_super_fast_orchestrator.run_forever, daemon=True, name="SuperFastBotThread").start()
-            print("⚡⚡ [SÜPER FAST Saniyelik HFT] Bağımsız Fon Kasalı Motor Arka Planda Başlatıldı (Kasa: $1000 USDT | Limit: 20).")
-        except Exception as sfast_err:
-            print(f"⚠️ SÜPER FAST başlatılamadı: {sfast_err}")
-    elif not ENABLE_SUPER_FAST_ENGINE:
-        print("⏸️ [SÜPER FAST Motoru] Uyku modunda (Tüm API bant genişliği 3-Vadeli Ana Motora ayrıldı).")
+    print("ℹ️ [Motor Durumu] Yalnızca 3-Vadeli Ana Strateji Motoru aktif (FAST / SÜPER FAST devre dışı).")
 
     # Bulut ve Yerel Ortam Dinamik Port ve Host Desteği (Railway, Render, VPS uyumlu)
     port = int(os.environ.get("PORT", port))
