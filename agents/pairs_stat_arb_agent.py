@@ -42,8 +42,16 @@ class StatisticalArbitrageAgent:
             }
 
         n = min(min_len, lookback)
-        sub_a = candles_a[-n:]
-        sub_b = candles_b[-n:]
+        map_a = {c["timestamp"]: c for c in candles_a if c.get("timestamp") is not None}
+        map_b = {c["timestamp"]: c for c in candles_b if c.get("timestamp") is not None}
+        common_ts = sorted(set(map_a.keys()) & set(map_b.keys()))
+        if len(common_ts) >= 15:
+            used_ts = common_ts[-n:]
+            sub_a = [map_a[t] for t in used_ts]
+            sub_b = [map_b[t] for t in used_ts]
+        else:
+            sub_a = candles_a[-n:]
+            sub_b = candles_b[-n:]
 
         ratios = []
         rets_a, rets_b = [], []
