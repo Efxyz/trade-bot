@@ -356,7 +356,7 @@ class NewsAgent:
             from core.database import save_coin_news_investigation_db
             save_coin_news_investigation_db(res)
         except Exception as e:
-            logger.debug(f"Haber konseyi DB kayıt hatası: {e}")
+            print(f"⚠️ [NewsAgent] Haber konseyi DB kayıt hatası: {e}")
 
         return res
 
