@@ -53,8 +53,16 @@ class TelegramCommandAgent:
                         # Sadece yetkili kullanıcıdan gelen komutları işle
                         if sender_id == self.chat_id and text.startswith("/"):
                             self._handle_command(text.lower())
+                elif resp.status_code == 409:
+                    print("⚠️ [Telegram Listener] Başka bir bot örneği ile 409 çakışması -> 20 sn bekleniyor...")
+                    time.sleep(20)
+                    continue
+                elif resp.status_code == 429:
+                    print("⚠️ [Telegram Listener] 429 Too Many Requests -> 15 sn bekleniyor...")
+                    time.sleep(15)
+                    continue
             except Exception:
-                time.sleep(3)
+                time.sleep(5)
             time.sleep(1)
 
     def _handle_command(self, cmd: str):
@@ -181,26 +189,18 @@ class TelegramCommandAgent:
             except Exception as e:
                 self.orchestrator.notifier.send_text_message(f"⚠️ Rapor oluşturma hatası: {e}")
 
-        elif base_cmd in ("/fast", "/fast_rapor", "/fast_durum", "/saatlik"):
-            self.orchestrator.notifier.send_text_message("⚡ *FAST Scalper (1m) Saatlik Raporu Derleniyor...*")
+        elif base_cmd in ("/shadow", "/ablasyon", "/filtre"):
+            self.orchestrator.notifier.send_text_message("🕵️ *Shadow Ablasyon (Filtre Performans) Raporu Derleniyor...*")
             try:
-                self.orchestrator.notifier.send_fast_hourly_report()
+                self.orchestrator.notifier.send_shadow_ablation_report()
             except Exception as e:
-                self.orchestrator.notifier.send_text_message(f"⚠️ FAST rapor hatası: {e}")
-
-        elif base_cmd in ("/super", "/superfast", "/super_fast", "/saniyelik"):
-            self.orchestrator.notifier.send_text_message("⚡⚡ *SÜPER FAST (Saniyelik) Saatlik Raporu Derleniyor...*")
-            try:
-                self.orchestrator.notifier.send_super_fast_hourly_report()
-            except Exception as e:
-                self.orchestrator.notifier.send_text_message(f"⚠️ Süper FAST rapor hatası: {e}")
+                self.orchestrator.notifier.send_text_message(f"⚠️ Shadow rapor hatası: {e}")
 
         elif base_cmd in ("/yardim", "/help", "/start"):
             msg = (
                 "🤖 *TRADE BOT KOMUT REHBERİ*\n\n"
-                "🔹 `/super` : SÜPER FAST (Saniyelik) saatlik işlem, PnL ve kasa raporunu getirir.\n"
-                "🔹 `/fast` : FAST Scalper (1m) saatlik işlem, PnL ve kasa raporunu anında getirir.\n"
-                "🔹 `/rapor` : Standart bot 24 saatlik gün sonu kâr/zarar ve işlem özetini atar.\n"
+                "🔹 `/rapor` : 24 saatlik gün sonu kâr/zarar özeti + Shadow filtre raporunu atar.\n"
+                "🔹 `/shadow` : Filtre ablasyon (kaçan kâr / kurtarılan zarar) raporunu anında getirir.\n"
                 "🔹 `/tara` : Binance vadeli piyasayı anında tarar.\n"
                 "🔹 `/durum` : 'Girseydim ne olurdu?' PnL raporunu getirir.\n"
                 "🔹 `/aktif` : Açıkta bekleyen sanal pozisyonları listeler.\n"
