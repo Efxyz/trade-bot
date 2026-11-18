@@ -997,7 +997,7 @@ class TechnicalAnalysisAgent:
             if curr_rsi < MIN_RSI_LONG:
                 return None, (
                     f"📌 <strong>Mevcut Durum:</strong> RSI={curr_rsi:.1f} (Zayıf Boğa Momentumu).<br>"
-                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Alım baskısı yetersiz kaldığı için 10x/20x kaldıraçta sahte kırılım riski mevcut.<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Alım baskısı yetersiz kaldığı için 10x kaldıraçta sahte kırılım riski mevcut.<br>"
                     f"🎯 <strong>Beklenen Şart:</strong> RSI'ın {MIN_RSI_LONG}+ üzerine çıkıp alıcıların güçlenmesi."
                 )
 
@@ -1312,7 +1312,7 @@ class TechnicalAnalysisAgent:
         
         return None, (
             f"📌 <strong>Mevcut Durum:</strong> {direction_hint} eğilimli SMC skoru {max_score}/100 seviyesinde kaldı (Güvenli Baraj: {target_min_score}).<br>"
-            f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> {factor_desc}; 10x/20x kaldıraçta sahte fitil ve stop olma riski yüksek.<br>"
+            f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> {factor_desc}; 10x kaldıraçta sahte fitil ve stop olma riski yüksek.<br>"
             f"🎯 <strong>Beklenen Şart:</strong> Net Likidite Temizliği (Sweep) veya FVG Kırılımı ile skorun {target_min_score}+ üzerine çıkması."
         )
 
