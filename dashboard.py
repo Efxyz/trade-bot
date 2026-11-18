@@ -3353,7 +3353,7 @@ HTML_OFFICE_TEMPLATE = """
         }
 
         async function resetDailyQuota() {
-            const msg = "🔄 Geçmiş işlem kayıtlarınız SİLİNMEDEN bugünkü işlem kotası, tempo kilidi ve gün içi zarar/zirve kilitleri sıfırlanacaktır.\n\nGüne yeniden başlamak istediğinize emin misiniz?";
+            const msg = "🔄 Geçmiş işlem kayıtlarınız SİLİNMEDEN bugünkü işlem kotası, tempo kilidi ve gün içi zarar/zirve kilitleri sıfırlanacaktır. Güne yeniden başlamak istediğinize emin misiniz?";
             if (!confirm(msg)) return;
             const pin = await getAdminPin();
             if (!pin) return;
