@@ -97,11 +97,14 @@ class TradingBotOrchestrator:
             return False
         try:
             from agents.pairs_stat_arb_agent import StatisticalArbitrageAgent
-            from core.database import get_active_and_pending_signals
+            from core.database import get_active_and_pending_signals, get_current_equity
             active_pair_sigs = get_active_and_pending_signals() or []
             if any(int(s.get("is_pair_trade") or 0) == 1 for s in active_pair_sigs):
                 return False
             active_syms_now = {s.get("symbol") for s in active_pair_sigs}
+            eq_now = get_current_equity()
+            pair_leg_margin = round(max(40.0, eq_now * 0.065), 1)
+            pair_leg_risk = round(pair_leg_margin * 0.13, 2)
             pair_opps = StatisticalArbitrageAgent(z_score_entry_threshold=2.35).evaluate_all_pairs(self.client)
             for popp in pair_opps:
                 sa, sb = popp["sym_a"], popp["sym_b"]
@@ -126,8 +129,8 @@ class TradingBotOrchestrator:
                         "take_profit_2": tp2_px,
                         "risk_reward": 1.83,
                         "risk_grade": "Grade A (Piyasa-Nötr Pair)",
-                        "allocated_margin_usdt": 65.0,
-                        "risk_usd": 8.45,
+                        "allocated_margin_usdt": pair_leg_margin,
+                        "risk_usd": pair_leg_risk,
                         "news_summary": f"Piyasa-Nötr Stat-Arb ({popp['pair_name']})",
                         "ta_reasons": popp["reason"],
                         "chart_entry_png": "",
@@ -303,19 +306,17 @@ class TradingBotOrchestrator:
 
         # 1.9 KÜRESEL İŞLEM TEMPOSU KORUMASI (Son işlemden bu yana min 12 dk bekleme -> kota erimesini önler)
         try:
-            from core.database import get_all_signals
-            recent_sigs = get_all_signals(limit=1) or []
-            if recent_sigs:
-                last_created = str(recent_sigs[0].get("created_at") or "")[:19]
-                if last_created:
-                    last_dt = datetime.strptime(last_created, "%Y-%m-%d %H:%M:%S")
-                    mins_since = (datetime.now() - last_dt).total_seconds() / 60.0
-                    if 0 <= mins_since < 12.0:
-                        wait_min = int(12.0 - mins_since) + 1
-                        msg_pace = f"Son işlemden bu yana 12 dk soğuma/tempo koruması aktif ({wait_min} dk kaldı)."
-                        print(f"⏱️ [Tempo Koruması] {msg_pace}")
-                        add_scanner_log("TEMPO KALKANI", "PROTECTED", msg_pace, "Peş Peşe İşlem Engellendi")
-                        return
+            from core.database import get_last_signal_created_at
+            last_created = str(get_last_signal_created_at() or "")[:19]
+            if last_created:
+                last_dt = datetime.strptime(last_created, "%Y-%m-%d %H:%M:%S")
+                mins_since = (datetime.now() - last_dt).total_seconds() / 60.0
+                if 0 <= mins_since < 12.0:
+                    wait_min = int(12.0 - mins_since) + 1
+                    msg_pace = f"Son işlemden bu yana 12 dk soğuma/tempo koruması aktif ({wait_min} dk kaldı)."
+                    print(f"⏱️ [Tempo Koruması] {msg_pace}")
+                    add_scanner_log("TEMPO KALKANI", "PROTECTED", msg_pace, "Peş Peşe İşlem Engellendi")
+                    return
         except Exception:
             pass
 
@@ -768,12 +769,20 @@ class TradingBotOrchestrator:
                             add_scanner_log(symbol, "REJECTED", f"2. Teyit: Geniş Spread (%{spread_pct:.3f} > %{max_spread_pct:.3f})", "SL-Oranlı Kayma Riski")
                             continue
 
-                # Teyit 3: Güncel BTC Ani Çöküş Denetimi
+                # Teyit 3: Güncel BTC Ani Çöküş & Yönlü Ralli/Squeeze Denetimi
                 fresh_btc = self.client.get_btc_regime()
                 if fresh_btc.get("block_all_entries", False):
                     print(f"🛑 [BTC Acil Fren] İkinci teyit anında BTC çöküş alarmı verdi: {fresh_btc.get('summary')}")
                     add_scanner_log(symbol, "PROTECTED", "İkinci teyitte BTC Çöküş Alarmı", "Sermaye Koruma Devrede")
                     break
+                if ta_setup["direction"] == "LONG" and fresh_btc.get("block_longs", False):
+                    print(f"🛑 [{symbol}] 2. teyitte BTC düşüş trendi nedeniyle LONG engellendi.")
+                    add_scanner_log(symbol, "REJECTED", "2. Teyit: BTC Düşüş Rejimi (LONG Engelli)", "Yönlü BTC Koruması")
+                    continue
+                if ta_setup["direction"] == "SHORT" and fresh_btc.get("block_shorts", False):
+                    print(f"🛑 [{symbol}] 2. teyitte BTC yükseliş rallisi (Squeeze) nedeniyle SHORT engellendi.")
+                    add_scanner_log(symbol, "REJECTED", "2. Teyit: BTC Ralli Rejimi (SHORT Engelli)", "Yönlü BTC Koruması")
+                    continue
 
                 # =========================================================================
                 # 🎉 İKİNCİ TEYİT BAŞARILI: İŞLEMİ AÇ VE SİSTEME KAYDET (EXECUTION)
