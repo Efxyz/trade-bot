@@ -44,12 +44,12 @@ ADAPTIVE_CONFIG_PATH = DATA_DIR / "adaptive_hyperparams.json"
 SAFETY_GUARDRAILS = {
     "MAX_RISK_PER_TRADE_PCT": 2.0,                   # Asla %2'nin üzerine çıkamaz
     "MAX_CONCURRENT_TRADES_HARD": MAX_CONCURRENT_TRADES,  # Ana bot eşzamanlı pozisyon sınırı
-    "MAX_LEVERAGE_ALLOWED": 20,                      # Asla 20x'in üzerine çıkamaz
+    "MAX_LEVERAGE_ALLOWED": 10,                      # Tüm işlemler 10x ile sınırlandırıldı (20x devre dışı)
     "MAX_DAILY_DRAWDOWN_PCT": 6.0,                   # Günlük %6 kayıpta sistem kilitlenir
     "MIN_SL_FLOOR_PCT": 0.80,                        # Stop mesafesi gürültüye ezilmemek için %0.80'den dar olamaz
     "MAX_SL_CEILING_PCT": 1.60,                      # Stop mesafesi %1.60'tan geniş olamaz
-    "MIN_CONFLUENCE_FLOOR": 58,                      # Confluence tabanı 58'den düşük olamaz
-    "MAX_CONFLUENCE_CEILING": 68,                    # Confluence tavanı felç olmamak için 68'den yüksek olamaz
+    "MIN_CONFLUENCE_FLOOR": 66,                      # Seçicilik tabanı 66'dan düşük olamaz
+    "MAX_CONFLUENCE_CEILING": 74,                    # Confluence tavanı 74
     "MAX_BTC_CHOP_CEILING": 0.85                     # BTC Chop tavanı kilitlenmeyi önlemek için %0.85'ten yüksek olamaz
 }
 
