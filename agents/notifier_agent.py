@@ -4,6 +4,7 @@ Formats and delivers executive trade briefs with PNG charts to Telegram & Consol
 Supports dynamic leverage (10x vs 20x Sniper) and Break-Even protection alerts.
 """
 import os
+import time
 import requests
 from typing import Dict, Optional
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
@@ -140,22 +141,53 @@ class NotifierAgent:
             self._send_telegram_photo(trade_info["chart_exit_png"], caption)
 
     def send_text_message(self, text: str) -> bool:
-        """Düz metin mesajı gönderir (Markdown reddedilirse düz metin fallback yapar)."""
+        """Düz metin mesajı gönderir (429 rate-limit backoff + Markdown reddedilirse düz metin fallback)."""
         if not self.has_telegram:
             return False
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
-        try:
-            resp = requests.post(url, data={"chat_id": self.chat_id, "text": text, "parse_mode": "Markdown"}, timeout=10)
-            if resp.status_code != 200:
-                print(f"⚠️ [Notifier] Telegram Markdown hatası ({resp.status_code}): {resp.text[:150]} -> Düz metin tekrar deneniyor...")
-                resp = requests.post(url, data={"chat_id": self.chat_id, "text": text}, timeout=10)
-            return resp.status_code == 200
-        except Exception as e:
-            print(f"[Notifier] Telegram mesaj hatası: {e}")
-            return False
+        for attempt in range(3):
+            try:
+                resp = requests.post(url, data={"chat_id": self.chat_id, "text": text, "parse_mode": "Markdown"}, timeout=12)
+                if resp.status_code == 200:
+                    return True
+                if resp.status_code == 429:
+                    retry_after = 4
+                    try:
+                        retry_after = int((resp.json() or {}).get("parameters", {}).get("retry_after", 4))
+                    except Exception:
+                        pass
+                    wait_s = min(12, max(2, retry_after))
+                    print(f"⚠️ [Notifier] Telegram 429 rate-limit: {wait_s} sn beklenip tekrar deneniyor ({attempt+1}/3)...")
+                    time.sleep(wait_s)
+                    continue
+                if resp.status_code == 400:
+                    print(f"⚠️ [Notifier] Telegram Markdown hatası ({resp.status_code}): {resp.text[:150]} -> Düz metin tekrar deneniyor...")
+                    resp_plain = requests.post(url, data={"chat_id": self.chat_id, "text": text}, timeout=12)
+                    if resp_plain.status_code == 200:
+                        return True
+                    if resp_plain.status_code == 429:
+                        time.sleep(4)
+                        continue
+                print(f"⚠️ [Notifier] Telegram API hata ({resp.status_code}): {resp.text[:150]}")
+                time.sleep(2)
+            except Exception as e:
+                print(f"[Notifier] Telegram mesaj hatası ({attempt+1}/3): {e}")
+                time.sleep(2)
+        return False
+
+    def send_shadow_ablation_report(self, target_date_str: Optional[str] = None) -> bool:
+        """Filtre ablasyon (Shadow) performans özetini Telegram'a iletir."""
+        from core.database import format_shadow_ablation_telegram_message
+        msg_text = format_shadow_ablation_telegram_message(target_date_str=target_date_str)
+        sent = self.send_text_message(msg_text)
+        if sent:
+            print("🕵️ [Shadow Raporu] Filtre ablasyon bildirimi Telegram'a iletildi.")
+        else:
+            print("⚠️ [Shadow Raporu] Telegram iletimi başarısız!")
+        return sent
 
     def send_daily_summary_report(self, target_date_str: Optional[str] = None) -> Dict:
-        """Gün sonu 24 saatlik işlem ve kâr/zarar raporunu derler ve Telegram'a iletir."""
+        """Gün sonu 24 saatlik işlem ve kâr/zarar raporunu derler, Telegram'a iletir ve ardından Shadow raporunu atar."""
         from core.database import generate_daily_summary_report, format_daily_telegram_message
         report = generate_daily_summary_report(target_date_str=target_date_str)
         msg_text = format_daily_telegram_message(report)
@@ -163,6 +195,9 @@ class NotifierAgent:
         report["sent"] = sent
         if sent:
             print(f"🏆 [Gün Sonu Raporu] {report.get('date_str', '')} kapanış raporu Telegram'a iletildi.")
+            time.sleep(1.0)
+            shadow_sent = self.send_shadow_ablation_report(target_date_str=target_date_str)
+            report["shadow_sent"] = shadow_sent
         else:
             print(f"⚠️ [Gün Sonu Raporu] {report.get('date_str', '')} Telegram iletimi başarısız!")
         return report
