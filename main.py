@@ -23,8 +23,7 @@ from core.database import (
     init_db,
     save_signal,
     get_performance_stats,
-    get_active_positions_count,
-    is_symbol_locked_by_other_bot
+    get_active_positions_count
 )
 from agents.scanner_agent import MarketScannerAgent, add_scanner_log
 from agents.ta_agent import TechnicalAnalysisAgent
@@ -488,12 +487,6 @@ class TradingBotOrchestrator:
                             continue
                 except Exception:
                     pass
-
-                # Multi-Bot Anti-Collision & Anti-Hedging Kalkanı (Çapraz Bot Koruması)
-                is_other_locked, lock_reason = is_symbol_locked_by_other_bot(symbol, "standard", ta_setup["direction"])
-                if is_other_locked:
-                    add_scanner_log(symbol, "REJECTED", lock_reason)
-                    continue
 
                 # Ajan 2: Fonlama Oranı, Derinlik (Spread) ve Haber Analizi (Haber Kararlandırma Konseyi)
                 funding_data = self.client.get_funding_rate(symbol)
