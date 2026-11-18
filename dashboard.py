@@ -2421,10 +2421,11 @@ HTML_OFFICE_TEMPLATE = """
                         const tp = Number(pos.take_profit_1 || pos.take_profit_2);
                         const lev = Number(pos.leverage || 10);
 
-                        const rawDiff = isLong ? (live - entry) / entry : (entry - live) / entry;
-                        const grossPnlPct = rawDiff * lev * 100;
+                        const rawDiff = entry > 0 ? (isLong ? (live - entry) / entry : (entry - live) / entry) : 0.0;
+                        const calcGrossPct = rawDiff * lev * 100;
                         const feePct = (pos.fee_pct !== undefined && pos.fee_pct !== 0.0) ? Number(pos.fee_pct) : (0.10 * lev);
-                        const netPnlPct = grossPnlPct - feePct;
+                        const grossPnlPct = (pos.gross_pnl_pct !== undefined) ? Number(pos.gross_pnl_pct) : calcGrossPct;
+                        const netPnlPct = (pos.unrealized_pnl_pct !== undefined) ? Number(pos.unrealized_pnl_pct) : (calcGrossPct - feePct);
                         const isProfit = netPnlPct >= 0;
 
                         const posMargin = Number(pos.allocated_margin_usdt || 200.0);
@@ -3104,11 +3105,17 @@ HTML_OFFICE_TEMPLATE = """
                     const grossSign = grossPct > 0 ? '+' : '';
 
                     let resBadge = tr.status;
-                    if (tr.status === 'HIT_TP' || tr.status === 'HIT_TP2') resBadge = '<span style="color:var(--green); font-weight:700;">🎯 Vur-Kaç Kâr</span>';
+                    if (tr.status === 'HIT_TP' || tr.status === 'HIT_TP1' || tr.status === 'HIT_TP2') resBadge = '<span style="color:var(--green); font-weight:700;">🎯 Vur-Kaç Kâr</span>';
+                    else if (tr.status === 'HIT_TP2_RUNNER') resBadge = '<span style="color:var(--green); font-weight:700;">🚀 Runner TP2 Kâr</span>';
+                    else if (tr.status === 'RUNNER_BE_EXIT') resBadge = '<span style="color:var(--cyan); font-weight:700;">🏃 Free-Trade Runner</span>';
                     else if (tr.status && (tr.status.startsWith('LADDER_STEP_') || tr.status === 'LADDER_PROFIT_EXIT')) resBadge = `<span style="color:#f59e0b; font-weight:700;">${tr.ladder_name || '🪜 Merdiven Kârı'}</span>`;
                     else if (tr.status === 'TRAILING_STOP_EXIT') resBadge = '<span style="color:#f59e0b; font-weight:700;">⚡ Dinamik Kanal</span>';
                     else if (tr.status === 'CLOSED_BE') resBadge = '<span style="color:var(--cyan); font-weight:700;">🛡️ BE+ (Komisyon Korumalı)</span>';
-                    else if (tr.status === 'TIMEOUT_EXIT') resBadge = '<span style="color:var(--yellow); font-weight:700;">⏱️ 45dk Çıkış</span>';
+                    else if (tr.status === 'TIMEOUT_PROFIT_EXIT') resBadge = '<span style="color:var(--green); font-weight:700;">⏱️ Süre Dolumu Kâr</span>';
+                    else if (tr.status === 'TIMEOUT_EXIT') resBadge = '<span style="color:var(--yellow); font-weight:700;">⏱️ Zaman Aşımı</span>';
+                    else if (tr.status === 'MOMENTUM_STAGNATION_EXIT') resBadge = '<span style="color:var(--yellow); font-weight:700;">⚡ 2-Mum İptal</span>';
+                    else if (tr.status === 'EARLY_INVALIDATION_EXIT') resBadge = '<span style="color:#fb923c; font-weight:700;">🛡️ Erken Zarar Kes</span>';
+                    else if (tr.status === 'PAIR_MEAN_REVERSION_EXIT' || tr.status === 'PAIR_PARTNER_CLOSED_EXIT') resBadge = '<span style="color:#38bdf8; font-weight:700;">⚖️ Stat-Arb Çıkış</span>';
                     else if (tr.status === 'MANUAL_CLOSE') resBadge = '<span style="color:#a855f7; font-weight:700;">🛑 El İle Kapatıldı</span>';
                     else if (tr.status === 'HIT_SL') resBadge = '<span style="color:var(--red); font-weight:700;">🛑 Stop Loss</span>';
 
@@ -6126,7 +6133,7 @@ _terminal_cache = {
     "trade_reflections": [],
     "learning_reports": [],
     "tuning_info": {},
-    "timeline_quotas": {"total": {"used": 0, "max": 24}, "15m": {"used": 0, "max": 10}, "30m": {"used": 0, "max": 8}, "1h": {"used": 0, "max": 6}}
+    "timeline_quotas": {"total": {"used": 0, "max": 15}, "15m": {"used": 0, "max": 6}, "30m": {"used": 0, "max": 5}, "1h": {"used": 0, "max": 4}}
 }
 
 # İlk açılışta ekranın boş kalmaması veya gidip gelmemesi için DB'den anında besle
@@ -6253,13 +6260,14 @@ def update_terminal_cache_loop():
             total_unrealized_dollar = 0.0
 
             from core.binance_streamer import get_live_price, is_streamer_connected
+            from core.database import reconcile_partial_pnl
 
             for sig in active_signals:
                 symbol = sig["symbol"]
                 ws_price = get_live_price(symbol)
                 ticker = cached_tickers.get(symbol, {})
-                entry_price = sig.get("actual_entry_price") or sig["entry_min"]
-                live_price = ws_price if ws_price else ticker.get("lastPrice", entry_price)
+                entry_price = float(sig.get("actual_entry_price") or sig["entry_min"] or 0.0)
+                live_price = float(ws_price if ws_price else ticker.get("lastPrice", entry_price) or entry_price)
                 leverage = sig.get("leverage", 10)
                 direction = sig["direction"]
 
@@ -6273,17 +6281,23 @@ def update_terminal_cache_loop():
                         raw_diff = (entry_price - live_price) / entry_price
                     gross_pnl_pct = round(raw_diff * leverage * 100, 2)
                     net_pnl_pct = round(gross_pnl_pct - fee_pct, 2)
-                    total_unrealized_pnl += net_pnl_pct
 
                 pos_margin = float(sig.get("allocated_margin_usdt") or 200.0)
-                pos_dollar_gain = round(pos_margin * (net_pnl_pct / 100.0), 2)
+                partial_tp_taken = int(sig.get("partial_tp_taken") or 0)
+                realized_usd = float(sig.get("realized_pnl_usd") or 0.0)
+                net_pnl_pct, gross_pnl_pct, orig_margin = reconcile_partial_pnl(
+                    pos_margin, partial_tp_taken, realized_usd, net_pnl_pct, fee_pct
+                )
+                if entry_price > 0 or partial_tp_taken > 0:
+                    total_unrealized_pnl += net_pnl_pct
+                pos_dollar_gain = round(orig_margin * (net_pnl_pct / 100.0), 2)
                 total_unrealized_dollar += pos_dollar_gain
 
-                # Mum verisini çek (başarısız olursa son hafızadakini koru)
+                # Mum verisini çek (100 mumluk ortak önbellekten beslenerek REST yükünü azalt)
                 try:
-                    klines = client.get_klines(symbol, interval="15m", limit=16)
+                    klines = client.get_klines(symbol, interval="15m", limit=100)
                     if klines:
-                        cached_klines[symbol] = klines
+                        cached_klines[symbol] = klines[-16:]
                 except Exception:
                     pass
 
@@ -6346,10 +6360,10 @@ def update_terminal_cache_loop():
                 }
             except Exception:
                 timeline_quotas = _terminal_cache.get("timeline_quotas", {
-                    "total": {"used": 0, "max": 24},
-                    "15m": {"used": 0, "max": 10},
-                    "30m": {"used": 0, "max": 8},
-                    "1h": {"used": 0, "max": 6}
+                    "total": {"used": 0, "max": 15},
+                    "15m": {"used": 0, "max": 6},
+                    "30m": {"used": 0, "max": 5},
+                    "1h": {"used": 0, "max": 4}
                 })
 
             # Atomik Olarak Önbelleği Güncelle
@@ -6421,8 +6435,8 @@ def api_audit_live():
         "telegram_configured": bool(os.getenv("TELEGRAM_BOT_TOKEN") and os.getenv("TELEGRAM_CHAT_ID")),
         "equities": {
             "standard": round(float(get_current_equity()), 2),
-            "fast": round(float(fast_stats.get("current_equity", 1000.0)), 2),
-            "super_fast": round(float(sf_stats.get("current_equity", 1000.0)), 2),
+            "fast": round(float(fast_stats.get("portfolio_balance", 1000.0)), 2),
+            "super_fast": round(float(sf_stats.get("portfolio_balance", 1000.0)), 2),
         },
         "bots": {},
         "shadow_ablation": get_shadow_ablation_summary(),
@@ -6439,7 +6453,7 @@ def api_audit_live():
                            simulated_pnl_pct, gross_pnl_pct, fee_pct, allocated_margin_usdt, risk_usd
                     FROM {tbl}
                     WHERE created_at >= datetime('now', ?)
-                       OR status IN ('ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'PENDING')
+                       OR status IN ('ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1', 'PENDING_ENTRY', 'PENDING')
                     ORDER BY id DESC
                     LIMIT 60
                 """, (cutoff_expr,))
@@ -6643,6 +6657,36 @@ def api_clear_history():
         _terminal_cache["stats"] = get_performance_stats()
     return jsonify({"status": "cleared"})
 
+
+@app.route("/api/reset-quota", methods=["POST"])
+@require_admin_pin
+def api_reset_quota():
+    """Bugünkü işlem kotasını geçmiş işlemleri silmeden sıfırlar."""
+    from core.database import (
+        reset_today_trade_quota_db,
+        get_today_trades_count_by_timeframe,
+        get_today_trades_count,
+    )
+    from config import (
+        DAILY_MAX_TRADES_15M,
+        DAILY_MAX_TRADES_30M,
+        DAILY_MAX_TRADES_1H,
+        DAILY_BASE_MAX_TRADES,
+    )
+    reset_at_utc = reset_today_trade_quota_db()
+    t_counts = get_today_trades_count_by_timeframe()
+    t_total = get_today_trades_count()
+    used_final = max(t_total, t_counts.get("15m", 0) + t_counts.get("30m", 0) + t_counts.get("1h", 0))
+    timeline_quotas = {
+        "total": {"used": used_final, "max": DAILY_BASE_MAX_TRADES},
+        "15m": {"used": t_counts.get("15m", 0), "max": DAILY_MAX_TRADES_15M},
+        "30m": {"used": t_counts.get("30m", 0), "max": DAILY_MAX_TRADES_30M},
+        "1h": {"used": t_counts.get("1h", 0), "max": DAILY_MAX_TRADES_1H},
+    }
+    with _cache_lock:
+        _terminal_cache["timeline_quotas"] = timeline_quotas
+    return jsonify({"status": "reset", "reset_at_utc": reset_at_utc, "timeline_quotas": timeline_quotas})
+
 # ========================================================
 # FAST BOT ÖZEL API ENDPOINT'LERİ (BAĞIMSIZ KONTROL & 1m SCALPING)
 # ========================================================
@@ -6710,6 +6754,8 @@ def api_super_fast_data():
 @app.route("/api/superfast/scan", methods=["POST"])
 def api_super_fast_scan():
     orch = get_super_fast_orchestrator()
+    if not orch:
+        return jsonify({"status": "disabled", "message": "SÜPER FAST stratejisi devre dışı"})
     threading.Thread(target=orch.run_cycle, daemon=True).start()
     return jsonify({"status": "Super FAST scan started in background"})
 
