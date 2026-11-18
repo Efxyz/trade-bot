@@ -15,6 +15,7 @@ Karar Kuralı:
 - Simülasyon Win Probability < %70.0 ise -> OY: VETO / RED (REJECTED)
 """
 
+import math
 import numpy as np
 from typing import Dict, List, Optional
 
@@ -189,13 +190,18 @@ class QuantSimulationAgent:
 
         # 1. Mum Verisinden Tarihsel Volatilite ve Drift Hesapla (Sadece kapanmış mumlar, dairesel TA bias yok)
         closed_candles = candles_15m[:-1] if len(candles_15m) > 16 else candles_15m
-        closes = [float(c["close"]) for c in closed_candles if "close" in c]
+        closes = [
+            float(c["close"]) for c in closed_candles
+            if c.get("close") is not None and math.isfinite(float(c["close"])) and float(c["close"]) > 0
+        ]
         if len(closes) < 15:
             return self._fallback_result(symbol, direction, n_sims)
 
         closes = np.array(closes)
         log_returns = np.diff(np.log(closes))
         hist_vol = float(np.std(log_returns)) if len(log_returns) > 1 else 0.008
+        if not np.isfinite(hist_vol) or hist_vol <= 0:
+            hist_vol = 0.008
 
         # Taban volatilite koruması (ölü piyasada sıfır bölmeyi engeller)
         sigma = max(hist_vol, 0.0035)
@@ -203,6 +209,8 @@ class QuantSimulationAgent:
         # Saf ampirik momentum drift'i (confluence_score enjeksiyonu olmadan)
         recent_returns = log_returns[-12:] if len(log_returns) >= 12 else log_returns
         emp_drift = float(np.mean(recent_returns)) if len(recent_returns) > 0 else 0.0
+        if not np.isfinite(emp_drift):
+            emp_drift = 0.0
         drift = float(np.clip(emp_drift, -0.25 * sigma, 0.25 * sigma))
 
         # 2. Vektörize Monte Carlo Simülasyonu (NumPy Matrisi: 10000 x steps)
