@@ -32,31 +32,37 @@ _CURRENT_WS = None
 # Default high-liquidity stream targets (can be dynamically extended with active positions)
 DEFAULT_STREAM_PAIRS = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "XRPUSDT",
-    "SUIUSDT", "FETUSDT", "NEARUSDT", "AVAXUSDT", "APTUSDT",
-    "LINKUSDT", "ADAUSDT", "BNBUSDT", "ARBUSDT", "OPUSDT",
+    "SUIUSDT", "FETUSDT", "NEARUSDT", "AVAXUSDT",
+    "ADAUSDT", "BNBUSDT", "OPUSDT",
     "1000PEPEUSDT", "WIFUSDT", "RENDERUSDT", "TAOUSDT", "TIAUSDT"
 ]
 _SUBSCRIBED_PAIRS: Set[str] = set(DEFAULT_STREAM_PAIRS)
+_SUB_LOCK = threading.Lock()
 
 def _build_ws_url() -> str:
-    streams = [f"{s.lower()}@trade" for s in _SUBSCRIBED_PAIRS]
+    with _SUB_LOCK:
+        streams = [f"{s.lower()}@trade" for s in sorted(_SUBSCRIBED_PAIRS)]
     return f"wss://fstream.binance.com/stream?streams={'/'.join(streams)}"
 
 def add_stream_symbol(symbol: str):
     """Yeni açılan pozisyonu canlı WebSocket akışına anında ekler (Dinamik SUBSCRIBE)."""
     global _CURRENT_WS
-    if symbol and symbol not in _SUBSCRIBED_PAIRS:
-        _SUBSCRIBED_PAIRS.add(symbol)
-        if _CURRENT_WS and _STREAMER_ACTIVE:
-            try:
-                sub_msg = json.dumps({
-                    "method": "SUBSCRIBE",
-                    "params": [f"{symbol.lower()}@trade"],
-                    "id": int(time.time() * 1000)
-                })
-                _CURRENT_WS.send(sub_msg)
-            except Exception:
-                pass
+    if not symbol:
+        return
+    with _SUB_LOCK:
+        is_new = symbol not in _SUBSCRIBED_PAIRS
+        if is_new:
+            _SUBSCRIBED_PAIRS.add(symbol)
+    if is_new and _CURRENT_WS and _STREAMER_ACTIVE:
+        try:
+            sub_msg = json.dumps({
+                "method": "SUBSCRIBE",
+                "params": [f"{symbol.lower()}@trade"],
+                "id": int(time.time() * 1000)
+            })
+            _CURRENT_WS.send(sub_msg)
+        except Exception:
+            pass
 
 def _run_streamer():
     global _STREAMER_ACTIVE, _LAST_EVENT_TIME, _CURRENT_WS
