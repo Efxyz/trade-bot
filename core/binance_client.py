@@ -342,7 +342,7 @@ class BinanceFuturesClient:
                 low_target = round(high_4h * (1.0 - (active_chop_limit / 100.0)), 1)
                 detailed = (
                     f"📌 <strong>Mevcut Durum:</strong> BTC son 4 saatte sadece %{range_4h_pct:.2f} dalgalandı (${low_4h:,.0f} - ${high_4h:,.0f}). Güvenli işlem için en az %{active_chop_limit:.2f} hareket aranıyor.<br>"
-                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Hacimsiz ölü testere piyasalarında 10x/20x kaldıraçlı işlemler sahte fitillerle stop patlatır. Kasa sermayesini ($1.000) korumak için altcoin işlemleri donduruldu.<br>"
+                    f"⛔ <strong>Giriş Yapılmama Nedeni:</strong> Hacimsiz ölü testere piyasalarında 10x kaldıraçlı işlemler sahte fitillerle stop patlatır. Kasa sermayesini ($1.000) korumak için altcoin işlemleri donduruldu.<br>"
                     f"🎯 <strong>Beklenen Şart:</strong> Fiyatın <strong>${high_target:,.0f}</strong> üzerine çıkması veya <strong>${low_target:,.0f}</strong> altına inerek yön kazanması bekleniyor."
                 )
                 return {
