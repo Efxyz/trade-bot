@@ -942,16 +942,16 @@ def get_today_trades_count(timeframe: Optional[str] = None) -> int:
         if timeframe:
             clean_tf = str(timeframe).lower().strip()
             cursor.execute("""
-                SELECT COUNT(*) FROM signals 
+                SELECT COALESCE(SUM(CASE WHEN COALESCE(is_pair_trade, 0) = 1 THEN 0.5 ELSE 1.0 END), 0) FROM signals 
                 WHERE created_at >= ? AND (
                     LOWER(COALESCE(timeframe, '')) = ? OR 
                     LOWER(COALESCE(trade_horizon, '')) LIKE ?
                 )
             """, (today_start, clean_tf, f"%{clean_tf}%"))
         else:
-            cursor.execute("SELECT COUNT(*) FROM signals WHERE created_at >= ?", (today_start,))
+            cursor.execute("SELECT COALESCE(SUM(CASE WHEN COALESCE(is_pair_trade, 0) = 1 THEN 0.5 ELSE 1.0 END), 0) FROM signals WHERE created_at >= ?", (today_start,))
         row = cursor.fetchone()
-        return row[0] if row else 0
+        return int(round(float(row[0] or 0.0))) if row else 0
 
 def get_today_trades_count_by_timeframe() -> Dict[str, int]:
     """Bugün açılan işlemleri zaman dilimine göre döner: {'15m': X, '30m': Y, '1h': Z}"""
@@ -1233,6 +1233,19 @@ def get_all_signals(limit: int = 50) -> List[Dict]:
         """, (limit,))
         return [dict(row) for row in cursor.fetchall()]
 
+def get_last_signal_created_at() -> Optional[str]:
+    """En son açılan sinyalin oluşturulma/giriş zamanını döndürür (eski işlem kapanışından etkilenmez)."""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT entered_at, created_at FROM signals ORDER BY id DESC LIMIT 1")
+            row = cursor.fetchone()
+            if row:
+                return row["entered_at"] or row["created_at"]
+    except Exception:
+        pass
+    return None
+
 def get_performance_stats() -> Dict:
     """Tüm sanal işlemlerin kaldıraçlı performans özetini hesaplar (Net komisyonlu ve gerçek marjinli tam fon hesabı)."""
     with get_db_connection() as conn:
@@ -1332,7 +1345,7 @@ def check_and_auto_archive_daily_pnl():
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT DISTINCT substr(closed_at, 1, 10) as c_date
+            SELECT DISTINCT substr(datetime(closed_at, '+3 hours'), 1, 10) as c_date
             FROM signals
             WHERE closed_at IS NOT NULL
               AND status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
@@ -1351,7 +1364,7 @@ def check_and_auto_archive_daily_pnl():
                     SUM(COALESCE(allocated_margin_usdt, 200.0) * (simulated_pnl_pct / 100.0)) as net_dollar
                 FROM signals
                 WHERE status NOT IN ('ACTIVE', 'PENDING_ENTRY', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1')
-                  AND closed_at >= ? AND closed_at <= ?
+                  AND datetime(closed_at, '+3 hours') >= ? AND datetime(closed_at, '+3 hours') <= ?
                   AND simulated_pnl_pct IS NOT NULL
             """, (d_start, d_end))
             r = cursor.fetchone()
@@ -1394,8 +1407,6 @@ def reconcile_partial_pnl(
     orig_margin = round(allocated_margin / ratio, 2)
     runner_usd = allocated_margin * (net_pnl_pct / 100.0)
     total_dollar_pnl = realized_pnl_usd + runner_usd
-    if final_status == "CLOSED_BE" and total_dollar_pnl < 0.25:
-        total_dollar_pnl = max(0.25, round(orig_margin * 0.0025, 2))
     merged_net = round((total_dollar_pnl / orig_margin) * 100.0, 2) if orig_margin > 0 else net_pnl_pct
     merged_gross = round(merged_net + fee_pct, 2)
     return merged_net, merged_gross, orig_margin
@@ -1985,7 +1996,7 @@ def check_side_stoploss_guard(
 
             if consecutive_losses >= max_consecutive_losses and last_loss_closed_at:
                 loss_dt = datetime.strptime(str(last_loss_closed_at)[:19], "%Y-%m-%d %H:%M:%S")
-                now = datetime.utcnow()
+                now = datetime.now()
                 elapsed_min = (now - loss_dt).total_seconds() / 60.0
                 if elapsed_min < cooldown_minutes:
                     remaining_min = int(cooldown_minutes - elapsed_min)
@@ -2285,7 +2296,7 @@ def check_fast_side_stoploss_guard(direction: str, max_consecutive_losses: int =
 
             if consecutive_losses >= max_consecutive_losses and last_loss_closed_at:
                 loss_dt = datetime.strptime(str(last_loss_closed_at)[:19], "%Y-%m-%d %H:%M:%S")
-                now = datetime.utcnow()
+                now = datetime.now()
                 elapsed_min = (now - loss_dt).total_seconds() / 60.0
                 if elapsed_min < cooldown_minutes:
                     remaining_min = int(cooldown_minutes - elapsed_min)
@@ -2732,7 +2743,7 @@ def check_super_fast_side_stoploss_guard(direction: str, max_consecutive_losses:
 
             if consecutive_losses >= max_consecutive_losses and last_loss_closed_at:
                 loss_dt = datetime.strptime(str(last_loss_closed_at)[:19], "%Y-%m-%d %H:%M:%S")
-                now = datetime.utcnow()
+                now = datetime.now()
                 elapsed_min = (now - loss_dt).total_seconds() / 60.0
                 if elapsed_min < cooldown_minutes:
                     remaining_min = int(cooldown_minutes - elapsed_min)
