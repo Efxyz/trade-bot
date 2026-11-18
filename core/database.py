@@ -441,6 +441,13 @@ def init_db():
             )
         """)
 
+        # Tek seferlik geçmiş veri düzeltmesi: pair partner kapanışı MANUAL_CLOSE olarak yazılan kaydı düzelt
+        cursor.execute("""
+            UPDATE signals
+            SET status = 'PAIR_PARTNER_CLOSED_EXIT'
+            WHERE is_pair_trade = 1 AND status = 'MANUAL_CLOSE' AND closed_at <= '2026-11-18 06:00:00'
+        """)
+
         conn.commit()
 
 def add_scanner_log_db(symbol: str, status: str, reason: str, details: str = ""):
@@ -1475,8 +1482,9 @@ def reconcile_partial_pnl(
     merged_gross = round(merged_net + fee_pct, 2)
     return merged_net, merged_gross, orig_margin
 
-def close_single_signal_db(symbol_or_id: Union[str, int], client=None) -> Optional[Dict]:
-    """Belirtilen sinyal ID veya paritedeki açık pozisyonu anlık piyasa fiyatıyla manuel olarak kapatır."""
+def close_single_signal_db(symbol_or_id: Union[str, int], client=None, close_status: str = "MANUAL_CLOSE") -> Optional[Dict]:
+    """Belirtilen sinyal ID veya paritedeki açık pozisyonu anlık piyasa fiyatıyla kapatır (varsayılan: MANUAL_CLOSE)."""
+    close_status = str(close_status or "MANUAL_CLOSE").strip() or "MANUAL_CLOSE"
     is_id = False
     sig_id_target = None
     clean_sym = ""
@@ -1553,7 +1561,7 @@ def close_single_signal_db(symbol_or_id: Union[str, int], client=None) -> Option
     allocated_margin = float(sig.get("allocated_margin_usdt") or 200.0)
     prev_realized_usd = float(sig.get("realized_pnl_usd") or 0.0)
     net_pnl_pct, gross_pnl_pct, final_margin_to_save = reconcile_partial_pnl(
-        allocated_margin, partial_tp_taken, prev_realized_usd, net_pnl_pct, fee_pct, "MANUAL_CLOSE"
+        allocated_margin, partial_tp_taken, prev_realized_usd, net_pnl_pct, fee_pct, close_status
     )
 
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1562,7 +1570,7 @@ def close_single_signal_db(symbol_or_id: Union[str, int], client=None) -> Option
         cursor = conn.cursor()
         cursor.execute("""
             UPDATE signals SET
-                status = 'MANUAL_CLOSE',
+                status = ?,
                 closed_at = ?,
                 exit_price = ?,
                 simulated_pnl_pct = ?,
@@ -1570,13 +1578,13 @@ def close_single_signal_db(symbol_or_id: Union[str, int], client=None) -> Option
                 fee_pct = ?,
                 allocated_margin_usdt = ?
             WHERE id = ? AND status IN ('ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'PENDING_ENTRY', 'ACTIVE_PARTIAL_TP1')
-        """, (now_str, exit_price, net_pnl_pct, gross_pnl_pct, fee_pct, final_margin_to_save, sig_id))
+        """, (close_status, now_str, exit_price, net_pnl_pct, gross_pnl_pct, fee_pct, final_margin_to_save, sig_id))
         if cursor.rowcount == 0:
             conn.commit()
             return None
         conn.commit()
 
-    sig["status"] = "MANUAL_CLOSE"
+    sig["status"] = close_status
     sig["closed_at"] = now_str
     sig["exit_price"] = exit_price
     sig["simulated_pnl_pct"] = net_pnl_pct
@@ -1591,7 +1599,7 @@ def close_single_signal_db(symbol_or_id: Union[str, int], client=None) -> Option
             "signal_id": sig_id,
             "symbol": clean_sym,
             "direction": direction,
-            "status": "MANUAL_CLOSE",
+            "status": close_status,
             "pnl_pct": net_pnl_pct,
             "gross_pnl_pct": gross_pnl_pct,
             "fee_pct": fee_pct,
@@ -1608,13 +1616,22 @@ def close_single_signal_db(symbol_or_id: Union[str, int], client=None) -> Option
             sign_char = "+" if net_pnl_pct >= 0 else ""
             dollar_gain = round(final_margin_to_save * (net_pnl_pct / 100.0), 2)
             dollar_str = f"+${dollar_gain:.2f}" if dollar_gain >= 0 else f"-${abs(dollar_gain):.2f}"
-            msg = (
-                f"👤 <b>[MANUEL KAPATMA - PİYASA EMRİ]</b>\n\n"
-                f"🪙 <b>Parite:</b> <code>{clean_sym}</code> ({direction} {leverage}x)\n"
-                f"💵 <b>Giriş:</b> <code>{entry_price}</code> ➡️ <b>Çıkış:</b> <code>{exit_price}</code>\n"
-                f"📊 <b>Net Getiri:</b> <b>{sign_char}{net_pnl_pct:.2f}% ({dollar_str})</b>\n"
-                f"📌 <b>Durum:</b> İşlem kullanıcı tarafından market fiyatından kapatıldı."
-            )
+            if close_status == "PAIR_PARTNER_CLOSED_EXIT":
+                msg = (
+                    f"⚖️ <b>[STAT-ARB EŞZAMANLI PAIR KAPANIŞI]</b>\n\n"
+                    f"🪙 <b>Parite:</b> <code>{clean_sym}</code> ({direction} {leverage}x)\n"
+                    f"💵 <b>Giriş:</b> <code>{entry_price}</code> ➡️ <b>Çıkış:</b> <code>{exit_price}</code>\n"
+                    f"📊 <b>Net Getiri:</b> <b>{sign_char}{net_pnl_pct:.2f}% ({dollar_str})</b>\n"
+                    f"📌 <b>Durum:</b> Karşı pair bacağı kapandığı için hedge koruması gereği otomatik kapatıldı."
+                )
+            else:
+                msg = (
+                    f"👤 <b>[MANUEL KAPATMA - PİYASA EMRİ]</b>\n\n"
+                    f"🪙 <b>Parite:</b> <code>{clean_sym}</code> ({direction} {leverage}x)\n"
+                    f"💵 <b>Giriş:</b> <code>{entry_price}</code> ➡️ <b>Çıkış:</b> <code>{exit_price}</code>\n"
+                    f"📊 <b>Net Getiri:</b> <b>{sign_char}{net_pnl_pct:.2f}% ({dollar_str})</b>\n"
+                    f"📌 <b>Durum:</b> İşlem kullanıcı tarafından market fiyatından kapatıldı."
+                )
             notifier.send_text_message(msg)
     except Exception:
         pass
