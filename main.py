@@ -552,7 +552,7 @@ class TradingBotOrchestrator:
                     )
                     continue
 
-                # Ajan 3: Risk Şefi (Dinamik Bileşik Kasa, 10x/20x, BTC Kalkanı, Slippage ve Fonlama denetimi)
+                # Ajan 3: Risk Şefi (Dinamik Bileşik Kasa, 10x Sabit, BTC Kalkanı, Slippage ve Fonlama denetimi)
                 from core.database import get_active_and_pending_signals, get_current_equity
                 active_sigs = get_active_and_pending_signals() or []
                 current_equity = get_current_equity()
@@ -992,7 +992,7 @@ class TradingBotOrchestrator:
             print("\n🛑 Bot kullanıcı tarafından durduruldu.")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Binance Futures 10x/20x Trade Bot")
+    parser = argparse.ArgumentParser(description="Binance Futures 10x Trade Bot")
     parser.add_argument("--scan", action="store_true", help="Hemen tek bir tarama döngüsü çalıştır")
     parser.add_argument("--stats", action="store_true", help="Geçmiş sanal işlem performans raporunu göster")
     args = parser.parse_args()
