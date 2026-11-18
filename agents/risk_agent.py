@@ -261,12 +261,11 @@ class RiskOfficerAgent:
             effective_max_sl_10x = round(max(MAX_SL_PCT_10X, adaptive_max_sl) + 0.03, 2)
             effective_max_sl_20x = MAX_SL_PCT_20X
 
-        # 2. KALDIRAÇ VE SL UYGUNLUK DENETİMİ
-        if leverage == 20:
-            if sl_pct > effective_max_sl_20x:
-                leverage = 10
-                ta_setup["leverage"] = 10
-                ta_setup["setup_type"] = "10x STANDART TREND"
+        # 2. KALDIRAÇ VE SL UYGUNLUK DENETİMİ (Tüm işlemler 10x kaldıraçta sabitlenir)
+        if leverage != 10:
+            leverage = 10
+            ta_setup["leverage"] = 10
+            ta_setup["setup_type"] = "10x STANDART TREND"
 
         if leverage == 10:
             if sl_pct > effective_max_sl_10x:
