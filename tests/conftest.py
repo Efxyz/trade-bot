@@ -34,3 +34,14 @@ def clean_signals():
     yield conn
     conn.execute("DELETE FROM signals")
     conn.commit()
+
+
+@pytest.fixture()
+def legacy_ladder(monkeypatch):
+    """Eski dar merdiven (Basamak 1: +%0.50 tetik, %35 kısmi satış) davranışını açıkça etkinleştirir."""
+    import config
+    import agents.tracker_agent as tr
+    monkeypatch.setattr(tr, "LADDER_STEPS", config.LEGACY_LADDER_STEPS)
+    monkeypatch.setattr(tr, "ATR_LADDER_ENABLED", True)
+    monkeypatch.setattr(config, "LADDER_STEP1_PARTIAL_PCT", 0.35)
+    yield

@@ -90,7 +90,7 @@ def test_config_overrides_patch_and_restore():
     assert not hasattr(config, "NEW_FLAG_X")
 
 
-def test_step1_partial_disabled_means_no_partial(clean_signals, monkeypatch):
+def test_step1_partial_disabled_means_no_partial(clean_signals, monkeypatch, legacy_ladder):
     import config
     import core.binance_streamer as streamer
     from agents.tracker_agent import CounterfactualTrackerAgent

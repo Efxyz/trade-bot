@@ -66,21 +66,21 @@ ESTIMATED_SLIPPAGE_PCT = 0.02          # %0.02 Tahmini kayma payı
 # Kalibre Edilmiş Geniş Aralıklar: Kazançları erken boğmaz, mikro fitillerde en az +$5-$12 net kârı kilitler.
 ENABLE_LADDER_PROFIT = True
 
+# Geniş Merdiven (v2.1): Backtest'te örneklem içi ve örneklem dışı 30 günde tutarlı iyileşme sağladı
+# (eski dar merdivene göre her iki dönemde ~+$110). Stop ancak ~1R kârda başabaş+komisyona çekilir; kazananlar koşar.
+# Değerler 15m içindir; tracker 30m için x1.25, 1h için x2.0 ölçekler.
 LADDER_STEPS = [
-    # Basamak 1: %35 Kısmi Kâr Cebe + Nefes Alan BE+ Kalkanı (+%0.50 Ham / -%0.10 Nefes Payı Stop)
-    # Fiyat +%0.50 kâra ulaştığında pozisyonun %35'i nakit kâr alınır, kalan %65'in stopu girişin -%0.10 gerisine çekilir (gerçek net kâr >= +0.10% garantili!)
+    {"step": 1, "trigger_raw_pct": 1.00, "lock_raw_pct": 0.15, "name": "🛡️ Basamak 1 (1R: Başabaş + Komisyon Kilidi)"},
+    {"step": 2, "trigger_raw_pct": 1.50, "lock_raw_pct": 0.60, "name": "🪜 Basamak 2 (1.5R: +%0.60 Kilit)"},
+    {"step": 3, "trigger_raw_pct": 2.00, "lock_raw_pct": 1.10, "name": "🪜 Basamak 3 (2R: +%1.10 Kilit)"},
+    {"step": 4, "trigger_raw_pct": 2.60, "lock_raw_pct": 1.60, "name": "🪜 Basamak 4 (2.6R: +%1.60 Kilit)"},
+]
+
+# Eski dar merdiven (v2.0 ve öncesi) — karşılaştırma için: python -m backtest.run --variants legacy_ladder
+LEGACY_LADDER_STEPS = [
     {"step": 1, "trigger_raw_pct": 0.50, "lock_raw_pct": -0.10, "name": "🛡️ Basamak 1 (%35 Kâr Cebe + Nefes Payı BE+)"},
-
-    # Basamak 2: Komisyon Korumalı Sağlıklı Kâr Kilidi (%0.35 Kilit)
-    # Fiyat +%0.75 kâra ulaştığında stop'u +%0.35'e çek (erken boğulmayı önler, güçlü net kâr kilitler)
     {"step": 2, "trigger_raw_pct": 0.75, "lock_raw_pct": 0.35, "name": "🪜 Basamak 2 (+%0.35 Kâr Kilidi)"},
-
-    # Basamak 3: Çeyrek Kâr Kilidi
-    # Fiyat +%1.15 kâra ulaştığında stop'u +%0.75 kâra çek
     {"step": 3, "trigger_raw_pct": 1.15, "lock_raw_pct": 0.75, "name": "🪜 Basamak 3 (+%0.75 Kâr Kilidi)"},
-
-    # Basamak 4: Hedefe Yakın Koruma
-    # Fiyat +%1.60 kâra ulaştığında stop'u +%1.25 kâra çek
     {"step": 4, "trigger_raw_pct": 1.60, "lock_raw_pct": 1.25, "name": "🪜 Basamak 4 (+%1.25 Kâr Kilidi)"},
 ]
 
@@ -107,7 +107,7 @@ MIN_RR_RATIO = 1.8              # Minimum 1:1.8 Risk/Ödül oranı (Eski 1.4 bar
 MAX_HOLD_MINUTES = 90           # Hareketsiz pozisyonlara 90 dakika (6 mum) nefes payı tanı (Erken çıkış zararını önler)
 
 # Erken Zarar Kes Kalkanı (Early Invalidation Shield - Hızlı Zarar Freni)
-EARLY_INVALIDATION_ENABLED = True      # Toparlanamayan negatif pozisyonları -$20 beklemeden erken kes
+EARLY_INVALIDATION_ENABLED = False     # v2.1: Kapalı (geniş merdivenle birlikte backtest'te daha iyi). Açılırsa toparlanamayan negatifleri erken keser
 EARLY_INVALIDATION_MINUTES = 20        # Hızlı kontrol süresi (dakika) - 20 dk (15m mum kapanışı + 5m teyit)
 EARLY_INVALIDATION_LOSS_PCT = 0.35     # Fiyat %-0.35 altındaysa erken çıkış tetiklenir (Kaybı -$5-$7'de keser)
 MAX_VWAP_DISTANCE_PCT = 3.20           # 15m VWAP'tan %3.20'den fazla uzaktaki fiyatlarda aşırı uzama filtresi (Mean-Reversion Kalkanı)
@@ -178,7 +178,7 @@ CRYPTOPANIC_API_KEY = os.getenv("CRYPTOPANIC_API_KEY", "")
 USE_CLOSED_CANDLES_FOR_SCORING = True
 
 # Volatiliteye (ATR) Normalize Dinamik Merdiven Kâr Sistemi
-ATR_LADDER_ENABLED = True
+ATR_LADDER_ENABLED = False   # v2.1: Statik geniş merdiven kullanılır (ATR basamakları dar merdivene göre ayarlıydı)
 ATR_PERIOD = 14
 ATR_LADDER_MULT = {
     1: {"trigger": 1.15, "lock_distance": 0.45},
@@ -217,13 +217,13 @@ ENABLE_PAIR_TRADING = False              # Stat-arb pair: bacak başına ayrı s
 ENABLE_MC_GATE = True                    # Monte Carlo veto kapısı
 ENABLE_QUALITY_GATE = True               # Turnuva kalite barajı (MC + komite + R:R + not)
 QUALITY_GATE_THRESHOLD = 68.0
-LADDER_STEP1_PARTIAL_PCT = 0.35         # Basamak 1'de realize edilen pozisyon oranı (0 = kısmi satış yok)
-ENABLE_MOMENTUM_STAGNATION_EXIT = True   # İlk 2 mumda yön teyidi yoksa küçük zararla çıkış
+LADDER_STEP1_PARTIAL_PCT = 0.0          # Basamak 1'de realize edilen oran (v2.1: 0 = kısmi satış yok; eski: 0.35)
+ENABLE_MOMENTUM_STAGNATION_EXIT = False  # v2.1: Kapalı. Açılırsa ilk 2 mumda yön teyidi yoksa küçük zararla çıkar
 SCORING_DEDUP = False                    # True: iki yöne birden puan veren faktörler (hacim, RSI 48-52) nötrlenir
 USE_REGIME_MIN_RR = False                # True: rejim politikasındaki min R:R (TRENDING 1.65) gerçekten uygulanır
 
 # Strateji sürüm etiketi: her yeni işleme yazılır; istatistikler sürüm bazında ayrıştırılabilir
-STRATEGY_VERSION = "v2.0-overhaul"
+STRATEGY_VERSION = "v2.1-wide-ladder"
 
 # Pozisyon takip döngüsü (ana taramadan bağımsız thread): WebSocket fiyatlarıyla saniyelik SL/TP kontrolü
 TRACKER_INTERVAL_SECONDS = 2.0

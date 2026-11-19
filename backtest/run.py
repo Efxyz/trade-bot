@@ -43,30 +43,13 @@ VARIANTS = {
     "scoring_dedup": ({}, {"SCORING_DEDUP": True}),
     "regime_rr": ({}, {"USE_REGIME_MIN_RR": True}),
     "no_step1_partial": ({}, {"LADDER_STEP1_PARTIAL_PCT": 0.0}),
-    # Geniş merdiven: kâr ~1R'de başabaşa kilitlenir, kısmi satış ve erken çıkışlar yok, kazananlar koşar
-    "wide_ladder": ({}, {
-        "ATR_LADDER_ENABLED": False,
-        "LADDER_STEP1_PARTIAL_PCT": 0.0,
-        "ENABLE_MOMENTUM_STAGNATION_EXIT": False,
-        "EARLY_INVALIDATION_ENABLED": False,
-        "LADDER_STEPS": [
-            {"step": 1, "trigger_raw_pct": 1.00, "lock_raw_pct": 0.15, "name": "BE+ (1R)"},
-            {"step": 2, "trigger_raw_pct": 1.50, "lock_raw_pct": 0.60, "name": "Kilit 1.5R"},
-            {"step": 3, "trigger_raw_pct": 2.00, "lock_raw_pct": 1.10, "name": "Kilit 2R"},
-            {"step": 4, "trigger_raw_pct": 2.60, "lock_raw_pct": 1.60, "name": "Kilit 2.6R"},
-        ],
-    }),
-    "wide_ladder_no_mc": ({"use_mc_gate": False, "use_quality_gate": False}, {
-        "ATR_LADDER_ENABLED": False,
-        "LADDER_STEP1_PARTIAL_PCT": 0.0,
-        "ENABLE_MOMENTUM_STAGNATION_EXIT": False,
-        "EARLY_INVALIDATION_ENABLED": False,
-        "LADDER_STEPS": [
-            {"step": 1, "trigger_raw_pct": 1.00, "lock_raw_pct": 0.15, "name": "BE+ (1R)"},
-            {"step": 2, "trigger_raw_pct": 1.50, "lock_raw_pct": 0.60, "name": "Kilit 1.5R"},
-            {"step": 3, "trigger_raw_pct": 2.00, "lock_raw_pct": 1.10, "name": "Kilit 2R"},
-            {"step": 4, "trigger_raw_pct": 2.60, "lock_raw_pct": 1.60, "name": "Kilit 2.6R"},
-        ],
+    # Eski dar merdiven + erken çıkışlar (v2.0 varsayılanları) — karşılaştırma için
+    "legacy_ladder": ({}, {
+        "ATR_LADDER_ENABLED": True,
+        "LADDER_STEP1_PARTIAL_PCT": 0.35,
+        "ENABLE_MOMENTUM_STAGNATION_EXIT": True,
+        "EARLY_INVALIDATION_ENABLED": True,
+        "LADDER_STEPS": __import__("config").LEGACY_LADDER_STEPS,
     }),
 }
 
@@ -107,12 +90,15 @@ def main(argv=None):
     ap.add_argument("--symbols", type=str, default=",".join(DEFAULT_SYMBOLS))
     ap.add_argument("--variants", type=str, default="baseline")
     ap.add_argument("--scan-minutes", type=int, default=15)
+    ap.add_argument("--end-days-ago", type=int, default=0, help="Pencereyi geçmişe kaydırır (örneklem dışı doğrulama)")
     ap.add_argument("--refresh", action="store_true")
     ap.add_argument("--out", type=str, default="")
     args = ap.parse_args(argv)
 
     symbols = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
-    start_ms, end_ms = aligned_window(args.days, args.warmup_days)
+    import time as _t
+    start_ms, end_ms = aligned_window(args.days, args.warmup_days,
+                                      now_ms=int(_t.time() * 1000) - args.end_days_ago * 86_400_000)
     sim_start = start_ms + args.warmup_days * 86_400_000
     print(f"Veri yükleniyor ({len(symbols)} sembol, {args.days}+{args.warmup_days} gün)...", flush=True)
     data = load_data(symbols, start_ms, end_ms, refresh=args.refresh)

@@ -90,7 +90,7 @@ def test_short_wick_stop(clean_signals, tracker):
     assert r["exit_price"] == pytest.approx(101.0 * (1 + ESTIMATED_SLIPPAGE_PCT / 100))
 
 
-def test_step1_partial_profit_is_real_not_floored(clean_signals, tracker):
+def test_step1_partial_profit_is_real_not_floored(clean_signals, tracker, legacy_ladder):
     sid = _open()
     _ticks(100.55, 100.35)  # tepe tetiği (+%0.50) geçti, anlık +%0.35
     tracker.update_tracked_trades(evaluate_shadows=False)
@@ -137,7 +137,8 @@ def test_funding_is_charged_on_close(clean_signals, monkeypatch):
     r = _row(sid)
     assert r["status"] == "HIT_SL"
     assert r["funding_usd"] >= 2 * 1000 * 0.0005 - 1e-9  # LONG pozitif fonlamada öder
-    assert r["strategy_version"] == "v2.0-overhaul"
+    import config
+    assert r["strategy_version"] == config.STRATEGY_VERSION
 
 
 def test_funding_settlement_counter():
@@ -194,3 +195,17 @@ def test_manual_close_applies_slippage(clean_signals):
     closed = close_single_signal_db(sid, client=FakeClient(last_price=101.0))
     assert closed["status"] == "MANUAL_CLOSE"
     assert closed["exit_price"] == pytest.approx(101.0 * (1 - ESTIMATED_SLIPPAGE_PCT / 100))
+
+
+def test_wide_ladder_default_locks_breakeven_at_1r(clean_signals, tracker):
+    """v2.1 varsayılanı: +%1.0'da stop giriş+%0.15'e çekilir, kısmi satış yapılmaz."""
+    sid = _open()
+    _ticks(100.6)
+    tracker.update_tracked_trades(evaluate_shadows=False)
+    assert int(_row(sid)["ladder_step"] or 0) == 0  # +%0.6 artık basamak tetiklemez
+    _ticks(101.05, 100.9)
+    tracker.update_tracked_trades(evaluate_shadows=False)
+    r = _row(sid)
+    assert int(r["ladder_step"]) == 1 and int(r["partial_tp_taken"] or 0) == 0
+    assert r["stop_loss"] == pytest.approx(100.15)
+    assert float(r["allocated_margin_usdt"]) == 100.0
