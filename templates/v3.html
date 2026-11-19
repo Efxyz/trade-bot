@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quant Terminal v3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0d12;--panel:#10151c;--panel2:#141a22;--line:#1f2731;--line2:#2a3440;
+  --fg:#e6edf3;--muted:#8b98a8;--dim:#5d6b7b;
+  --pos:#2ecc71;--neg:#ff5d5d;--warn:#e3a23b;--accent:#4c8dff;
+  --trend:#4c8dff;--xsmom:#b083ff;--funding:#2ec4b6;
+  --mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.pos{color:var(--pos)}.neg{color:var(--neg)}.muted{color:var(--muted)}.dim{color:var(--dim)}
+/* Üst bar */
+.top{position:sticky;top:0;z-index:20;background:rgba(10,13,18,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.top-in{max-width:1680px;margin:0 auto;padding:10px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;letter-spacing:.2px}
+.logo{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--xsmom));display:grid;place-items:center;font-size:13px;font-weight:800;color:#fff}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;border:1px solid var(--line2);font-size:11px;font-weight:600;color:var(--muted);white-space:nowrap}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--dim)}
+.dot.ok{background:var(--pos);box-shadow:0 0 0 3px rgba(46,204,113,.18)}.dot.warn{background:var(--warn)}.dot.bad{background:var(--neg)}
+.top .spacer{flex:1}
+.clock{display:flex;gap:14px;font-size:11.5px;color:var(--muted)}
+.clock b{color:var(--fg);font-weight:500}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:7px;border:1px solid var(--line2);background:var(--panel2);color:var(--fg);font-size:12px;font-weight:500;cursor:pointer}
+.btn:hover{border-color:var(--accent);text-decoration:none}
+/* Piyasa şeridi */
+.ticker{border-bottom:1px solid var(--line);background:var(--panel)}
+.ticker-in{max-width:1680px;margin:0 auto;padding:7px 20px;display:flex;gap:22px;overflow-x:auto;scrollbar-width:none}
+.ticker-in::-webkit-scrollbar{display:none}
+.tk{display:flex;gap:7px;align-items:baseline;white-space:nowrap;font-size:12px}
+.tk .s{color:var(--muted);font-weight:600}
+.wrap{max-width:1680px;margin:0 auto;padding:18px 20px 40px}
+/* KPI */
+.kpis{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:10px;margin-bottom:14px}
+@media(max-width:1300px){.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:640px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-width:0}
+.kpi .k{font-size:11px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi .v{font-family:var(--mono);font-size:19px;font-weight:600;margin-top:4px;white-space:nowrap}
+.kpi .s{font-size:11.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Kartlar */
+.grid{display:grid;gap:14px;margin-bottom:14px}
+.g-main{grid-template-columns:minmax(0,2.1fr) minmax(0,1fr)}
+.g-two{grid-template-columns:minmax(0,1.25fr) minmax(0,1fr)}
+@media(max-width:1100px){.g-main,.g-two{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;min-width:0}
+.card-h{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.card-h h2{margin:0;font-size:13px;font-weight:600;letter-spacing:.2px}
+.card-h .sub{font-size:11.5px;color:var(--muted)}
+.card-b{padding:14px 16px}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:7px;overflow:hidden}
+.seg button{background:transparent;border:0;color:var(--muted);padding:4px 10px;font:500 11.5px Inter,sans-serif;cursor:pointer}
+.seg button.on{background:var(--panel2);color:var(--fg)}
+/* Grafik */
+#eqWrap{position:relative;height:290px}
+#eq{width:100%;height:100%;display:block}
+#tip{position:absolute;pointer-events:none;background:#0d1218;border:1px solid var(--line2);border-radius:7px;padding:6px 9px;font-size:11.5px;display:none;white-space:nowrap}
+.empty{display:grid;place-items:center;height:100%;color:var(--muted);font-size:12px;text-align:center;padding:20px}
+/* Risk */
+.meter{margin-bottom:14px}
+.meter .row{display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px}
+.bar{height:8px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);overflow:hidden;position:relative}
+.bar i{display:block;height:100%;border-radius:999px;background:var(--accent)}
+.bar .mark{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--neg)}
+.sleeves{display:flex;height:10px;border-radius:999px;overflow:hidden;margin:8px 0 6px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:9px;height:9px;border-radius:2px;display:inline-block}
+.kv{display:grid;grid-template-columns:1fr auto;gap:6px 12px;font-size:12px;margin-top:6px}
+.kv .num{text-align:right}
+.note{font-size:11.5px;color:var(--muted);border-top:1px solid var(--line);padding-top:10px;margin-top:12px}
+/* Tablolar */
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th,td{padding:8px 12px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{font-size:11px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.4px;background:var(--panel);position:sticky;top:0;cursor:pointer;user-select:none}
+th:first-child,td:first-child{text-align:left}
+th.l,td.l{text-align:left}
+tbody tr:hover{background:rgba(255,255,255,.02)}
+td{font-family:var(--mono);font-size:12.5px}
+td.sym{font-family:Inter,sans-serif;font-weight:600}
+.side{display:inline-block;font:600 10.5px Inter,sans-serif;padding:2px 7px;border-radius:4px;letter-spacing:.3px}
+.side.L{color:var(--pos);background:rgba(46,204,113,.12)}.side.S{color:var(--neg);background:rgba(255,93,93,.12)}
+.fx{display:flex;gap:3px;align-items:center;justify-content:flex-end}
+.fx i{display:block;height:10px;border-radius:2px;min-width:2px}
+tfoot td{font-weight:600;border-bottom:0;background:var(--panel2)}
+.scroll{max-height:420px;overflow:auto}
+/* Faktör matrisi */
+.chip{display:inline-block;min-width:44px;text-align:center;padding:2px 6px;border-radius:4px;font:600 10.5px Inter,sans-serif}
+.chip.L{color:var(--pos);background:rgba(46,204,113,.12)}.chip.S{color:var(--neg);background:rgba(255,93,93,.12)}.chip.N{color:var(--dim);background:transparent}
+.div{position:relative;height:12px;background:transparent;min-width:140px}
+.div::before{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--line2)}
+.div i{position:absolute;top:1px;height:10px;border-radius:2px}
+footer{max-width:1680px;margin:0 auto;padding:0 20px 30px;color:var(--dim);font-size:11.5px;line-height:1.6}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <div class="brand"><div class="logo">Q3</div>Quant Terminal <span class="dim" style="font-weight:500">v3</span></div>
+    <span class="pill" id="status"><span class="dot" id="statusDot"></span><span id="statusTxt">Bağlanıyor…</span></span>
+    <span class="pill">PAPER · Binance USDT-M</span>
+    <span class="pill" id="versionPill">—</span>
+    <div class="spacer"></div>
+    <div class="clock">
+      <span>UTC <b class="num" id="clkUtc">--:--:--</b></span>
+      <span>TSİ <b class="num" id="clkTr">--:--:--</b></span>
+      <span>Sonraki dengeleme <b class="num" id="countdown">--:--:--</b></span>
+    </div>
+    <a class="btn" href="/legacy" title="Eski SMC tarama paneli (yeni işlem açmıyor)">Eski SMC paneli ↗</a>
+  </div>
+</header>
+<div class="ticker"><div class="ticker-in" id="ticker"><span class="muted">Piyasa verisi yükleniyor…</span></div></div>
+
+<main class="wrap">
+  <section class="kpis" id="kpis"></section>
+
+  <section class="grid g-main">
+    <div class="card">
+      <div class="card-h">
+        <div><h2>Özsermaye</h2><div class="sub" id="eqSub">Saatlik kayıt</div></div>
+        <div class="seg" id="rangeSeg">
+          <button data-h="24">1G</button><button data-h="168">1H</button><button data-h="720">1A</button><button data-h="0" class="on">Tümü</button>
+        </div>
+      </div>
+      <div class="card-b"><div id="eqWrap"><canvas id="eq"></canvas><div id="tip"></div></div></div>
+    </div>
+    <div class="card">
+      <div class="card-h"><h2>Risk ve motor durumu</h2><span class="sub" id="riskSub"></span></div>
+      <div class="card-b" id="risk"></div>
+    </div>
+  </section>
+
+  <section class="card" style="margin-bottom:14px">
+    <div class="card-h">
+      <div><h2>Açık pozisyonlar</h2><div class="sub" id="posSub"></div></div>
+      <div class="legend">
+        <span><i class="sw" style="background:var(--trend)"></i>Trend</span>
+        <span><i class="sw" style="background:var(--xsmom)"></i>Momentum</span>
+        <span><i class="sw" style="background:var(--funding)"></i>Fonlama</span>
+      </div>
+    </div>
+    <div class="tbl-wrap scroll">
+      <table id="posTbl">
+        <thead><tr>
+          <th data-k="symbol">Coin</th><th data-k="side" class="l">Yön</th><th data-k="absn">Büyüklük</th><th data-k="w">Ağırlık</th>
+          <th data-k="avg_price">Ort. giriş</th><th data-k="price">Fiyat</th><th data-k="upnl">K/Z</th><th data-k="pct">K/Z %</th>
+          <th data-k="fx" title="Hedef pozisyonun hangi faktörden geldiği (özsermaye %)">Faktör katkısı</th><th data-k="opened">Açılış (UTC)</th>
+        </tr></thead>
+        <tbody></tbody><tfoot></tfoot>
+      </table>
+    </div>
+  </section>
+
+  <section class="grid g-two">
+    <div class="card">
+      <div class="card-h"><div><h2>Faktör sinyalleri</h2><div class="sub">20 coinlik evren · son dengelemedeki sinyaller</div></div></div>
+      <div class="tbl-wrap scroll">
+        <table id="sigTbl">
+          <thead><tr><th>Coin</th><th>Trend 28g</th><th>Momentum 30g</th><th>Fonlama</th><th title="Son 7 günün fonlama oranları toplamı">Fonlama 7g %</th><th class="l">Hedef ağırlık</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h">
+        <h2>İşlem geçmişi</h2>
+        <div class="seg" id="histSeg"><button data-t="fills" class="on">Dolumlar</button><button data-t="reb">Dengelemeler</button></div>
+      </div>
+      <div class="tbl-wrap scroll" id="hist"></div>
+    </div>
+  </section>
+</main>
+<footer>
+  <b>v3 Çok Faktörlü Motor</b> · Üç eşit riskli kol: trend (28 günlük getiri işareti), kesitsel momentum (30 günün en güçlü 5 / en zayıf 5 coini) ve fonlama faktörü (7 günlük fonlaması en düşük 5 LONG / en yüksek 5 SHORT).
+  Portföy 7 dilime bölünür, her gün 00:00 UTC'de bir dilim yenilenir. Tepeden -%10 düşüşte risk otomatik yarıya iner.
+  Backtest (komisyon, kayma ve gerçek fonlama dahil): 2023–26 Sharpe ~1,1, 2020–23 örneklem dışı Sharpe ~1,4; yıllık ~%12–14, en kötü düşüş ~%8–12. Geçmiş performans gelecekteki sonucu garanti etmez; bu panel sanal (paper) işlemleri gösterir.
+</footer>
+
+<script>
+const $ = s => document.querySelector(s);
+const S = {d: null, mkt: {}, range: 0, sort: {k: "absn", dir: -1}, hist: "fills"};
+const short = s => (s || "").replace("USDT", "");
+const sgn = v => (v > 0 ? "+" : v < 0 ? "−" : "");
+const usd = (v, d = 2) => (v < 0 ? "−$" : "$") + Math.abs(v).toLocaleString("en-US", {minimumFractionDigits: d, maximumFractionDigits: d});
+const susd = (v, d = 2) => sgn(v) + "$" + Math.abs(v).toLocaleString("en-US", {minimumFractionDigits: d, maximumFractionDigits: d});
+const pct = (v, d = 2) => sgn(v) + Math.abs(v).toFixed(d) + "%";
+const cls = v => v > 0 ? "pos" : v < 0 ? "neg" : "";
+const px = v => v >= 1000 ? v.toLocaleString("en-US", {maximumFractionDigits: 1}) : v >= 100 ? v.toFixed(2) : v >= 1 ? v.toFixed(4) : v.toPrecision(4);
+const parseUtc = t => t ? new Date(t.replace(" ", "T") + "Z") : null;
+const COLORS = {trend: "var(--trend)", xsmom: "var(--xsmom)", funding: "var(--funding)"};
+const NAMES = {trend: "Trend", xsmom: "Momentum", funding: "Fonlama"};
+
+/* ---------- Saat ve geri sayım ---------- */
+function tickClock() {
+  const n = new Date();
+  $("#clkUtc").textContent = n.toISOString().slice(11, 19);
+  $("#clkTr").textContent = n.toLocaleTimeString("tr-TR", {timeZone: "Europe/Istanbul", hour12: false});
+  const nx = S.d && parseUtc(S.d.next_rebalance);
+  if (nx) {
+    let s = Math.max(0, Math.floor((nx - n) / 1000));
+    const h = String(Math.floor(s / 3600)).padStart(2, "0"); s %= 3600;
+    $("#countdown").textContent = `${h}:${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+  }
+  if (S.d && S.d.last_step) {
+    const age = (n - parseUtc(S.d.last_step)) / 1000;
+    const dot = $("#statusDot");
+    dot.className = "dot " + (age < 180 ? "ok" : age < 900 ? "warn" : "bad");
+    $("#statusTxt").textContent = age < 180 ? `Motor çalışıyor · ${Math.round(age)} sn önce` : `Motor yanıt vermiyor · ${Math.round(age / 60)} dk`;
+  }
+}
+setInterval(tickClock, 1000);
+
+/* ---------- KPI ---------- */
+function todayPnl(d) {
+  const c = d.equity_curve || [];
+  if (!c.length) return null;
+  const today = new Date().toISOString().slice(0, 10);
+  let base = null;
+  for (const p of c) { if (p.t.slice(0, 10) < today) base = p.v; else { if (base === null) base = p.v; break; } }
+  return base === null ? null : d.equity - base;
+}
+function kpi(k, v, s = "", c = "") { return `<div class="kpi"><div class="k">${k}</div><div class="v ${c}">${v}</div><div class="s">${s}</div></div>`; }
+function renderKpis(d) {
+  const t = todayPnl(d);
+  const lev = d.equity ? d.gross_exposure / d.equity : 0;
+  const net = d.equity ? d.net_exposure / d.equity * 100 : 0;
+  const days = d.started ? Math.max(0, (new Date() - parseUtc(d.started)) / 864e5) : 0;
+  $("#kpis").innerHTML = [
+    kpi("Özsermaye", usd(d.equity), `Başlangıç ${usd(d.capital, 0)} · ${days < 1 ? Math.round(days * 24) + " saat" : days.toFixed(1) + " gün"}`),
+    kpi("Toplam K/Z", susd(d.pnl), pct(d.pnl_pct), cls(d.pnl)),
+    kpi("Bugün (UTC)", t === null ? "—" : susd(t), t === null ? "" : pct(t / (d.equity - t) * 100), cls(t || 0)),
+    kpi("Açık K/Z", susd(d.unrealized_pnl), `Gerçekleşen ${susd(d.realized_pnl)}`, cls(d.unrealized_pnl)),
+    kpi("Tepeden düşüş", pct(d.drawdown_pct), `Zirve ${usd(d.peak_equity)}`, d.drawdown_pct < -5 ? "neg" : ""),
+    kpi("Brüt maruziyet", lev.toFixed(2) + "x", `Net ${pct(net, 1)} · tavan ${d.params.gross_cap}x`),
+    kpi("Fonlama", susd(-d.funding_paid), d.funding_paid <= 0 ? "Net gelir" : "Net ödeme", cls(-d.funding_paid)),
+    kpi("Komisyon + kayma", usd(d.fees_paid), `${d.n_fills} dolum · ${d.n_rebalances} dengeleme`),
+  ].join("");
+}
+
+/* ---------- Grafik ---------- */
+function drawEquity() {
+  const d = S.d; if (!d) return;
+  let pts = (d.equity_curve || []).slice();
+  if (S.range) pts = pts.slice(-S.range);
+  const wrap = $("#eqWrap"), cv = $("#eq");
+  if (pts.length < 2) {
+    cv.style.display = "none";
+    let e = wrap.querySelector(".empty");
+    if (!e) { e = document.createElement("div"); e.className = "empty"; wrap.appendChild(e); }
+    e.innerHTML = "Özsermaye eğrisi saatlik kaydedilir.<br>İlk saatler tamamlandıkça grafik burada oluşacak.";
+    return;
+  }
+  const e = wrap.querySelector(".empty"); if (e) e.remove();
+  cv.style.display = "block";
+  const dpr = window.devicePixelRatio || 1, W = wrap.clientWidth, H = wrap.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  const css = getComputedStyle(document.documentElement);
+  const L = 64, R = 12, T = 10, B = 26;
+  const vs = pts.map(p => p.v); let mn = Math.min(...vs, d.capital), mx = Math.max(...vs, d.capital);
+  const pad = (mx - mn) * 0.12 || 1; mn -= pad; mx += pad;
+  const x = i => L + i * (W - L - R) / (pts.length - 1), y = v => T + (mx - v) * (H - T - B) / (mx - mn);
+  g.font = "11px JetBrains Mono, monospace"; g.fillStyle = css.getPropertyValue("--dim"); g.strokeStyle = css.getPropertyValue("--line");
+  g.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const v = mn + (mx - mn) * i / 4, yy = Math.round(y(v)) + .5;
+    g.beginPath(); g.moveTo(L, yy); g.lineTo(W - R, yy); g.stroke();
+    g.fillText("$" + v.toFixed(0), 6, yy + 4);
+  }
+  const nLab = Math.max(2, Math.floor((W - L - R) / 110));
+  const step = Math.max(1, Math.ceil(pts.length / nLab));
+  for (let i = 0; i < pts.length - step / 2; i += step) g.fillText(pts[i].t.slice(5, 13) + "h", Math.max(L - 4, x(i) - 26), H - 8);
+  // başlangıç sermayesi çizgisi
+  g.setLineDash([4, 4]); g.strokeStyle = css.getPropertyValue("--line2");
+  g.beginPath(); g.moveTo(L, y(d.capital)); g.lineTo(W - R, y(d.capital)); g.stroke(); g.setLineDash([]);
+  const up = pts[pts.length - 1].v >= d.capital;
+  const col = (up ? css.getPropertyValue("--pos") : css.getPropertyValue("--neg")).trim();
+  const grad = g.createLinearGradient(0, T, 0, H - B);
+  grad.addColorStop(0, col + "40"); grad.addColorStop(1, col + "00");
+  g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(x(i), y(p.v)) : g.moveTo(x(i), y(p.v)));
+  g.lineTo(x(pts.length - 1), H - B); g.lineTo(x(0), H - B); g.closePath(); g.fillStyle = grad; g.fill();
+  g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(x(i), y(p.v)) : g.moveTo(x(i), y(p.v)));
+  g.strokeStyle = col; g.lineWidth = 2; g.stroke();
+  cv.onmousemove = ev => {
+    const r = cv.getBoundingClientRect(), i = Math.round((ev.clientX - r.left - L) / (W - L - R) * (pts.length - 1));
+    if (i < 0 || i >= pts.length) { $("#tip").style.display = "none"; return; }
+    const p = pts[i], tip = $("#tip");
+    tip.innerHTML = `<span class="muted">${p.t.slice(0, 16)} UTC</span><br><b class="num">${usd(p.v)}</b> <span class="num ${cls(p.v - d.capital)}">${pct((p.v / d.capital - 1) * 100)}</span>`;
+    tip.style.display = "block";
+    tip.style.left = Math.min(W - 150, Math.max(0, x(i) + 10)) + "px"; tip.style.top = Math.max(0, y(p.v) - 40) + "px";
+  };
+  cv.onmouseleave = () => $("#tip").style.display = "none";
+  $("#eqSub").textContent = `Saatlik kayıt · ${pts.length} nokta`;
+}
+document.querySelectorAll("#rangeSeg button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("#rangeSeg button").forEach(x => x.classList.toggle("on", x === b));
+  S.range = +b.dataset.h; drawEquity();
+});
+window.addEventListener("resize", () => drawEquity());
+
+/* ---------- Risk kartı ---------- */
+function renderRisk(d) {
+  const dd = -d.drawdown_pct, lim = -d.params.dd_cut * 100;
+  const lev = d.equity ? d.gross_exposure / d.equity : 0;
+  const fc = d.factor_contrib || {};
+  const gs = {}; Object.values(fc).forEach(m => Object.entries(m).forEach(([k, v]) => gs[k] = (gs[k] || 0) + Math.abs(v)));
+  const tot = Object.values(gs).reduce((a, b) => a + b, 0) || 1;
+  const sl = (d.sleeves || []).map(k => `<i style="width:${(gs[k] || 0) / tot * 100}%;background:${COLORS[k]}"></i>`).join("");
+  $("#riskSub").textContent = d.scale < 1 ? "Kesici devrede" : "Normal risk";
+  $("#risk").innerHTML = `
+    <div class="meter"><div class="row"><span>Tepeden düşüş</span><span class="num">${dd.toFixed(2)}% / ${lim.toFixed(0)}% kesici</span></div>
+      <div class="bar"><i style="width:${Math.min(100, dd / (lim * 1.5) * 100)}%;background:${dd > lim * .6 ? "var(--warn)" : "var(--accent)"}"></i><span class="mark" style="left:${100 / 1.5}%"></span></div></div>
+    <div class="meter"><div class="row"><span>Brüt kaldıraç</span><span class="num">${lev.toFixed(2)}x / ${d.params.gross_cap}x tavan</span></div>
+      <div class="bar"><i style="width:${Math.min(100, lev / d.params.gross_cap * 100)}%"></i></div></div>
+    <div class="meter"><div class="row"><span>Risk ölçeği</span><span class="num ${d.scale < 1 ? "neg" : "pos"}">${d.scale.toFixed(1)}x</span></div>
+      <div class="bar"><i style="width:${d.scale * 100}%;background:${d.scale < 1 ? "var(--warn)" : "var(--pos)"}"></i></div></div>
+    <div class="row" style="display:flex;justify-content:space-between;font-size:12px"><span>Kol risk dağılımı</span><span class="muted">brüt ağırlık payı</span></div>
+    <div class="sleeves">${sl}</div>
+    <div class="legend">${(d.sleeves || []).map(k => `<span><i class="sw" style="background:${COLORS[k]}"></i>${NAMES[k]} <b class="num" style="color:var(--fg)">${((gs[k] || 0) / tot * 100).toFixed(0)}%</b></span>`).join("")}</div>
+    <div class="kv">
+      <span class="muted">Hedef volatilite</span><span class="num">%${(d.params.target_vol * 100).toFixed(0)} yıllık</span>
+      <span class="muted">Dilim / yenileme</span><span class="num">${d.params.tranches} dilim · günlük 00:00 UTC</span>
+      <span class="muted">Son dengeleme</span><span class="num">${(d.last_rebalance || "—").slice(0, 16)}</span>
+      <span class="muted">Maliyet varsayımı</span><span class="num">%${(d.params.fee_rate * 100).toFixed(2)} + %${(d.params.slippage_rate * 100).toFixed(2)} kayma</span>
+    </div>
+    <div class="note">Backtest beklentisi: yıllık ~%12–14, ayların ~%60'ı kârlı, en kötü ay ~−%5. Kısa vadede (günler/haftalar) sonuçlar bu aralığın çok dışına çıkabilir; değerlendirme için en az 8–12 hafta gerekir.</div>`;
+}
+
+/* ---------- Pozisyonlar ---------- */
+function fxBar(m) {
+  if (!m) return '<span class="dim">—</span>';
+  const s = Object.entries(m).filter(([, v]) => Math.abs(v) > 1e-6);
+  const tot = s.reduce((a, [, v]) => a + Math.abs(v), 0) || 1;
+  const t = s.map(([k, v]) => `${NAMES[k]} ${pct(v * 100, 1)}`).join(" · ");
+  return `<div class="fx" title="${t}">` + s.map(([k, v]) =>
+    `<i style="width:${Math.max(3, Math.abs(v) / tot * 90)}px;background:${COLORS[k]};opacity:${v >= 0 ? 1 : .45}"></i>`).join("") + "</div>";
+}
+function renderPositions(d) {
+  const rows = d.positions.map(p => {
+    const absn = Math.abs(p.notional);
+    const pc = p.avg_price ? (p.price / p.avg_price - 1) * 100 * (p.side === "LONG" ? 1 : -1) : 0;
+    const fx = (d.factor_contrib || {})[p.symbol];
+    return {...p, absn, w: p.notional / d.equity * 100, pct: pc, fxv: fx ? Object.values(fx).reduce((a, b) => a + Math.abs(b), 0) : 0, fx};
+  });
+  const {k, dir} = S.sort;
+  rows.sort((a, b) => { const av = k === "fx" ? a.fxv : a[k], bv = k === "fx" ? b.fxv : b[k]; return (av > bv ? 1 : av < bv ? -1 : 0) * dir; });
+  const L = rows.filter(r => r.side === "LONG"), Sh = rows.filter(r => r.side === "SHORT");
+  const sum = a => a.reduce((t, r) => t + r.upnl, 0);
+  $("#posSub").innerHTML = `${rows.length} pozisyon · <span class="pos">${L.length} LONG ${usd(L.reduce((t, r) => t + r.absn, 0), 0)}</span> · <span class="neg">${Sh.length} SHORT ${usd(Sh.reduce((t, r) => t + r.absn, 0), 0)}</span> · kârda ${rows.filter(r => r.upnl >= 0).length}, zararda ${rows.filter(r => r.upnl < 0).length}`;
+  $("#posTbl tbody").innerHTML = rows.length ? rows.map(r => `<tr>
+      <td class="sym">${short(r.symbol)}</td><td class="l"><span class="side ${r.side[0]}">${r.side}</span></td>
+      <td>${usd(r.absn)}</td><td class="${cls(r.w)}">${pct(r.w, 1)}</td><td>${px(r.avg_price)}</td><td>${px(r.price)}</td>
+      <td class="${cls(r.upnl)}">${susd(r.upnl)}</td><td class="${cls(r.pct)}">${pct(r.pct)}</td>
+      <td>${fxBar(r.fx)}</td><td class="dim">${r.opened.slice(5, 16)}</td></tr>`).join("")
+    : `<tr><td colspan="10" class="l muted" style="text-align:center;padding:28px">Açık pozisyon yok. Motor bir sonraki dengelemede portföyü kuracak.</td></tr>`;
+  $("#posTbl tfoot").innerHTML = rows.length ? `<tr><td>Toplam</td><td></td><td>${usd(d.gross_exposure)}</td><td class="${cls(d.net_exposure)}">${pct(d.net_exposure / d.equity * 100, 1)} net</td><td></td><td></td><td class="${cls(sum(rows))}">${susd(sum(rows))}</td><td></td><td></td><td></td></tr>` : "";
+}
+document.querySelectorAll("#posTbl th").forEach(th => th.onclick = () => {
+  const k = th.dataset.k; S.sort = {k, dir: S.sort.k === k ? -S.sort.dir : -1}; if (S.d) renderPositions(S.d);
+});
+
+/* ---------- Faktör sinyalleri ---------- */
+function renderSignals(d) {
+  const ss = d.sleeve_signals || {}, fs = d.last_signal || {}, tg = d.targets || {};
+  const uni = (d.universe || []).slice();
+  const maxW = Math.max(0.0001, ...Object.values(tg).map(Math.abs));
+  uni.sort((a, b) => (tg[b] || 0) - (tg[a] || 0));
+  const chip = (m, s) => { const v = (m || {})[s]; return v > 0 ? '<span class="chip L">LONG</span>' : v < 0 ? '<span class="chip S">SHORT</span>' : '<span class="chip N">—</span>'; };
+  $("#sigTbl tbody").innerHTML = uni.map(s => {
+    const w = tg[s] || 0, wd = Math.abs(w) / maxW * 50;
+    const bar = `<div class="div"><i style="${w >= 0 ? `left:50%` : `right:50%`};width:${wd}%;background:${w >= 0 ? "var(--pos)" : "var(--neg)"}"></i></div>`;
+    return `<tr><td class="sym">${short(s)}</td><td>${chip(ss.trend, s)}</td><td>${chip(ss.xsmom, s)}</td><td>${chip(ss.funding, s)}</td>
+      <td class="${cls(-(fs[s] || 0))}">${fs[s] === undefined ? "—" : (fs[s] >= 0 ? "+" : "") + fs[s].toFixed(3)}</td>
+      <td class="l"><div style="display:flex;align-items:center;gap:8px">${bar}<span class="num ${cls(w)}" style="min-width:54px;text-align:right">${w ? pct(w * 100, 1) : "—"}</span></div></td></tr>`;
+  }).join("");
+}
+
+/* ---------- Geçmiş ---------- */
+const REASON = {ilk_kurulum: "İlk kurulum", gunluk_dilim: "Günlük dilim", haftalik: "Haftalık", dusus_kesici: "Düşüş kesici"};
+function renderHist(d) {
+  if (S.hist === "fills") {
+    const f = d.fills || [];
+    $("#hist").innerHTML = `<table><thead><tr><th>Zaman (UTC)</th><th>Coin</th><th class="l">İşlem</th><th>Tutar</th><th>Fiyat</th><th>Komisyon</th><th>Gerç. K/Z</th></tr></thead><tbody>${
+      f.length ? f.map(x => `<tr><td class="dim">${x.ts.slice(5, 16)}</td><td class="sym">${short(x.symbol)}</td>
+        <td class="l"><span class="side ${x.side === "BUY" ? "L" : "S"}">${x.side === "BUY" ? "AL" : "SAT"}</span></td>
+        <td>${usd(x.notional)}</td><td>${px(x.price)}</td><td class="dim">${usd(x.fee, 3)}</td>
+        <td class="${cls(x.realized_pnl)}">${x.realized_pnl ? susd(x.realized_pnl) : '<span class="dim">—</span>'}</td></tr>`).join("")
+        : '<tr><td colspan="7" class="muted" style="text-align:center;padding:24px">Henüz dolum yok.</td></tr>'}</tbody></table>`;
+  } else {
+    const r = d.rebalances || [];
+    $("#hist").innerHTML = `<table><thead><tr><th>Zaman (UTC)</th><th class="l">Neden</th><th>Emir</th><th>Devir</th><th>Maliyet</th><th>Özsermaye</th><th>Ölçek</th></tr></thead><tbody>${
+      r.length ? r.map(x => `<tr><td class="dim">${x.ts.slice(5, 16)}</td><td class="l" style="font-family:Inter">${REASON[x.reason] || x.reason}</td>
+        <td>${x.n_orders}</td><td>${usd(x.turnover_usdt, 0)}</td><td class="dim">${usd(x.fees, 3)}</td><td>${usd(x.equity)}</td><td>${x.scale.toFixed(1)}x</td></tr>`).join("")
+        : '<tr><td colspan="7" class="muted" style="text-align:center;padding:24px">Henüz dengeleme yok.</td></tr>'}</tbody></table>`;
+  }
+}
+document.querySelectorAll("#histSeg button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("#histSeg button").forEach(x => x.classList.toggle("on", x === b));
+  S.hist = b.dataset.t; if (S.d) renderHist(S.d);
+});
+
+/* ---------- Piyasa şeridi ---------- */
+async function loadMarket() {
+  try {
+    const m = await (await fetch("/api/v3/market")).json();
+    if (!Array.isArray(m) || !m.length) return;
+    $("#ticker").innerHTML = m.map(t => `<span class="tk"><span class="s">${short(t.symbol)}</span><span class="num">${px(t.price)}</span><span class="num ${cls(t.change_pct)}">${pct(t.change_pct)}</span></span>`).join("");
+  } catch (e) {}
+}
+
+/* ---------- Ana yükleme ---------- */
+async function load() {
+  try {
+    const d = await (await fetch("/api/carry")).json();
+    if (d.error) { $("#statusTxt").textContent = "Hata: " + d.error; $("#statusDot").className = "dot bad"; return; }
+    S.d = d;
+    $("#versionPill").textContent = d.version || "v3";
+    renderKpis(d); drawEquity(); renderRisk(d); renderPositions(d); renderSignals(d); renderHist(d); tickClock();
+    document.title = `${usd(d.equity)} (${pct(d.pnl_pct)}) · Quant Terminal v3`;
+  } catch (e) { $("#statusTxt").textContent = "Bağlantı hatası"; $("#statusDot").className = "dot bad"; }
+}
+load(); loadMarket(); tickClock();
+setInterval(load, 15000); setInterval(loadMarket, 30000);
+</script>
+</body>
+</html>

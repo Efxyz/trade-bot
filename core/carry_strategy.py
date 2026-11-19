@@ -179,21 +179,29 @@ def ex_ante_vol(weights: Dict[str, float], closes: Dict[str, List[float]], lookb
 
 def combine_sleeves(sleeves: Dict[str, Dict[str, float]], closes: Dict[str, List[float]],
                     portfolio_target_vol: float = 0.10, vol_lookback_h: int = 24 * 30,
-                    gross_cap: float = 3.0, max_mult: float = 3.0) -> Dict[str, float]:
-    """Her kolu (target/√N)/ex-ante-vol ile ölçekleyip toplar; brüt kaldıraç tavanı uygular."""
+                    gross_cap: float = 3.0, max_mult: float = 3.0,
+                    details: Dict[str, Dict[str, float]] | None = None) -> Dict[str, float]:
+    """
+    Her kolu (target/√N)/ex-ante-vol ile ölçekleyip toplar; brüt kaldıraç tavanı uygular.
+    `details` verilirse kol bazında nihai katkılar (kol -> sembol -> ağırlık) buraya yazılır.
+    """
     active = {k: w for k, w in sleeves.items() if w}
     if not active:
         return {}
     per = portfolio_target_vol / math.sqrt(len(active))
     total: Dict[str, float] = {}
-    for _, w in active.items():
+    contrib: Dict[str, Dict[str, float]] = {}
+    for name, w in active.items():
         v = ex_ante_vol(w, closes, vol_lookback_h)
         if not v:
             continue
         m = min(max_mult, per / v)
+        contrib[name] = {s: m * x for s, x in w.items()}
         for s, x in w.items():
             total[s] = total.get(s, 0.0) + m * x
     gross = sum(abs(v) for v in total.values())
-    if gross > gross_cap > 0:
-        total = {s: v * gross_cap / gross for s, v in total.items()}
-    return {s: v for s, v in total.items() if abs(v) > 1e-9}
+    f = gross_cap / gross if gross > gross_cap > 0 else 1.0
+    if details is not None:
+        details.clear()
+        details.update({k: {s: x * f for s, x in c.items()} for k, c in contrib.items()})
+    return {s: v * f for s, v in total.items() if abs(v * f) > 1e-9}

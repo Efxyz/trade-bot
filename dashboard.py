@@ -112,21 +112,44 @@ def add_no_cache_headers(response):
     response.headers["Expires"] = "0"
     return response
 
+V3_TEMPLATE_PATH = Path(__file__).resolve().parent / "templates" / "v3.html"
+
+
 @app.route("/")
 def index():
-    return render_template_string(HTML_OFFICE_TEMPLATE)
+    """Ana panel: v3 Çok Faktörlü Motor terminali."""
+    return V3_TEMPLATE_PATH.read_text(encoding="utf-8")
 
-CARRY_TEMPLATE_PATH = Path(__file__).resolve().parent / "templates" / "carry.html"
+
+@app.route("/legacy")
+def legacy_index():
+    """Eski SMC tarama paneli (SMC motoru yeni işlem açmıyor; geçmiş ve açık SMC işlemleri için)."""
+    return render_template_string(HTML_OFFICE_TEMPLATE)
 
 
 @app.route("/carry")
 def carry_page():
-    return CARRY_TEMPLATE_PATH.read_text(encoding="utf-8")
+    from flask import redirect
+    return redirect("/", code=302)
+
+
+@app.route("/api/v3/market")
+def api_v3_market():
+    """Motor evrenindeki coinlerin son fiyatı ve 24 saatlik değişimi (salt-okunur, 20 sn önbellekli kaynak)."""
+    try:
+        from config import CARRY_UNIVERSE
+        from core.binance_client import BinanceFuturesClient
+        t = BinanceFuturesClient().get_24hr_tickers() or {}
+        out = [{"symbol": s, "price": t[s]["lastPrice"], "change_pct": t[s]["priceChangePercent"],
+                "quote_volume": t[s]["quoteVolume"]} for s in CARRY_UNIVERSE if s in t]
+        return jsonify(out)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/carry")
 def api_carry():
-    """v3 Fonlama Motoru durumu (salt-okunur)."""
+    """v3 Çok Faktörlü Motor durumu (salt-okunur)."""
     try:
         from agents.carry_agent import get_live_engine
         eng = get_live_engine()
