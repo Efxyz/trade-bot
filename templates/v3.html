@@ -509,7 +509,7 @@ function renderStorage(s) {
     <div class="tbl-wrap" style="margin-top:12px"><table class="mini"><thead><tr><th>Tablo</th><th class="l">Tür</th><th>Kayıt</th><th>Boyut</th></tr></thead><tbody>${
       tables.map(t => `<tr><td class="sym">${TBL[t.table] || t.table}</td><td class="l"><span class="${KIND[t.kind][0]}">${KIND[t.kind][1]}</span></td><td>${num(t.rows)}</td><td>${t.mb == null ? "—" : mbf(t.mb)}</td></tr>`).join("")
     }</tbody></table></div>
-    <div class="note">Otomatik temizlik: <b>${s.retention_days} günden eski</b> tarama, komite, haber kayıtları ve grafik resimleri her gece silinir. İşlem geçmişi (SMC ve v3) asla silinmez.
+    <div class="note">Otomatik temizlik: kapalı motorların (SMC, FAST) tarama, komite ve haber kayıtları tutulmaz; açık motorların kayıtları ve grafik resimleri <b>${s.retention_days} gün</b> saklanır. İşlem geçmişi (SMC ve v3) asla silinmez.
       ${lc ? `<br>Son temizlik ${lc.time.slice(5, 16)} UTC · ${num(lc.deleted_total)} kayıt, ${num(lc.charts_removed)} grafik silindi · ${mbf(Math.max(0, lc.freed_mb))} boşaldı${lc.vacuumed ? " · veritabanı sıkıştırıldı" : ""}` : "<br>Henüz temizlik yapılmadı."}</div>`;
 }
 

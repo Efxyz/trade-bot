@@ -245,6 +245,38 @@ class TradingBotOrchestrator:
         print(f"💰 [v3 Çok Faktörlü Motor] {len(engine.p.universe)} coin, kollar: {', '.join(engine.p.sleeves)} · {interval:.0f} sn aralıkla başlatıldı.")
         return self._carry_thread
 
+    def _send_daily_report(self, date_str: str) -> dict:
+        """Gün sonu raporu: SMC kapalıyken v3 motorunun raporu, açıkken eski SMC raporu."""
+        from config import ENABLE_SMC_ENGINE
+        if ENABLE_SMC_ENGINE:
+            return self.notifier.send_daily_summary_report(target_date_str=date_str)
+        from agents.v3_telegram import send_daily_report
+        return {"sent": send_daily_report(self.notifier, date_str)}
+
+    def _startup_message(self) -> str:
+        from config import ENABLE_SMC_ENGINE
+        if not ENABLE_SMC_ENGINE:
+            from agents.v3_telegram import startup_message
+            snap = None
+            try:
+                from agents.carry_agent import get_live_engine
+                snap = get_live_engine(notifier=self.notifier).snapshot()
+            except Exception:
+                pass
+            return startup_message(snap)
+        return (
+            "🟢 *Trade Bot 7/24 Aktif Edildi!*\n\n"
+            "📡 *Piyasa:* Binance Futures (USDT.P)\n"
+            "⚡ *Kaldıraç:* Dinamik 10x ve 20x (Sniper)\n"
+            "🛡️ *Korumalar:* BTC Çöküş Kalkanı + Break-Even (Sıfır Risk)\n\n"
+            "💬 *Telegram Komutları:*\n"
+            "• `/rapor` : Son 24 saatlik gün sonu kâr/zarar ve işlem raporu\n"
+            "• `/tara` : Anında tarama yap\n"
+            "• `/durum` : 'Girseydim ne olurdu?' PnL raporu\n"
+            "• `/aktif` : Açık sanal işlemleri listele\n"
+            "• `/btc` : BTC piyasa durumu ve kalkanı gör"
+        )
+
     def run_cycle(self):
         """Tek bir tam analiz ve takip döngüsü yürütür (Thread-Safe)."""
         if not self._cycle_lock.acquire(blocking=False):
@@ -271,7 +303,7 @@ class TradingBotOrchestrator:
         if not is_daily_report_sent_db(yesterday_str):
             try:
                 print(f"📅 [Gün Sonu Telafi Raporu] {yesterday_str} kapanış raporu Telegram'a gönderiliyor...")
-                rep_y = self.notifier.send_daily_summary_report(target_date_str=yesterday_str)
+                rep_y = self._send_daily_report(yesterday_str)
                 if rep_y.get("sent", True):
                     mark_daily_report_sent_db(yesterday_str)
             except Exception as rep_err:
@@ -281,7 +313,7 @@ class TradingBotOrchestrator:
         if now_tr.hour == 23 and now_tr.minute >= 50 and not is_daily_report_sent_db(today_str):
             try:
                 print(f"📅 [Gün Sonu Raporu] {today_str} gün sonu raporu Telegram'a otomatik gönderiliyor... (TSİ {now_tr.strftime('%H:%M')})")
-                rep_t = self.notifier.send_daily_summary_report(target_date_str=today_str)
+                rep_t = self._send_daily_report(today_str)
                 if rep_t.get("sent", True):
                     mark_daily_report_sent_db(today_str)
                     self.last_daily_report_date = today_str
@@ -1119,19 +1151,7 @@ class TradingBotOrchestrator:
 
         # Telegram'a başlatıldı bildirimi
         if self.notifier.has_telegram:
-            startup_msg = (
-                "🟢 *Trade Bot 7/24 Aktif Edildi!*\n\n"
-                "📡 *Piyasa:* Binance Futures (USDT.P)\n"
-                "⚡ *Kaldıraç:* Dinamik 10x ve 20x (Sniper)\n"
-                "🛡️ *Korumalar:* BTC Çöküş Kalkanı + Break-Even (Sıfır Risk)\n\n"
-                "💬 *Telegram Komutları:*\n"
-                "• `/rapor` : Son 24 saatlik gün sonu kâr/zarar ve işlem raporu\n"
-                "• `/tara` : Anında tarama yap\n"
-                "• `/durum` : 'Girseydim ne olurdu?' PnL raporu\n"
-                "• `/aktif` : Açık sanal işlemleri listele\n"
-                "• `/btc` : BTC piyasa durumu ve kalkanı gör"
-            )
-            self.notifier.send_text_message(startup_msg)
+            self.notifier.send_text_message(self._startup_message())
 
         try:
             while True:

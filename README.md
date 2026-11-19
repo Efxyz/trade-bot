@@ -194,6 +194,28 @@ python -m backtest.carry_backtest --fee 0.001     # komisyon stresi
 
 ---
 
+## 📱 Telegram (v3)
+Railway Variables'ta `TELEGRAM_BOT_TOKEN` ve `TELEGRAM_CHAT_ID` tanımlıysa bot şunları gönderir (saatler TSİ):
+
+| Ne zaman | Mesaj |
+|---|---|
+| Bot açılınca | Kasa, pozisyon sayısı, takvim, komutlar, panel bağlantısı |
+| 03:00 günlük dengeleme | Emir sayısı, işlem hacmi, maliyet; açılan, kapanan ve yön değiştiren coinler (emir yoksa gönderilmez) |
+| 03:20 gece bakımı | Yedek zip dosyası |
+| 23:50 gün sonu | Günlük ve toplam K/Z, dolumlar, komisyon, günlük fonlama, en iyi/kötü pozisyon |
+
+Komutlar ("/" menüsüne otomatik eklenir):
+- `/durum`: kasa, K/Z, risk durumu
+- `/pozisyonlar`: açık v3 pozisyonları
+- `/rapor`: bugünün raporu (o ana kadar)
+- `/yedek`: kayıt yedeğini hemen gönderir
+- `/btc`: BTC piyasa durumu
+- `/yardim`: komut listesi
+
+Komutlar yalnızca `TELEGRAM_CHAT_ID` sohbetinden kabul edilir. `ENABLE_SMC_ENGINE=true` olursa eski SMC mesajları ve komutları geri gelir.
+
+---
+
 ## 🗄️ Kayıtlar, Yedek ve Bakım
 Bütün kayıtlar Railway volume'undaki (`/app/data`) SQLite veritabanında tutulur: v3 dolumları (`carry_fills`), dengelemeler (`carry_rebalances`), saatlik kasa (`carry_equity`), motor durumu (`carry_state`) ve eski SMC işlemleri (`signals`).
 
@@ -204,6 +226,7 @@ Bütün kayıtlar Railway volume'undaki (`/app/data`) SQLite veritabanında tutu
   3. Yedek alınır ve Telegram'a gönderilir.
 - **Yedek:** veritabanının tutarlı bir kopyası ve CSV'ler tek zip'te. Hacimli tanı kayıtları ve gizli anahtarlar (API key, token, PIN) yedeğe girmez. Volume'da son 3 yedek saklanır. Panelden indirmek ve elle yedeklemek/temizlemek yönetici PIN'i ister.
 - **Panel:** "Depolama" kartı disk doluluğunu ve tablo boyutlarını, "Yedekleme" kartı son yedeği ve Telegram durumunu gösterir (`GET /api/system/storage`).
+- **Kapalı motorlar:** SMC ve FAST motorları kapalıyken onların tanı kayıtları hiç tutulmaz; deploy'dan birkaç dakika sonra ve her gece silinir (`PURGE_DISABLED_ENGINE_LOGS`, varsayılan true).
 - **Ayarlar:** `DATA_RETENTION_DAYS` (30), `STORAGE_LIMIT_MB` (500), `ENABLE_AUTO_MAINTENANCE` (true), `BACKUP_TELEGRAM` (true).
 
 Railway'in kendi volume yedekleri de açılabilir (Volume → Backups). Böylece yedek Telegram'dan bağımsız olarak da alınmış olur.

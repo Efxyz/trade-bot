@@ -34,6 +34,42 @@ LOG_TABLES: Dict[str, str] = {
     "fast_scanner_logs": "created_at",
     "super_fast_scanner_logs": "created_at",
 }
+# Tanı kayıtlarını üreten motor. Motor kapalıysa (ve PURGE_DISABLED_ENGINE_LOGS açıksa) kayıtlar tutulmaz.
+LOG_OWNER: Dict[str, str] = {
+    "scanner_logs": "smc", "committee_debates": "smc", "shadow_rejections": "smc",
+    "coin_news_investigations": "smc", "news_items": "smc",
+    "fast_scanner_logs": "fast", "super_fast_scanner_logs": "super_fast",
+}
+PURGE_ALL_CUTOFF = "9999-12-31 23:59:59"
+
+
+def engine_enabled(owner: str) -> bool:
+    return bool({"smc": getattr(config, "ENABLE_SMC_ENGINE", True),
+                 "fast": getattr(config, "ENABLE_FAST_ENGINE", False),
+                 "super_fast": getattr(config, "ENABLE_SUPER_FAST_ENGINE", False)}.get(owner, True))
+
+
+def purge_tables() -> List[str]:
+    """Motoru kapalı olduğu için tamamen boşaltılacak tanı tabloları."""
+    if not getattr(config, "PURGE_DISABLED_ENGINE_LOGS", True):
+        return []
+    return [t for t in LOG_TABLES if not engine_enabled(LOG_OWNER.get(t, ""))]
+
+
+def disabled_engine_rows() -> int:
+    total = 0
+    try:
+        with _connect() as c:
+            for t in purge_tables():
+                try:
+                    total += c.execute(f'SELECT COUNT(*) FROM "{t}"').fetchone()[0]
+                except sqlite3.OperationalError:
+                    pass
+    except sqlite3.Error:
+        pass
+    return total
+
+
 # Yedekte satırları boşaltılan (şeması korunan) tablolar: hacimli tanı kayıtları
 BACKUP_EMPTY_TABLES = set(LOG_TABLES)
 # system_state anahtarında bu parçalardan biri geçiyorsa yedeğe girmez
@@ -200,13 +236,15 @@ def cleanup_old_data(retention_days: Optional[int] = None, vacuum_min_mb: Option
     cutoff = (_utc_now() - timedelta(days=days)).strftime(DB_FMT)
     before = storage_report(use_cache=False)["used_mb"]
     deleted: Dict[str, int] = {}
+    purge = set(purge_tables())
     with _connect() as c:
         for t, col in LOG_TABLES.items():
             n_total = 0
+            t_cutoff = PURGE_ALL_CUTOFF if t in purge else cutoff
             try:
                 while True:
                     cur = c.execute(f'DELETE FROM "{t}" WHERE rowid IN '
-                                    f'(SELECT rowid FROM "{t}" WHERE "{col}" < ? LIMIT ?)', (cutoff, batch))
+                                    f'(SELECT rowid FROM "{t}" WHERE "{col}" < ? LIMIT ?)', (t_cutoff, batch))
                     c.commit()
                     n_total += max(0, cur.rowcount)
                     if cur.rowcount < batch:
@@ -254,7 +292,7 @@ def cleanup_old_data(retention_days: Optional[int] = None, vacuum_min_mb: Option
     after = storage_report(use_cache=False)["used_mb"]
     res = {
         "time": _utc_now().strftime(DB_FMT), "retention_days": days, "cutoff": cutoff,
-        "deleted_rows": deleted, "deleted_total": sum(deleted.values()),
+        "deleted_rows": deleted, "deleted_total": sum(deleted.values()), "purged_tables": sorted(purge),
         "charts_removed": files_removed, "charts_mb": _mb(files_bytes),
         "vacuumed": vacuumed, "error": vac_err,
         "used_mb_before": before, "used_mb_after": after, "freed_mb": round(before - after, 2),
@@ -545,6 +583,20 @@ def start_scheduler(notifier=None, check_seconds: int = 300, startup_delay: int 
 
     def _loop():
         time.sleep(startup_delay)
+        try:
+            n = disabled_engine_rows()
+            if n and not is_due(_utc_now(), load_state().get("last_run_date"),
+                                config.MAINTENANCE_HOUR_UTC, config.MAINTENANCE_MINUTE_UTC):
+                print(f"🧹 [Bakım] Kapalı motorların {n:,} tanı kaydı siliniyor...")
+                if _LOCK.acquire(blocking=False):
+                    try:
+                        r = cleanup_old_data()
+                        print(f"🧹 [Bakım] {r['deleted_total']:,} kayıt silindi, {r['freed_mb']} MB boşaldı"
+                              f"{' (veritabanı sıkıştırıldı)' if r['vacuumed'] else ''}.")
+                    finally:
+                        _LOCK.release()
+        except Exception as e:
+            print(f"⚠️ [Bakım] Açılış temizliği hatası: {e}")
         while True:
             try:
                 if is_due(_utc_now(), load_state().get("last_run_date"),
