@@ -12,6 +12,7 @@ from typing import List, Dict, Optional, Tuple
 import math
 import time
 from datetime import datetime, timezone, timedelta
+from core.timeutil import wall_utc
 from config import (
     TARGET_PROFIT_PCT,
     MAX_SCALP_SL_PCT,
@@ -441,7 +442,7 @@ class TechnicalAnalysisAgent:
 
         curr_c = candles[-1]
         curr_vol = curr_c["volume"]
-        now_ms = time.time() * 1000
+        now_ms = wall_utc().timestamp() * 1000
         candle_open_ms = curr_c.get("timestamp", now_ms)
         elapsed_sec = max(30.0, min(candle_sec, (now_ms - candle_open_ms) / 1000.0))
         projected_vol = curr_vol * (candle_sec / elapsed_sec)
@@ -883,7 +884,7 @@ class TechnicalAnalysisAgent:
 
         # Asimetrik Seans Filtresi: Düşük likiditeli Asya gecesi (03:00-08:00 TSİ) barajı +4 sıkılaştırır
         try:
-            now_tr = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=3)))
+            now_tr = wall_utc().astimezone(timezone(timedelta(hours=3)))
             if 3 <= now_tr.hour < 8:
                 target_min_score += 4
             elif 15.5 <= (now_tr.hour + now_tr.minute / 60.0) <= 20.5:

@@ -10,9 +10,25 @@ TR_TZ = timezone(timedelta(hours=3))
 DB_FMT = "%Y-%m-%d %H:%M:%S"
 
 
+_CLOCK_OVERRIDE = None  # Backtest simüle saati: callable -> timezone-aware UTC datetime
+
+
+def set_clock(fn) -> None:
+    """Backtest için saat kaynağını değiştirir (None verilirse gerçek saate döner)."""
+    global _CLOCK_OVERRIDE
+    _CLOCK_OVERRIDE = fn
+
+
+def wall_utc() -> datetime:
+    """Timezone-aware UTC 'şimdi' (simüle saat ayarlıysa onu döner)."""
+    if _CLOCK_OVERRIDE is not None:
+        return _CLOCK_OVERRIDE()
+    return datetime.now(timezone.utc)
+
+
 def utc_now() -> datetime:
     """Naive UTC 'şimdi' (DB sütunlarıyla doğrudan karşılaştırılabilir)."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return wall_utc().replace(tzinfo=None)
 
 
 def utc_now_str() -> str:
@@ -30,7 +46,7 @@ def minutes_since(value) -> float:
 
 def tr_day_start_utc_str(days_ago: int = 0) -> str:
     """Bugünün (veya days_ago gün öncesinin) TSİ 00:00 anını naive UTC metni olarak döner."""
-    now_tr = datetime.now(timezone.utc).astimezone(TR_TZ)
+    now_tr = wall_utc().astimezone(TR_TZ)
     start_tr = (now_tr - timedelta(days=days_ago)).replace(hour=0, minute=0, second=0, microsecond=0)
     return start_tr.astimezone(timezone.utc).strftime(DB_FMT)
 

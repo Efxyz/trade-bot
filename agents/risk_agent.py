@@ -9,6 +9,7 @@ Risk Profile Grades & Dynamic Position Sizing (Fixed 2% Risk Rule):
 """
 from typing import Dict, Tuple, Optional, List
 from datetime import datetime, timezone
+from core.timeutil import wall_utc
 from config import (
     MAX_SL_PCT_10X,
     MAX_SL_PCT_20X,
@@ -154,7 +155,7 @@ class RiskOfficerAgent:
         # 1.6 8 SAATLİK FONLAMA ORANI & PENCERE KAÇIŞ KALKANI
         if funding_data:
             fr = funding_data.get("lastFundingRate", 0.0)
-            now_utc = datetime.now(timezone.utc)
+            now_utc = wall_utc()
             # 8 saatlik döngü pencereleri: 00:00, 08:00, 16:00 UTC
             hour_mod = now_utc.hour % 8
             minutes_to_settlement = (8 - hour_mod) * 60 - now_utc.minute
