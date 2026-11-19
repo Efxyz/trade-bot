@@ -716,3 +716,256 @@ class AIAnalystAgent:
             "telemetry": telemetry,
             "analysis": ai_res
         }
+
+    def _call_gemini_chat(
+        self,
+        system_instruction: str,
+        contents: List[Dict],
+        temperature: float = 0.45,
+        timeout: int = 26
+    ) -> Optional[Tuple[str, str]]:
+        """Çok turlu sohbet ve tartışma için Gemini API'yi doğal metin modunda çağırır."""
+        api_key = self._get_active_gemini_key()
+        if not api_key:
+            return None
+
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "systemInstruction": {"parts": [{"text": system_instruction}]},
+            "contents": contents,
+            "generationConfig": {"temperature": temperature}
+        }
+        encoded = json.dumps(payload).encode("utf-8")
+
+        for model_name in ("gemini-2.5-flash", "gemini-2.0-flash"):
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+            try:
+                req = urllib.request.Request(url, data=encoded, headers=headers, method="POST")
+                with urllib.request.urlopen(req, timeout=timeout) as response:
+                    res_data = json.loads(response.read().decode("utf-8"))
+                candidates = res_data.get("candidates") or []
+                if not candidates:
+                    continue
+                parts = (candidates[0].get("content") or {}).get("parts") or []
+                reply_text = "".join(p.get("text", "") for p in parts if isinstance(p, dict)).strip()
+                if reply_text:
+                    return reply_text, model_name
+            except Exception as err:
+                print(f"⚠️ [Gemini Chat - {model_name}] Çağrı hatası: {err}")
+                continue
+        return None
+
+    def chat_with_strategist(
+        self,
+        client,
+        message: str,
+        history: Optional[List[Dict]] = None,
+        symbol: str = "",
+        timeframe: str = "15m"
+    ) -> Dict:
+        """
+        Patron Efe ile canlı portföy, açık/geçmiş işlemler, ders çıkarımı ve coin kararları üzerine
+        çok turlu (multi-turn) tartışabilen gerçek Gemini 2.5 Flash Baş Stratejist sohbet motoru.
+        """
+        user_msg = str(message or "").strip()
+        if not user_msg:
+            return {"status": "error", "message": "Lütfen bir soru veya yorum yazın."}
+
+        if not self._get_active_gemini_key():
+            return {
+                "status": "key_required",
+                "ai_key_missing": True,
+                "message": "AI Baş Stratejist ile canlı sohbet ve işlem tartışması için önce Gemini API anahtarınızı bağlayın."
+            }
+
+        from core.database import (
+            get_active_and_pending_signals,
+            get_all_signals,
+            get_performance_stats,
+            get_recent_reflections_db,
+            get_today_trades_count_by_timeframe,
+        )
+
+        # 1. Canlı Portföy, Açık Pozisyonlar ve Son İşlemler Bağlamı
+        stats = {}
+        active_list = []
+        recent_closed = []
+        reflections = []
+        quotas = {}
+        btc_regime = {}
+        try:
+            stats = get_performance_stats() or {}
+            active_raw = get_active_and_pending_signals() or []
+            tickers = (client.get_24hr_tickers() or {}) if client is not None else {}
+            for s in active_raw:
+                sym_s = s.get("symbol", "")
+                entry_s = float(s.get("actual_entry_price") or s.get("entry_min") or 0.0)
+                live_s = float((tickers.get(sym_s) or {}).get("lastPrice") or entry_s)
+                lev_s = int(s.get("leverage") or 10)
+                is_l = (s.get("direction") == "LONG")
+                raw_p = ((live_s - entry_s) / entry_s) if (entry_s > 0 and is_l) else (((entry_s - live_s) / entry_s) if entry_s > 0 else 0.0)
+                est_net_pct = round(raw_p * lev_s * 100.0 - (0.10 * lev_s), 2)
+                active_list.append({
+                    "id": s.get("id"),
+                    "symbol": sym_s,
+                    "direction": s.get("direction"),
+                    "timeframe": s.get("timeframe"),
+                    "is_pair": s.get("is_pair_trade"),
+                    "pair_symbol": s.get("pair_symbol"),
+                    "entry": entry_s,
+                    "live_price": live_s,
+                    "sl": s.get("stop_loss"),
+                    "tp1": s.get("take_profit_1"),
+                    "margin_usdt": s.get("allocated_margin_usdt"),
+                    "est_net_pnl_pct": est_net_pct,
+                    "ladder": s.get("ladder_name"),
+                })
+
+            all_sigs = get_all_signals(limit=22) or []
+            active_statuses = {"PENDING_ENTRY", "ACTIVE", "ACTIVE_BE", "ACTIVE_LADDER", "ACTIVE_PARTIAL_TP1"}
+            for t in all_sigs:
+                if t.get("status") not in active_statuses:
+                    recent_closed.append({
+                        "id": t.get("id"),
+                        "symbol": t.get("symbol"),
+                        "direction": t.get("direction"),
+                        "tf": t.get("timeframe"),
+                        "pair": t.get("pair_symbol") if t.get("is_pair_trade") else "",
+                        "status": t.get("status"),
+                        "net_pct": t.get("simulated_pnl_pct"),
+                        "margin_usdt": t.get("allocated_margin_usdt"),
+                        "entry": t.get("actual_entry_price"),
+                        "exit": t.get("exit_price"),
+                        "closed_at": t.get("closed_at"),
+                    })
+                if len(recent_closed) >= 15:
+                    break
+
+            reflections = [
+                {"symbol": r.get("symbol"), "dir": r.get("direction"), "status": r.get("status"), "pnl": r.get("pnl_pct"), "lesson": r.get("lesson")}
+                for r in (get_recent_reflections_db(limit=10) or [])
+            ]
+            quotas = get_today_trades_count_by_timeframe() or {}
+            if client is not None:
+                btc_regime = client.get_btc_regime() or {}
+        except Exception:
+            pass
+
+        # 2. Eğer belirli bir coin sorulmuşsa o coinin canlı Binance Futures telemetrisini çek
+        clean_sym = str(symbol or "").upper().strip()
+        if clean_sym and not clean_sym.endswith("USDT"):
+            clean_sym = f"{clean_sym}USDT"
+        clean_tf = str(timeframe or "15m").lower().strip()
+        if clean_tf not in ("1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w"):
+            clean_tf = "15m"
+
+        coin_telemetry = None
+        if clean_sym and client is not None:
+            try:
+                from agents.ta_agent import TechnicalAnalysisAgent
+                from core.advanced_indicators import (
+                    calculate_linear_regression_channel,
+                    calculate_volume_profile,
+                    calculate_adx,
+                    calculate_supertrend,
+                    calculate_vwap_bands,
+                )
+                c_tf = client.get_klines(clean_sym, interval=clean_tf, limit=60) or []
+                if len(c_tf) >= 20:
+                    closes = [float(c["close"]) for c in c_tf]
+                    rsi_v = TechnicalAnalysisAgent.calculate_rsi(closes, 14)
+                    fvg_r = TechnicalAnalysisAgent.detect_fvg(c_tf, max_lookback=15)
+                    ob_r = TechnicalAnalysisAgent.detect_order_blocks(c_tf, max_lookback=20)
+                    lr_r = calculate_linear_regression_channel(c_tf)
+                    vp_r = calculate_volume_profile(c_tf)
+                    adx_r = calculate_adx(c_tf)
+                    st_r = calculate_supertrend(c_tf)
+                    vwap_r = calculate_vwap_bands(c_tf)
+                    t_24h = (client.get_24hr_tickers() or {}).get(clean_sym, {})
+                    f_rate = client.get_funding_rate(clean_sym) or {}
+                    coin_telemetry = {
+                        "symbol": clean_sym,
+                        "timeframe": clean_tf,
+                        "price": closes[-1],
+                        "change_24h_pct": t_24h.get("priceChangePercent"),
+                        "funding_rate_pct": f_rate.get("fundingRatePct"),
+                        "rsi_14": round(float(rsi_v[-1]), 2) if rsi_v and rsi_v[-1] is not None else None,
+                        "adx": adx_r.get("adx"),
+                        "supertrend": st_r.get("trend"),
+                        "vwap": vwap_r.get("vwap"),
+                        "poc": vp_r.get("poc"),
+                        "vah": vp_r.get("vah"),
+                        "val": vp_r.get("val"),
+                        "lr_trend": lr_r.get("trend"),
+                        "lr_pos_pct": lr_r.get("position_pct"),
+                        "fvg": {"bull": fvg_r.get("bullish_fvg"), "bear": fvg_r.get("bearish_fvg")},
+                        "ob": {"bull": ob_r.get("bullish_ob"), "bear": ob_r.get("bearish_ob")},
+                        "last_12_closes": [round(x, 6) for x in closes[-12:]],
+                    }
+            except Exception:
+                pass
+
+        live_context_json = json.dumps({
+            "kasa_ozeti": {
+                "bakiye_usdt": stats.get("portfolio_balance"),
+                "win_rate_pct": stats.get("win_rate"),
+                "profit_factor": stats.get("profit_factor"),
+                "bugun_net_usd": stats.get("today_dollar_gain"),
+                "bugun_islem": stats.get("today_trades"),
+                "bugun_win": stats.get("today_wins"),
+                "bugun_loss": stats.get("today_losses"),
+            },
+            "gunluk_kotalar": quotas,
+            "btc_rejimi": btc_regime,
+            "acik_pozisyonlar": active_list,
+            "son_15_kapanan_islem": recent_closed,
+            "hafiza_dersleri": reflections,
+            "sorulan_coin_canli_verisi": coin_telemetry,
+        }, ensure_ascii=False)
+
+        system_instruction = (
+            "Sen Patron Efe'nin kripto vadeli işlemler fonunun Baş Stratejisti, Risk Danışmanı ve Öğrenen Hafıza Ortağısın.\n"
+            "Ekran görüntüsüne ihtiyacın yok; doğrudan aşağıdaki CANLI PORTFÖY & BORSA VERİTABANI üzerinde çalışırsın:\n"
+            f"{live_context_json}\n\n"
+            "GÖREV KURALLARI:\n"
+            "1. Patron sana açık pozisyonları hakkında karar sorabilir ('kapatayım mı, tutayım mı?'), geçmiş işlemlerini analiz ettirebilir, "
+            "yeni bir coin/vade tartışabilir veya fikrine itiraz edebilir. ASLA yuvarlak kalıp cümleler kurma.\n"
+            "2. Her cevabında mutlaka somut işlem ID'lerine (#99, #105 vb.), gerçek fiyatlara, kâr/zarar rakamlarına ve risk/ödül mantığına dayan.\n"
+            "3. Patron hatalı veya yüksek riskli bir hamle savunursa kibar ama net bir şekilde verilerle itiraz et (tartış), "
+            "alternatif stop/giriş/kasa çözümü sun.\n"
+            "4. Geçmiş işlemlerden çıkarılacak net bir ders/kural varsa cevabının sonunda '📌 Çıkarılan Ders:' başlığıyla 1 cümlelik somut kural öner.\n"
+            "5. Yanıtların Türkçe, akıcı, net maddeli ve aşırı uzun olmadan doğrudan sonuca odaklı olsun."
+        )
+
+        contents: List[Dict] = []
+        if isinstance(history, list):
+            for turn in history[-10:]:
+                if not isinstance(turn, dict):
+                    continue
+                role = "model" if turn.get("role") in ("model", "assistant") else "user"
+                txt = str(turn.get("text") or turn.get("content") or "").strip()
+                if txt:
+                    contents.append({"role": role, "parts": [{"text": txt}]})
+
+        msg_with_ctx = user_msg
+        if coin_telemetry:
+            msg_with_ctx = f"[Odak Coin: {clean_sym} ({clean_tf}) | Canlı Fiyat: ${coin_telemetry.get('price')}]\n{user_msg}"
+        contents.append({"role": "user", "parts": [{"text": msg_with_ctx}]})
+
+        chat_res = self._call_gemini_chat(system_instruction, contents, temperature=0.45, timeout=26)
+        if not chat_res:
+            return {
+                "status": "error",
+                "ai_key_missing": False,
+                "message": "Gemini API yanıt vermedi. API anahtarınızı veya internet/kota durumunu kontrol edin."
+            }
+
+        reply_text, model_used = chat_res
+        return {
+            "status": "ok",
+            "ai_key_missing": False,
+            "reply": reply_text,
+            "symbol": clean_sym,
+            "timeframe": clean_tf,
+            "source": f"Gerçek Yapay Zeka ({model_used})"
+        }
