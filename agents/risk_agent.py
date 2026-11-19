@@ -9,6 +9,7 @@ Risk Profile Grades & Dynamic Position Sizing (Fixed 2% Risk Rule):
 """
 from typing import Dict, Tuple, Optional, List
 from datetime import datetime, timezone
+from core.timeutil import wall_utc
 from config import (
     MAX_SL_PCT_10X,
     MAX_SL_PCT_20X,
@@ -154,7 +155,7 @@ class RiskOfficerAgent:
         # 1.6 8 SAATLİK FONLAMA ORANI & PENCERE KAÇIŞ KALKANI
         if funding_data:
             fr = funding_data.get("lastFundingRate", 0.0)
-            now_utc = datetime.now(timezone.utc)
+            now_utc = wall_utc()
             # 8 saatlik döngü pencereleri: 00:00, 08:00, 16:00 UTC
             hour_mod = now_utc.hour % 8
             minutes_to_settlement = (8 - hour_mod) * 60 - now_utc.minute
@@ -289,7 +290,12 @@ class RiskOfficerAgent:
                 }
 
         # 3. RİSK / ÖDÜL DENETİMİ (En az MIN_RR_RATIO = 1.4)
-        if rr < MIN_RR_RATIO:
+        # Rejim politikası etkinse kurulumun rejimine ait min R:R kullanılır (TRENDING 1.65 / CHOPPY 2.10)
+        from config import USE_REGIME_MIN_RR, REGIME_POLICY
+        min_rr_required = MIN_RR_RATIO
+        if USE_REGIME_MIN_RR and ta_setup.get("regime") in REGIME_POLICY:
+            min_rr_required = REGIME_POLICY[ta_setup["regime"]].get("min_rr", MIN_RR_RATIO)
+        if rr < min_rr_required - 1e-9:
             return False, {
                 "decision": "REJECT",
                 "reason": (

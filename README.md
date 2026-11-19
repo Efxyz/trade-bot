@@ -92,7 +92,9 @@ trade_bot/
 ├── main.py                          # Ana orkestratör döngüsü & dashboard/telegram entegrasyonu
 ├── config.py                        # Strateji, risk, ATR merdiven, rejim ve koruma sabitleri
 ├── dashboard.py                     # Flask tabanlı canlı Web Terminali & 3D Ajan Ofisi arayüzü
-├── sync_to_github.py                # GitHub API üzerinden kontrollü bulut/Railway senkronizasyonu
+├── templates/office.html            # Web terminali arayüz şablonu
+├── backtest/                        # Canlı strateji koduyla çalışan olay güdümlü backtest motoru
+├── tests/                           # pytest birim + entegrasyon testleri (izole geçici DB)
 ├── requirements.txt                 # Python bağımlılıkları
 ├── Dockerfile / Procfile            # Railway & Docker konteyner dağıtım yapılandırmaları
 ├── start_scanner.bat                # Yerel 7/24 bot + dashboard başlatıcı
@@ -101,6 +103,9 @@ trade_bot/
 │   ├── binance_client.py            # Binance Futures REST API istemcisi (60s kline/book önbellekli)
 │   ├── binance_streamer.py          # Milisaniyelik WebSocket fiyat akışı & bayat veri koruması
 │   ├── database.py                  # SQLite işlem defteri, kısmi kâr mutabakatı & günlük kilitler
+│   ├── database_legacy.py           # Kapatılmış FAST/SÜPER FAST motorlarının DB katmanı (geçmiş istatistikler)
+│   ├── timeutil.py                  # Tek zaman kaynağı: tüm DB damgaları UTC; backtest için simüle saat
+│   ├── accounting.py                # Fonlama (funding) maliyeti ve saf muhasebe yardımcıları
 │   ├── advanced_indicators.py       # FVG, OB, Sweep, SFP, TTM Squeeze, VWAP, LR-Channel motoru
 │   ├── quant_knowledge_base.py      # Kurumsal quant bilgi tabanı yardımcıları
 │   ├── self_tuning_engine.py        # Win Rate / Expectancy bazlı otonom baraj kalibrasyonu
@@ -118,20 +123,24 @@ trade_bot/
     └── telegram_command_agent.py    # İnteraktif Telegram komut dinleyicisi
 ```
 
-*(Not: Depoda alternatif yüksek frekanslı deneysel `fast_*` ve `super_fast_*` motor modülleri de saklanmaktadır; varsayılan üretim modunda `ENABLE_FAST_ENGINE = False` ve `ENABLE_SUPER_FAST_ENGINE = False` olarak kapalı tutulur.)*
+*(Not: Eski deneysel `fast_*` / `super_fast_*` motorları kaldırıldı; yalnızca geçmiş istatistikleri için DB katmanı `core/database_legacy.py` içinde korunuyor.)*
 
 ---
 
 ## 🚀 Kurulum ve Çalıştırma
 
-### 1. Ortam Değişkenleri (`.env`)
+### 1. Ortam Değişkenleri (`.env` / Railway Variables)
 Proje kökünde [`.env.example`](.env.example) dosyasını baz alarak `.env` oluşturun:
 ```env
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 TELEGRAM_CHAT_ID=your_chat_id
+GEMINI_API_KEY=optional_ai_key
 CRYPTOPANIC_API_KEY=optional_api_key
-GITHUB_TOKEN=optional_sync_token
+ADMIN_PIN=en-az-6-karakterlik-gizli-pin
+SELF_TUNING_ENABLED=false
 ```
+- **`ADMIN_PIN` zorunludur:** Varsayılan PIN yoktur. Tanımsız veya zayıfsa (6 karakterden kısa, `6004` vb.) pozisyon kapatma, tarama, AI ve kalibrasyon butonları devre dışı kalır. IP başına 5 hatalı denemede 15 dk kilit uygulanır.
+- **`SELF_TUNING_ENABLED`:** Varsayılan `false`. Küçük örneklemle otomatik parametre değiştirme aşırı uyuma yol açtığı için kapalıdır; açılsa bile en az 150 kapalı işlem gerekir.
 
 ### 2. Yerel Çalıştırma (Windows)
 - **Bot + Canlı Dashboard'u Birlikte Başlatmak İçin:** `start_scanner.bat` dosyasına çift tıklayın (veya `python main.py` çalıştırın).
@@ -143,7 +152,25 @@ pip install -r requirements.txt
 python main.py
 ```
 
+### 4. Testler
+```bash
+pip install pytest
+python -m pytest -q
+```
+Testler geçici bir veri klasörü (`TRADEBOT_DATA_DIR`) kullanır; gerçek veritabanına dokunmaz.
+
 ---
+
+## 🔬 Backtest (Strateji Doğrulama)
+Backtest motoru canlı botun **kendi** sinyal, risk ve takip kodunu simüle saatle çalıştırır. Çıkışlar 1 dakikalık mumların tick'leriyle (fitil temasları dahil, muhafazakâr sıralama) gerçek `CounterfactualTrackerAgent` tarafından yönetilir; komisyon, kayma ve fonlama dahildir.
+```bash
+python -m backtest.run --days 30                              # mevcut strateji
+python -m backtest.run --days 30 --variants baseline,no_mc,wide_ladder
+python -m backtest.run --days 45 --symbols BTCUSDT,ETHUSDT,SOLUSDT
+```
+Varyantlar `backtest/run.py` içindeki `VARIANTS` sözlüğünde tanımlıdır; her biri bir filtreyi veya çıkış kuralını değiştirerek katkısını ölçer. Haber, OI/basis/emir defteri ve Gemini AI filtreleri geçmiş veriyle yeniden üretilemediği için backtest'te atlanır.
+
+**Kural:** Strateji parametresi değiştirmeden önce backtest'te en az birkaç yüz işlemlik örneklemle ve farklı dönemlerde tutarlı iyileşme görülmelidir.
 
 ## ⚠️ Yasal Uyarı
 Bu yazılım araştırma, simülasyon ve algoritmik strateji doğrulama amacıyla geliştirilmiştir. Kripto para vadeli işlemleri yüksek kaldıraç nedeniyle yüksek risk içerir; yatırım tavsiyesi değildir.

@@ -12,6 +12,7 @@ from typing import List, Dict, Optional, Tuple
 import math
 import time
 from datetime import datetime, timezone, timedelta
+from core.timeutil import wall_utc
 from config import (
     TARGET_PROFIT_PCT,
     MAX_SCALP_SL_PCT,
@@ -35,7 +36,9 @@ from config import (
     REGIME_CI_CHOP,
     REGIME_KER_TREND,
     REGIME_KER_CHOP,
-    REGIME_POLICY
+    REGIME_POLICY,
+    SCORING_DEDUP,
+    USE_REGIME_MIN_RR
 )
 from core.advanced_indicators import (
     calculate_linear_regression_channel,
@@ -441,7 +444,7 @@ class TechnicalAnalysisAgent:
 
         curr_c = candles[-1]
         curr_vol = curr_c["volume"]
-        now_ms = time.time() * 1000
+        now_ms = wall_utc().timestamp() * 1000
         candle_open_ms = curr_c.get("timestamp", now_ms)
         elapsed_sec = max(30.0, min(candle_sec, (now_ms - candle_open_ms) / 1000.0))
         projected_vol = curr_vol * (candle_sec / elapsed_sec)
@@ -581,7 +584,8 @@ class TechnicalAnalysisAgent:
         sl_dist = max(min_sl_dist, min(max_sl_dist, curr_atr * atr_mult))
         sl_pct = round((sl_dist / current_price) * 100, 2)
 
-        eff_min_rr = max(MIN_RR_RATIO, policy.get("min_rr", MIN_RR_RATIO))
+        # USE_REGIME_MIN_RR: rejim politikası min R:R'ı doğrudan uygular (eskiden max() yüzünden 1.65 hiç kullanılmıyordu)
+        eff_min_rr = policy.get("min_rr", MIN_RR_RATIO) if USE_REGIME_MIN_RR else max(MIN_RR_RATIO, policy.get("min_rr", MIN_RR_RATIO))
         min_tp_dist = current_price * (tf_target_profit / 100.0)
         tp_dist = max(sl_dist * eff_min_rr, min_tp_dist)
         tp_pct = round((tp_dist / current_price) * 100, 2)
@@ -674,7 +678,7 @@ class TechnicalAnalysisAgent:
         # Hacim patlama bonusu (Tamamlanmış mumlara göre gürültüsüz ölçüm)
         prior_vols = [c["volume"] for c in eval_candles[-11:-1]]
         avg_v = sum(prior_vols) / len(prior_vols) if prior_vols else 1.0
-        if len(eval_candles) >= 2 and eval_candles[-1]["volume"] >= (avg_v * 0.90):
+        if not SCORING_DEDUP and len(eval_candles) >= 2 and eval_candles[-1]["volume"] >= (avg_v * 0.90):
             long_score += 8
             short_score += 8
             long_factors.append("Sağlıklı Hacim İvmesi")
@@ -760,7 +764,7 @@ class TechnicalAnalysisAgent:
         elif rsi_div.get("bullish_divergence") == "HIDDEN_BULLISH":
             long_score += 12
             long_factors.append("⚡ Gizli Boğa Diverjansı (Trend Devamı)")
-        elif 48 <= curr_rsi <= 68:
+        elif (52 < curr_rsi <= 68) if SCORING_DEDUP else (48 <= curr_rsi <= 68):
             long_score += 10
             long_factors.append(f"RSI İdeal İvme ({curr_rsi:.1f})")
 
@@ -770,7 +774,7 @@ class TechnicalAnalysisAgent:
         elif rsi_div.get("bearish_divergence") == "HIDDEN_BEARISH":
             short_score += 12
             short_factors.append("⚡ Gizli Ayı Diverjansı (Ayı Devamı)")
-        elif 32 <= curr_rsi <= 52:
+        elif (32 <= curr_rsi < 48) if SCORING_DEDUP else (32 <= curr_rsi <= 52):
             short_score += 10
             short_factors.append(f"RSI İdeal Baskı ({curr_rsi:.1f})")
 
@@ -883,7 +887,7 @@ class TechnicalAnalysisAgent:
 
         # Asimetrik Seans Filtresi: Düşük likiditeli Asya gecesi (03:00-08:00 TSİ) barajı +4 sıkılaştırır
         try:
-            now_tr = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=3)))
+            now_tr = wall_utc().astimezone(timezone(timedelta(hours=3)))
             if 3 <= now_tr.hour < 8:
                 target_min_score += 4
             elif 15.5 <= (now_tr.hour + now_tr.minute / 60.0) <= 20.5:
@@ -911,7 +915,10 @@ class TechnicalAnalysisAgent:
 
         # --- EŞİK DEĞERLERİ & İŞLEM KARARI (Otonom Kalibre Edilmiş Baraj: target_min_score) ---
         # LONG KONTROLÜ
-        if long_score >= target_min_score and long_score > short_score:
+        import config as _cfg
+        long_min_score = target_min_score + int(getattr(_cfg, "LONG_SCORE_EXTRA", 0) or 0)
+        longs_enabled = bool(getattr(_cfg, "ENABLE_LONGS", True))
+        if longs_enabled and long_score >= long_min_score and long_score > short_score:
             # 0. KURUMSAL SMC YAPISAL TEYİT KONTROLÜ (Mandatory SMC Confirmation Gate)
             # Yalnızca indikatör toplamı yetmez; fiyatta somut kurumsal Smart Money yapısı şarttır:
             has_smc_confirmation_long = (

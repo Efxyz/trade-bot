@@ -8,7 +8,7 @@ import json
 import time
 import ssl
 import threading
-from typing import Dict, List, Set, Optional
+from typing import Dict, List, Set, Optional, Tuple
 from collections import deque, defaultdict
 import websocket
 
@@ -16,6 +16,8 @@ import websocket
 _LIVE_PRICES: Dict[str, float] = {}
 _LIVE_TIMESTAMPS: Dict[str, float] = {}
 _PRICE_LOCK = threading.Lock()
+# İki takip kontrolü arasındaki tick uç değerleri (fitil kaçırmamak için): symbol -> [high, low]
+_TICK_EXTREMES: Dict[str, List[float]] = {}
 
 # Volume and whale trade tracker
 # symbol -> deque of (timestamp, trade_usdt_value)
@@ -95,7 +97,10 @@ def _run_streamer():
                 p_str = trade_data.get("p")
                 q_str = trade_data.get("q")
 
-                if sym and p_str:
+                # Yalnızca gerçek piyasa işlemleri: Binance vadeli @trade akışı fiyatı 0 olan / piyasa dışı
+                # (ADL, sigorta fonu, NA) olaylar gönderebilir; bunlar fiyat ve fitil takibini bozar.
+                trade_type = trade_data.get("X", "MARKET")
+                if sym and p_str and trade_type == "MARKET" and float(p_str) > 0:
                     price = float(p_str)
                     qty = float(q_str) if q_str else 0.0
                     trade_val = price * qty
@@ -103,6 +108,14 @@ def _run_streamer():
                     with _PRICE_LOCK:
                         _LIVE_PRICES[sym] = price
                         _LIVE_TIMESTAMPS[sym] = now
+                        ext = _TICK_EXTREMES.get(sym)
+                        if ext is None:
+                            _TICK_EXTREMES[sym] = [price, price]
+                        else:
+                            if price > ext[0]:
+                                ext[0] = price
+                            if price < ext[1]:
+                                ext[1] = price
 
                     # 1 Dakikalık ani balina işlem hacmini takip et (>50.000$ tek işlem veya hızlı akış)
                     trades = _RECENT_TRADES[sym]
@@ -149,6 +162,28 @@ def get_live_price(symbol: str, max_age_sec: float = 5.0) -> Optional[float]:
         if price is not None and (time.time() - ts) <= max_age_sec:
             return price
         return None
+
+def pop_price_extremes(symbol: str) -> Optional[Tuple[float, float]]:
+    """
+    Son çağrıdan bu yana gelen tick'lerin (en yüksek, en düşük) fiyatını döner ve aralığı sıfırlar.
+    Tick yoksa None döner. Takip ajanı SL/TP fitil temaslarını bu aralıkla denetler.
+    """
+    with _PRICE_LOCK:
+        ext = _TICK_EXTREMES.pop(symbol, None)
+        return (ext[0], ext[1]) if ext else None
+
+
+def _record_tick_for_test(symbol: str, price: float):
+    """Test yardımcı fonksiyonu: WebSocket olmadan tick simüle eder (canlı akışla aynı filtre)."""
+    if not price or price <= 0:
+        return
+    with _PRICE_LOCK:
+        _LIVE_PRICES[symbol] = price
+        _LIVE_TIMESTAMPS[symbol] = time.time()
+        ext = _TICK_EXTREMES.setdefault(symbol, [price, price])
+        ext[0] = max(ext[0], price)
+        ext[1] = min(ext[1], price)
+
 
 def get_all_live_prices() -> Dict[str, float]:
     """Tüm canlı fiyat sözlüğünün kopyasını döner."""

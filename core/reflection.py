@@ -183,7 +183,7 @@ class ReflectorEngine:
             "fee_pct": fee_pct,
             "thesis_evaluation": thesis_evaluation,
             "lesson": lesson,
-            "recorded_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            "recorded_at": __import__("core.timeutil", fromlist=["utc_now_str"]).utc_now_str()
         }
 
         # Veritabanına kaydet

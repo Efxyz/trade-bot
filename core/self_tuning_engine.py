@@ -32,7 +32,9 @@ from config import (
     RISK_PER_TRADE_PCT,
     MAX_CONCURRENT_TRADES,
     ENABLE_FAST_ENGINE,
-    ENABLE_SUPER_FAST_ENGINE
+    ENABLE_SUPER_FAST_ENGINE,
+    SELF_TUNING_ENABLED,
+    SELF_TUNING_MIN_TRADES
 )
 
 ADAPTIVE_CONFIG_PATH = DATA_DIR / "adaptive_hyperparams.json"
@@ -72,7 +74,10 @@ class SelfTuningEngine:
             "last_calibrated_at": "Henüz kalibrasyon yapılmadı (Varsayılan ayarlar)",
             "adaptation_level": "Base Standard"
         }
-        if ADAPTIVE_CONFIG_PATH.exists():
+        if not SELF_TUNING_ENABLED:
+            defaults["adaptation_level"] = "Frozen (Self-Tuning Disabled)"
+            defaults["last_calibrated_at"] = "Öz-kalibrasyon kapalı: config.py sabitleri kullanılıyor"
+        elif ADAPTIVE_CONFIG_PATH.exists():
             try:
                 with open(ADAPTIVE_CONFIG_PATH, "r", encoding="utf-8") as f:
                     saved = json.load(f)
@@ -465,6 +470,10 @@ class SelfTuningEngine:
         )
 
         # 5. OTONOM ONAY & DİSK/DB KAYDI
+        # Kilit: Öz-kalibrasyon kapalıysa veya örneklem yetersizse parametreler diske yazılmaz (yalnızca rapor)
+        if auto_commit and (not SELF_TUNING_ENABLED or total_trades < max(min_trades_required, SELF_TUNING_MIN_TRADES)):
+            auto_commit = False
+            summary_text += " [Rapor modu: öz-kalibrasyon kilitli veya örneklem yetersiz, parametreler değiştirilmedi]"
         if auto_commit:
             try:
                 with open(ADAPTIVE_CONFIG_PATH, "w", encoding="utf-8") as f:

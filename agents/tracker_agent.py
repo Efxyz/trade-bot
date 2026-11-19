@@ -27,6 +27,8 @@ from core.database import (
     reconcile_partial_pnl
 )
 from core.binance_client import BinanceFuturesClient
+from core.timeutil import utc_now, db_ts_to_epoch_ms, parse_db_ts
+from core.accounting import estimate_funding_usd, apply_funding_to_pnl
 from config import (
     CHARTS_DIR,
     MAX_HOLD_MINUTES,
@@ -42,7 +44,9 @@ from config import (
     ATR_LADDER_MULT,
     MIN_RR_RATIO,
     MAX_ALLOCATED_MARGIN_PER_TRADE,
-    ENABLE_LOSING_DCA
+    ENABLE_LOSING_DCA,
+    ESTIMATED_SLIPPAGE_PCT,
+    ENABLE_MOMENTUM_STAGNATION_EXIT
 )
 
 class CounterfactualTrackerAgent:
@@ -67,7 +71,13 @@ class CounterfactualTrackerAgent:
             return None
         return sum(trs[-period:]) / period
 
-    def update_tracked_trades(self, notifier=None) -> List[Dict]:
+    @staticmethod
+    def apply_exit_slippage(price: float, is_long: bool) -> float:
+        """Piyasa (taker) çıkışlarında aleyhe kayma uygular (LONG daha düşükten, SHORT daha yüksekten çıkar)."""
+        s = ESTIMATED_SLIPPAGE_PCT / 100.0
+        return round(price * (1.0 - s) if is_long else price * (1.0 + s), 8)
+
+    def update_tracked_trades(self, notifier=None, evaluate_shadows: bool = True) -> List[Dict]:
         """
         Vur-kaç mikro scalpleri kontrol eder.
         - Merdiven Kâr Sistemi ile stop'u kademe kademe kâra taşır.
@@ -75,16 +85,21 @@ class CounterfactualTrackerAgent:
         - 45 dakikayı geçen pozisyonları kapatıp sermayeyi boşaltır.
         """
         with CounterfactualTrackerAgent._track_lock:
-            return self._update_tracked_trades_locked(notifier=notifier)
+            return self._update_tracked_trades_locked(notifier=notifier, evaluate_shadows=evaluate_shadows)
 
-    def _update_tracked_trades_locked(self, notifier=None) -> List[Dict]:
+    def _update_tracked_trades_locked(self, notifier=None, evaluate_shadows: bool = True) -> List[Dict]:
         signals = get_active_and_pending_signals()
         if not signals:
+            if evaluate_shadows:
+                try:
+                    self.evaluate_shadow_rejections(max_items=8)
+                except Exception:
+                    pass
             return []
 
         tickers = self.client.get_24hr_tickers()
         resolved_trades = []
-        now = datetime.now()
+        now = utc_now()
         active_syms_set = {s["symbol"] for s in signals}
 
         for sig in signals:
@@ -97,14 +112,25 @@ class CounterfactualTrackerAgent:
                 continue
 
             # Milisaniyelik Canlı WebSocket Fitil / Fiyat Kontrolü
+            # pop_price_extremes: son kontrolden bu yana görülen en yüksek/en düşük tick (fitil temasları kaçmaz)
+            tick_ext = None
             try:
-                from core.binance_streamer import get_live_price, add_stream_symbol
+                from core.binance_streamer import get_live_price, add_stream_symbol, pop_price_extremes
                 add_stream_symbol(symbol)
                 ws_price = get_live_price(symbol)
+                tick_ext = pop_price_extremes(symbol)
             except Exception:
                 ws_price = None
 
             current_price = ws_price if ws_price else ticker["lastPrice"]
+            # Savunma: geçersiz/aşırı sapan tick uç değerlerini (ör. 0 fiyatlı olay, bozuk veri) yok say
+            if tick_ext is not None and current_price and current_price > 0:
+                hi_t, lo_t = tick_ext
+                if lo_t <= 0 or hi_t <= 0 or lo_t < current_price * 0.85 or hi_t > current_price * 1.15:
+                    tick_ext = None
+            has_ticks = bool(ws_price) and tick_ext is not None
+            bar_high = max(current_price, tick_ext[0]) if has_ticks else current_price
+            bar_low = min(current_price, tick_ext[1]) if has_ticks else current_price
             direction = sig["direction"]
             is_long = (direction == "LONG")
             status = sig["status"]
@@ -164,13 +190,15 @@ class CounterfactualTrackerAgent:
             # 1. ZİRVE / DİP FİYAT VE ANLIK KÂR TAKİBİ
             highest_price = sig.get("highest_price") or entry_price
             lowest_price = sig.get("lowest_price") or entry_price
+            if lowest_price <= 0:
+                lowest_price = entry_price
 
-            if current_price > highest_price:
-                highest_price = current_price
+            if bar_high > highest_price:
+                highest_price = bar_high
                 update_signal_status(sig_id, {"highest_price": highest_price})
 
-            if current_price < lowest_price:
-                lowest_price = current_price
+            if bar_low < lowest_price:
+                lowest_price = bar_low
                 update_signal_status(sig_id, {"lowest_price": lowest_price})
 
             raw_profit_pct = ((current_price - entry_price) / entry_price * 100) if is_long else ((entry_price - current_price) / entry_price * 100)
@@ -178,6 +206,10 @@ class CounterfactualTrackerAgent:
 
             # 2. MERDİVEN KÂR SİSTEMİ (STEP-LADDER PROFIT LOCKING - ATR VOLATİLİTE & VADEYE GÖRE ÖLÇEKLİ)
             current_sl = sl
+            sl_at_tick_start = sl
+            # Bu aralıkta mevcut stop'a fitil temas etti mi? (Olay sırası bilinmediği için muhafazakâr kabul:
+            # önce stop dolmuştur; merdiven/kâr kilidi/TP bu aralıkta uygulanmaz)
+            orig_sl_touched = (is_long and bar_low <= sl_at_tick_start) or (not is_long and bar_high >= sl_at_tick_start)
             current_ladder_step = sig.get("ladder_step") or 0
             ladder_name = sig.get("ladder_name") or ""
 
@@ -186,7 +218,7 @@ class CounterfactualTrackerAgent:
             is_pair_trade = int(sig.get("is_pair_trade") or 0)
 
             # Market-Neutral Pair Trade bacakları kombine spread kârına göre yönetilir; tek bacak merdiven stopuyla bozulmaz
-            if ENABLE_LADDER_PROFIT and is_pair_trade == 0:
+            if ENABLE_LADDER_PROFIT and is_pair_trade == 0 and not orig_sl_touched:
                 active_ladder_steps = LADDER_STEPS
                 step_mult = ladder_mult
 
@@ -251,14 +283,17 @@ class CounterfactualTrackerAgent:
                                 "status": "ACTIVE_BE" if current_ladder_step == 1 else "ACTIVE_LADDER"
                             }
                             # Basamak 1: %35 Kısmi Kârı Cebe Al + Kalan %65'e -%0.08 Nefes Paylı Sıfır Risk Stopu
-                            if step_num == 1 and partial_tp_taken == 0:
-                                step1_exec_pct = min(peak_profit_pct, max(trigger_pct, raw_profit_pct))
-                                step1_net_pct = max(3.0, (step1_exec_pct * leverage) - (BINANCE_ROUNDTRIP_FEE_PCT * leverage))
-                                step1_usd = round((allocated_margin * 0.35) * (step1_net_pct / 100.0), 2)
+                            import config as _cfg
+                            step1_part = float(getattr(_cfg, "LADDER_STEP1_PARTIAL_PCT", 0.35) or 0.0)
+                            if step_num == 1 and partial_tp_taken == 0 and step1_part > 0:
+                                # Gerçekçi dolum: tetik seviyesinde limit emir varsayımı, fiyat tetik altına döndüyse anlık fiyat
+                                step1_exec_pct = min(trigger_pct, raw_profit_pct)
+                                step1_net_pct = (step1_exec_pct * leverage) - (BINANCE_ROUNDTRIP_FEE_PCT * leverage)
+                                step1_usd = round((allocated_margin * step1_part) * (step1_net_pct / 100.0), 2)
                                 current_realized_usd = round(current_realized_usd + step1_usd, 2)
-                                allocated_margin = round(allocated_margin * 0.65, 2)
+                                allocated_margin = round(allocated_margin * (1.0 - step1_part), 2)
                                 partial_tp_taken = 2
-                                ladder_name = f"[{sig_tf}] 🛡️ Basamak 1 (+${step1_usd} Cebe | %65 BE+ Kilit)"
+                                ladder_name = f"[{sig_tf}] 🛡️ Basamak 1 (+${step1_usd} Cebe | %{int(round((1 - step1_part) * 100))} BE+ Kilit)"
                                 db_updates.update({
                                     "partial_tp_taken": partial_tp_taken,
                                     "realized_pnl_usd": current_realized_usd,
@@ -310,7 +345,7 @@ class CounterfactualTrackerAgent:
 
             # 4a. Time-Decay Erken Kâr Kilidi (Freqtrade Minimal ROI Prensibi - Pair bacakları tekil kilitlenmez)
             net_unrealized_margin = (raw_profit_pct * leverage) - (0.10 * leverage)
-            if is_pair_trade == 0 and minutes_open >= (30 * ladder_mult) and net_unrealized_margin >= (2.5 * ladder_mult):
+            if is_pair_trade == 0 and not orig_sl_touched and minutes_open >= (30 * ladder_mult) and net_unrealized_margin >= (2.5 * ladder_mult):
                 protect_sl = round(entry_price * (1.0 + 0.0025 * ladder_mult), 8) if is_long else round(entry_price * (1.0 - 0.0025 * ladder_mult), 8)
                 if (is_long and protect_sl > current_sl) or (not is_long and protect_sl < current_sl):
                     current_sl = protect_sl
@@ -319,9 +354,14 @@ class CounterfactualTrackerAgent:
 
             # 4. HEDEF (TP) VE MERDİVEN STOP KONTROLLERİ (BİRİNCİL ÖNCELİK)
             if not is_closed:
-                # Hedefe (TP1 / TP2) ulaştı mı?
-                is_hit_tp1 = (is_long and current_price >= tp) or (not is_long and current_price <= tp)
-                is_hit_tp2 = (is_long and current_price >= tp2) or (not is_long and current_price <= tp2)
+                # Hedefe (TP1 / TP2) ulaştı mı? (Limit emir: aralıktaki tepe/dip tick'i yeterli)
+                is_hit_tp1 = (is_long and bar_high >= tp) or (not is_long and bar_low <= tp)
+                is_hit_tp2 = (is_long and bar_high >= tp2) or (not is_long and bar_low <= tp2)
+                # Aynı aralıkta hem orijinal stop hem TP görüldüyse sıralama bilinmez -> muhafazakâr: önce stop
+                if orig_sl_touched:
+                    is_hit_tp1 = False
+                    is_hit_tp2 = False
+                tp1_taken_this_tick = False
 
                 # 4a. PARÇALI MERDİVEN ÇIKIŞI & FREE-TRADE RUNNER (Partial TP1 Scaling-Out)
                 if is_hit_tp1 and partial_tp_taken in (0, 2):
@@ -355,6 +395,7 @@ class CounterfactualTrackerAgent:
                     })
                     partial_tp_taken = new_partial_state
                     allocated_margin = half_margin
+                    tp1_taken_this_tick = True
                     print(f"🎯 [{symbol}] TP1 Vuruldu! Kâr Cebe Alındı (Toplam Kilit: +${current_realized_usd}). Free-Trade Runner TP2'ye koşuyor!")
 
                 if partial_tp_taken in (1, 3) and is_hit_tp2:
@@ -366,17 +407,29 @@ class CounterfactualTrackerAgent:
                     print(f"🚀 [{symbol}] Runner TP2 Vuruldu! Kalan işlem de tepe fiyattan kapatıldı!")
 
                 # Stop veya Merdiven Kâr Stopuna çarptı mı?
-                if not is_closed and ((is_long and current_price <= current_sl) or (not is_long and current_price >= current_sl)):
+                # Stop bu kontrolde yukarı çekildiyse (merdiven/TP1) aralığın eski dibi sahte tetik üretmesin diye
+                # yalnızca anlık fiyat kullanılır; aksi halde aralıktaki fitil teması (bar_low/bar_high) esas alınır.
+                sl_moved_this_tick = (current_sl != sl_at_tick_start) or tp1_taken_this_tick
+                probe_low = current_price if sl_moved_this_tick else bar_low
+                probe_high = current_price if sl_moved_this_tick else bar_high
+                if not is_closed and ((is_long and probe_low <= current_sl) or (not is_long and probe_high >= current_sl)):
                     is_closed = True
-                    exit_price = current_sl
-                    raw_change = ((current_sl - entry_price) / entry_price) if is_long else ((entry_price - current_sl) / entry_price)
+                    # Stop-market dolumu: tick verisi varsa stop seviyesi, yoksa (veri boşluğu) stop ile anlık fiyatın kötüsü
+                    if has_ticks:
+                        stop_fill = current_sl
+                    else:
+                        stop_fill = min(current_sl, current_price) if is_long else max(current_sl, current_price)
+                    exit_price = self.apply_exit_slippage(stop_fill, is_long)
+                    raw_change = ((exit_price - entry_price) / entry_price) if is_long else ((entry_price - exit_price) / entry_price)
 
                     if partial_tp_taken in (1, 3):
                         final_status = "RUNNER_BE_EXIT"  # Free-trade sıfır riskle kapandı, TP1 kârı cepte!
-                    elif current_ladder_step >= 2 or peak_profit_pct >= (0.75 * ladder_mult):
-                        final_status = f"LADDER_STEP_{current_ladder_step}_EXIT" if current_ladder_step > 0 else "LADDER_PROFIT_EXIT"
-                    elif current_ladder_step == 1 or partial_tp_taken == 2 or raw_change > 0 or (status in ("ACTIVE_BE", "ACTIVE_LADDER") and raw_change >= 0):
+                    elif current_ladder_step >= 2:
+                        final_status = f"LADDER_STEP_{current_ladder_step}_EXIT"
+                    elif current_ladder_step == 1 or partial_tp_taken == 2 or (status in ("ACTIVE_BE", "ACTIVE_LADDER") and raw_change >= 0):
                         final_status = "CLOSED_BE"
+                    elif raw_change > 0:
+                        final_status = "LADDER_PROFIT_EXIT"  # Zaman bazlı kâr kilidi stopuyla kârda kapanış
                     else:
                         final_status = "HIT_SL"
 
@@ -422,8 +475,8 @@ class CounterfactualTrackerAgent:
                     if structural_confirm:
                         is_closed = True
                         final_status = "EARLY_INVALIDATION_EXIT"
-                        exit_price = current_price
-                        raw_change = raw_c
+                        exit_price = self.apply_exit_slippage(current_price, is_long)
+                        raw_change = ((exit_price - entry_price) / entry_price) if is_long else ((entry_price - exit_price) / entry_price)
                         print(f"🛡️ [{symbol}] [{sig_tf}] Akıllı Erken Zarar Kes devrede! ({minutes_open:.0f} dk, ham: {raw_c*100:.2f}%). Mum EMA20 aleyhine kapandı.")
                     else:
                         print(f"⏳ [{symbol}] [{sig_tf}] Fiyat hafif ekside ({raw_c*100:.2f}%) ama son kapanan mum EMA20 desteğini koruyor -> Panik kesim önlendi.")
@@ -431,13 +484,13 @@ class CounterfactualTrackerAgent:
             # 5b. 2-MUM MOMENTUM İPTALİ (Hummingbot İlkesi: İlk 2 kapanmış mumda yön teyidi gelmezse ölü sermayeyi kurtar)
             # Not: Market-Neutral Pair Trade bacakları (is_pair_trade == 1) spread dengesi gereği tek bacaklı iptalden muaf tutulur.
             two_candle_min = 30 if sig_tf == "15m" else (60 if sig_tf == "30m" else 120)
-            if not is_closed and is_pair_trade == 0 and current_ladder_step == 0 and partial_tp_taken == 0 and minutes_open >= two_candle_min:
+            if ENABLE_MOMENTUM_STAGNATION_EXIT and not is_closed and is_pair_trade == 0 and current_ladder_step == 0 and partial_tp_taken == 0 and minutes_open >= two_candle_min:
                 raw_c_2b = ((current_price - entry_price) / entry_price) if is_long else ((entry_price - current_price) / entry_price)
                 if peak_profit_pct < 0.25 and (-0.0040 <= raw_c_2b <= -0.0010):
                     is_closed = True
                     final_status = "MOMENTUM_STAGNATION_EXIT"
-                    exit_price = current_price
-                    raw_change = raw_c_2b
+                    exit_price = self.apply_exit_slippage(current_price, is_long)
+                    raw_change = ((exit_price - entry_price) / entry_price) if is_long else ((entry_price - exit_price) / entry_price)
                     print(f"⚡ [{symbol}] [{sig_tf}] 2-Mum Momentum İptali ({minutes_open:.0f} dk, Zirve: +%{peak_profit_pct:.2f}, Anlık: {raw_c_2b*100:+.2f}%) -> Ölü sermaye serbest bırakıldı.")
 
             # 5c. STAT-ARB SPREAD ORTALAMAYA DÖNÜŞ & KOMBİNE KÂR ÇIKIŞI (Kombine Net Kâr veya |Z| <= 0.45)
@@ -507,7 +560,8 @@ class CounterfactualTrackerAgent:
                 if raw_change > 0.001:
                     is_closed = True
                     final_status = "TIMEOUT_PROFIT_EXIT"
-                    exit_price = current_price
+                    exit_price = self.apply_exit_slippage(current_price, is_long)
+                    raw_change = ((exit_price - entry_price) / entry_price) if is_long else ((entry_price - exit_price) / entry_price)
                     print(f"⏱️ [{symbol}] [{sig_tf}] {effective_max_hold} dk doldu: Pozisyon kârda ({raw_change*100:+.2f}%) kapatıldı.")
                 # Eğer pozisyon hafif ekside ancak Stop mesafesine çok uzaksa (<%0.4) ek nefes payı tanı:
                 elif minutes_open < (effective_max_hold * 1.3) and abs(raw_change) < 0.004:
@@ -515,7 +569,8 @@ class CounterfactualTrackerAgent:
                 else:
                     is_closed = True
                     final_status = "TIMEOUT_EXIT"
-                    exit_price = current_price
+                    exit_price = self.apply_exit_slippage(current_price, is_long)
+                    raw_change = ((exit_price - entry_price) / entry_price) if is_long else ((entry_price - exit_price) / entry_price)
                     print(f"⏱️ [{symbol}] [{sig_tf}] {minutes_open:.0f} dakika doldu! Hareketsiz pozisyon {current_price} seviyesinden kapatıldı.")
 
             # 6. İŞLEM KAPANDIYSA NET MARJİN PnL'İ HESAPLA VE VERİTABANINA YAZ
@@ -529,6 +584,18 @@ class CounterfactualTrackerAgent:
                     allocated_margin, partial_tp_taken, current_realized_usd, net_pnl_pct, fee_pct, final_status
                 )
 
+                # Fonlama (funding) maliyeti: tutulan süre boyunca geçen 8 saatlik uzlaşmalar
+                funding_usd = 0.0
+                try:
+                    if entered_at_str:
+                        fr = float((self.client.get_funding_rate(symbol) or {}).get("lastFundingRate", 0.0))
+                        funding_usd = estimate_funding_usd(
+                            parse_db_ts(entered_at_str), now, final_margin_to_save * leverage, fr, is_long
+                        )
+                        net_pnl_pct, gross_pnl_pct = apply_funding_to_pnl(net_pnl_pct, gross_pnl_pct, final_margin_to_save, funding_usd)
+                except Exception:
+                    funding_usd = 0.0
+
                 candles = self.client.get_klines(symbol, interval="15m", limit=40)
                 exit_png_path = self.generate_outcome_chart(sig, candles, final_status, exit_price, net_pnl_pct, leverage)
 
@@ -539,6 +606,7 @@ class CounterfactualTrackerAgent:
                     "simulated_pnl_pct": net_pnl_pct,
                     "gross_pnl_pct": gross_pnl_pct,
                     "fee_pct": fee_pct,
+                    "funding_usd": funding_usd,
                     "allocated_margin_usdt": final_margin_to_save,
                     "chart_exit_png": exit_png_path
                 })
@@ -605,10 +673,11 @@ class CounterfactualTrackerAgent:
                     except Exception:
                         pass
 
-        try:
-            self.evaluate_shadow_rejections(max_items=8)
-        except Exception:
-            pass
+        if evaluate_shadows:
+            try:
+                self.evaluate_shadow_rejections(max_items=8)
+            except Exception:
+                pass
 
         return resolved_trades
 
@@ -618,11 +687,11 @@ class CounterfactualTrackerAgent:
         pending = get_pending_shadow_rejections(limit=max_items)
         if not pending:
             return
-        now = datetime.now()
+        now = utc_now()
         for row in pending:
             try:
                 created_dt = datetime.strptime(str(row["created_at"])[:19], "%Y-%m-%d %H:%M:%S")
-                created_ms = int(created_dt.timestamp() * 1000)
+                created_ms = db_ts_to_epoch_ms(row["created_at"])
                 age_min = (now - created_dt).total_seconds() / 60.0
                 klines = self.client.get_klines(row["symbol"], interval="15m", limit=40) or []
                 bars = [k for k in klines if int(k.get("timestamp", 0)) >= created_ms]

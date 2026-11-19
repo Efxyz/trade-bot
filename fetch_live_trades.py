@@ -25,7 +25,7 @@ def load_env_vars():
 def main():
     load_env_vars()
     base_url = os.environ.get("RAILWAY_URL", "").strip().rstrip("/")
-    pin = os.environ.get("ADMIN_PIN", "6004").strip()
+    pin = os.environ.get("ADMIN_PIN", "").strip()
     hours = int(sys.argv[1]) if len(sys.argv) > 1 else 36
 
     if not base_url:

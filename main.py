@@ -20,6 +20,7 @@ from config import (
     MAX_CONCURRENT_TRADES
 )
 from core.binance_client import BinanceFuturesClient
+from core.timeutil import utc_now
 from core.database import (
     init_db,
     save_signal,
@@ -39,6 +40,14 @@ from agents.quant_simulation_agent import QuantSimulationAgent
 from core.binance_streamer import start_streamer, pop_hot_symbols, add_stream_symbol, is_streamer_connected
 from dashboard import start_dashboard
 
+def grade_to_score(risk_grade: str) -> float:
+    """Risk notu metnini ('Grade A+ (...)', 'Grade A (...)', 'Grade B ...') turnuva puanına çevirir."""
+    import re
+    m = re.search(r"Grade\s+([A-C]\+?)", str(risk_grade or ""))
+    letter = m.group(1) if m else str(risk_grade or "").strip()
+    return {"A+": 20.0, "A": 16.0, "B": 12.0, "C": 8.0}.get(letter, 10.0)
+
+
 class TradingBotOrchestrator:
     def __init__(self):
         print("🤖 [Sistem Başlatılıyor] Binance Futures Çoklu Ajanlı Trade Bot (10x / 20x Destekli)...")
@@ -57,6 +66,8 @@ class TradingBotOrchestrator:
         self.quant_sim = QuantSimulationAgent(default_simulations=10000, win_threshold_pct=48.0)
         self.last_daily_report_date = None
         self._cycle_lock = threading.Lock()
+        self._tracker_thread = None
+        self._tracker_stop = threading.Event()
 
         # Canlı WebSocket Veri Boru Hattını Başlat
         try:
@@ -179,6 +190,34 @@ class TradingBotOrchestrator:
         except Exception as pair_err:
             print(f"⚠️ Pair Arbitraj kontrol hatası: {pair_err}")
         return False
+
+    def start_tracker_loop(self, interval_sec: float = None):
+        """
+        Pozisyon takibini ana taramadan bağımsız bir thread'de saniyelik çalıştırır.
+        Ana döngü 90 sn + tarama süresi kadar kör kaldığı için SL/TP/merdiven kontrolleri burada yapılır.
+        """
+        from config import TRACKER_INTERVAL_SECONDS
+        interval = float(interval_sec or TRACKER_INTERVAL_SECONDS)
+        if self._tracker_thread and self._tracker_thread.is_alive():
+            return self._tracker_thread
+
+        def _loop():
+            while not self._tracker_stop.is_set():
+                try:
+                    resolved = self.tracker.update_tracked_trades(self.notifier, evaluate_shadows=False)
+                    if resolved:
+                        print(f"🎯 [Canlı Takip] {len(resolved)} pozisyon sonuçlandı.")
+                except Exception as track_err:
+                    print(f"⚠️ [Canlı Takip Hatası]: {track_err}")
+                self._tracker_stop.wait(interval)
+
+        self._tracker_thread = threading.Thread(target=_loop, daemon=True, name="RealtimeTracker")
+        self._tracker_thread.start()
+        print(f"⚡ [Canlı Takip] Pozisyon takip döngüsü {interval:.0f} sn aralıkla ayrı thread'de başlatıldı.")
+        return self._tracker_thread
+
+    def stop_tracker_loop(self):
+        self._tracker_stop.set()
 
     def run_cycle(self):
         """Tek bir tam analiz ve takip döngüsü yürütür (Thread-Safe)."""
@@ -303,9 +342,10 @@ class TradingBotOrchestrator:
         if today_pnl > 0 and PROFIT_STEP_FOR_BONUS_TRADES > 0:
             bonus_slots = int(today_pnl // PROFIT_STEP_FOR_BONUS_TRADES) * BONUS_TRADES_PER_STEP
 
-        max_15m = DAILY_MAX_TRADES_15M + bonus_slots
-        max_30m = DAILY_MAX_TRADES_30M + bonus_slots
-        max_1h = DAILY_MAX_TRADES_1H + bonus_slots
+        # Kotası 0 olan vade kapalıdır; kâr bonusu kapalı vadeyi yeniden açmaz
+        max_15m = DAILY_MAX_TRADES_15M + bonus_slots if DAILY_MAX_TRADES_15M > 0 else 0
+        max_30m = DAILY_MAX_TRADES_30M + bonus_slots if DAILY_MAX_TRADES_30M > 0 else 0
+        max_1h = DAILY_MAX_TRADES_1H + bonus_slots if DAILY_MAX_TRADES_1H > 0 else 0
 
         today_counts = get_today_trades_count_by_timeframe()
         c_15m = today_counts.get("15m", 0)
@@ -354,7 +394,7 @@ class TradingBotOrchestrator:
             last_created = str(get_last_signal_created_at() or "")[:19]
             if last_created:
                 last_dt = datetime.strptime(last_created, "%Y-%m-%d %H:%M:%S")
-                mins_since = (datetime.now() - last_dt).total_seconds() / 60.0
+                mins_since = (utc_now() - last_dt).total_seconds() / 60.0
                 if 0 <= mins_since < 12.0:
                     wait_min = int(12.0 - mins_since) + 1
                     msg_pace = f"Son işlemden bu yana 12 dk soğuma/tempo koruması aktif ({wait_min} dk kaldı)."
@@ -372,7 +412,8 @@ class TradingBotOrchestrator:
             detailed_msg = btc_regime.get("detailed_reason") or summary_msg
             print(f"🛑 [BTC Ölü Piyasa Freni] {summary_msg}")
             add_scanner_log("BTC KALKANI", "PROTECTED", detailed_msg, "Sermaye Koruma Modu (0 Risk)")
-            if "CRASH" not in str(btc_regime.get("status", "")).upper():
+            from config import ENABLE_PAIR_TRADING
+            if ENABLE_PAIR_TRADING and "CRASH" not in str(btc_regime.get("status", "")).upper():
                 self._try_open_stat_arb_pair(slots_left, allowed_timeframes)
             return
 
@@ -562,7 +603,7 @@ class TradingBotOrchestrator:
                     last_loss_sym_dir = get_last_loss_for(symbol, ta_setup["direction"])
                     if last_loss_sym_dir:
                         last_loss_dt = datetime.strptime(last_loss_sym_dir[:19], "%Y-%m-%d %H:%M:%S")
-                        elapsed_min = (datetime.now() - last_loss_dt).total_seconds() / 60.0
+                        elapsed_min = (utc_now() - last_loss_dt).total_seconds() / 60.0
                         if elapsed_min < POST_LOSS_COOLDOWN_MINUTES:
                             rem_min = int(POST_LOSS_COOLDOWN_MINUTES - elapsed_min) + 1
                             msg = f"{symbol} {ta_setup['direction']} son zarar sonrası soğuma molasında ({rem_min} dk kaldı)."
@@ -620,7 +661,8 @@ class TradingBotOrchestrator:
                 )
                 win_pct = quant_sim.get("win_probability_pct", 0.0)
 
-                if not quant_sim.get("is_approved", False):
+                from config import ENABLE_MC_GATE
+                if ENABLE_MC_GATE and not quant_sim.get("is_approved", False):
                     self._record_shadow_rejection(symbol, ta_setup, "MONTE_CARLO", f"Win %{win_pct:.1f}")
                     add_scanner_log(
                         symbol,
@@ -659,8 +701,7 @@ class TradingBotOrchestrator:
                 rr_capped = max(1.5, min(rr, 4.0))
                 rr_score = ((rr_capped - 1.5) / 2.5) * 20.0  # %20 Risk/Ödül Oranı
 
-                grade = risk_report.get("risk_grade", "A")
-                grade_score = 20.0 if grade == "A+" else (16.0 if grade == "A" else 10.0)  # %20 Risk Notu
+                grade_score = grade_to_score(risk_report.get("risk_grade", ""))  # %20 Risk Notu
 
                 total_quality_score = round(mc_score + ai_score + rr_score + grade_score, 1)
                 horizon_badge = ta_setup.get("trade_horizon", "Kısa Vade (15m)")
@@ -702,8 +743,10 @@ class TradingBotOrchestrator:
         # 🏆 İKİNCİ AŞAMA: TÜM TARAMA BİTTİKTEN SONRA TURNUVA SIRALAMASI & İKİNCİ TEYİT TARAMASI
         # =========================================================================
         if not shortlist_candidates:
-            print("💤 Bu döngüde kurallara tam uyan yönlü A+ kurulum bulunamadı (Piyasa-Nötr İkili Arbitraj kontrol ediliyor)...")
-            self._try_open_stat_arb_pair(slots_left, allowed_timeframes)
+            from config import ENABLE_PAIR_TRADING
+            print("💤 Bu döngüde kurallara tam uyan yönlü A+ kurulum bulunamadı.")
+            if ENABLE_PAIR_TRADING:
+                self._try_open_stat_arb_pair(slots_left, allowed_timeframes)
         else:
             # 1. Adayları Kalite Skoruna Göre En İyiden En Düşüğe Sırala (Tournament Leaderboard)
             shortlist_candidates.sort(key=lambda x: x["quality_score"], reverse=True)
@@ -725,7 +768,8 @@ class TradingBotOrchestrator:
                     print(f"🛡️ [Kasa & Seçicilik Kalkanı] Bu döngü için en iyi şampiyon açıldı (1 işlem/döngü sınırı). Turnuva tamamlandı.")
                     break
 
-                if float(cand.get("quality_score") or 0.0) < 68.0:
+                from config import ENABLE_QUALITY_GATE, QUALITY_GATE_THRESHOLD
+                if ENABLE_QUALITY_GATE and float(cand.get("quality_score") or 0.0) < QUALITY_GATE_THRESHOLD:
                     add_scanner_log(
                         cand["symbol"],
                         "REJECTED",
@@ -887,6 +931,11 @@ class TradingBotOrchestrator:
                             1
                         )
 
+                # Piyasa (taker) girişinde aleyhe kayma: LONG biraz yukarıdan, SHORT biraz aşağıdan dolar
+                from config import ESTIMATED_SLIPPAGE_PCT
+                slip = ESTIMATED_SLIPPAGE_PCT / 100.0
+                fill_price = round(fresh_price * (1.0 + slip) if ta_setup["direction"] == "LONG" else fresh_price * (1.0 - slip), 8)
+
                 signal_data = {
                     "symbol": symbol,
                     "direction": ta_setup["direction"],
@@ -895,7 +944,7 @@ class TradingBotOrchestrator:
                     "leverage": leverage,
                     "entry_min": ta_setup["entry_min"],
                     "entry_max": ta_setup["entry_max"],
-                    "actual_entry_price": fresh_price,
+                    "actual_entry_price": fill_price,
                     "entry_limit_2": ta_setup.get("entry_limit_2", 0.0),
                     "stop_loss": ta_setup["stop_loss"],
                     "take_profit_1": ta_setup["take_profit_1"],
@@ -1007,6 +1056,9 @@ class TradingBotOrchestrator:
             print("⚡ [Windows Güç Yönetimi] Bilgisayarın uyku moduna geçmesi engellendi (Sürekli aktif).")
         except Exception:
             pass
+
+        # Saniyelik canlı pozisyon takibi (ana taramadan bağımsız)
+        self.start_tracker_loop()
 
         # Telegram Komut Dinleyicisini Başlat
         if ENABLE_TELEGRAM_COMMANDS:

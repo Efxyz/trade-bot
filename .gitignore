@@ -38,3 +38,7 @@ Thumbs.db
 
 # Project archives
 *.zip
+
+# Backtest verisi ve raporları
+data/backtest_cache/
+data/backtest_reports/
