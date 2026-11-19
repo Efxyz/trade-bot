@@ -88,7 +88,9 @@ class TradingBotOrchestrator:
         try:
             from core.self_tuning_engine import SelfTuningEngine
             SelfTuningEngine.get_current_params()
-            SelfTuningEngine.run_autonomous_training_cycle(min_trades_required=5, auto_commit=True)
+            from config import ENABLE_SMC_ENGINE
+            if ENABLE_SMC_ENGINE:   # öğrenme döngüsü yalnızca SMC işlemlerini analiz eder
+                SelfTuningEngine.run_autonomous_training_cycle(min_trades_required=5, auto_commit=True)
         except Exception as tune_err:
             print(f"⚠️ Otonom kalibrasyon başlangıç hatası: {tune_err}")
 
@@ -293,30 +295,26 @@ class TradingBotOrchestrator:
 
         # 0.5 GÜN SONU OTOMATİK TELEGRAM RAPORU (Kalıcı DB Loglu + Ertesi Gün Telafi Korumalı)
         # Bulut sunucuları (Railway Linux) UTC saat diliminde çalıştığından, TSİ (UTC+3) baz alınır.
-        from core.database import is_daily_report_sent_db, mark_daily_report_sent_db
+        from core.database import is_daily_report_sent_db
         now_utc = datetime.now(timezone.utc)
         now_tr = now_utc.astimezone(TURKEY_TZ)
         today_str = now_tr.strftime("%Y-%m-%d")
         yesterday_str = (now_tr - timedelta(days=1)).strftime("%Y-%m-%d")
 
-        # Gece yarısı atlandıysa veya restart olduysa bir önceki günün raporunu otomatik telafi et
+        # Gün sonu raporu (TSİ 23:50) + kaçırıldıysa ertesi gün telafisi. Panel döngüsüyle ortak, kilitli fonksiyon:
+        # aynı gün için yalnızca bir kez gönderilir; SMC kapalıyken v3 raporu gider.
+        from agents.v3_telegram import send_scheduled_daily_report
         if not is_daily_report_sent_db(yesterday_str):
             try:
-                print(f"📅 [Gün Sonu Telafi Raporu] {yesterday_str} kapanış raporu Telegram'a gönderiliyor...")
-                rep_y = self._send_daily_report(yesterday_str)
-                if rep_y.get("sent", True):
-                    mark_daily_report_sent_db(yesterday_str)
+                if send_scheduled_daily_report(self.notifier, yesterday_str):
+                    print(f"📅 [Gün Sonu Telafi Raporu] {yesterday_str} raporu Telegram'a gönderildi.")
             except Exception as rep_err:
                 print(f"⚠️ Telafi gün sonu raporu gönderme hatası: {rep_err}")
-
-        # Günün kapanış penceresi: TSİ 23:50 - 23:59 arası o günün raporunu + Shadow raporunu kalıcı mühürle gönder
         if now_tr.hour == 23 and now_tr.minute >= 50 and not is_daily_report_sent_db(today_str):
             try:
-                print(f"📅 [Gün Sonu Raporu] {today_str} gün sonu raporu Telegram'a otomatik gönderiliyor... (TSİ {now_tr.strftime('%H:%M')})")
-                rep_t = self._send_daily_report(today_str)
-                if rep_t.get("sent", True):
-                    mark_daily_report_sent_db(today_str)
+                if send_scheduled_daily_report(self.notifier, today_str):
                     self.last_daily_report_date = today_str
+                    print(f"📅 [Gün Sonu Raporu] {today_str} raporu Telegram'a gönderildi (TSİ {now_tr.strftime('%H:%M')}).")
             except Exception as rep_err:
                 print(f"⚠️ Gün sonu raporu gönderme hatası: {rep_err}")
 

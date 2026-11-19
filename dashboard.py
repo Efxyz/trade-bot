@@ -287,11 +287,55 @@ try:
     _terminal_cache["active_positions"] = get_active_and_pending_signals() or []
     _terminal_cache["committee_debates"] = get_latest_debates_db(limit=8) or []
     _terminal_cache["trade_reflections"] = get_recent_reflections_db(limit=15) or []
-    _terminal_cache["tuning_info"] = SelfTuningEngine.run_autonomous_training_cycle(auto_commit=True) or {}
+    import config as _cfg
+    _terminal_cache["tuning_info"] = (SelfTuningEngine.run_autonomous_training_cycle(auto_commit=True) or {}) \
+        if _cfg.ENABLE_SMC_ENGINE else {}
 except Exception:
     pass
 _cache_lock = threading.Lock()
 _updater_started = False
+
+def _smc_enabled() -> bool:
+    import config as _c
+    return bool(_c.ENABLE_SMC_ENGINE)
+
+
+_AUTO_TRAIN_STATE = {"last": None}
+
+
+def _maybe_auto_train(now: float = None, interval: float = 180.0) -> bool:
+    """SMC açıkken 3 dakikada bir otonom öğrenme döngüsü. SMC kapalıyken hiç çalışmaz (gereksiz kayıt üretmez)."""
+    if not _smc_enabled():
+        return False
+    now = now if now is not None else time.time()
+    if _AUTO_TRAIN_STATE["last"] is None:
+        _AUTO_TRAIN_STATE["last"] = now
+        return False
+    if now - _AUTO_TRAIN_STATE["last"] <= interval:
+        return False
+    try:
+        SelfTuningEngine.run_autonomous_training_cycle(auto_commit=True)
+        return True
+    except Exception:
+        return False
+    finally:
+        _AUTO_TRAIN_STATE["last"] = now
+
+
+def _daily_report_tick(now_utc=None) -> None:
+    """Panel döngüsünün yedek gün sonu zamanlayıcısı: ana döngüyle aynı kilitli fonksiyonu kullanır."""
+    from datetime import timezone as _tz, timedelta as _td
+    from agents.v3_telegram import send_scheduled_daily_report
+    from core.database import is_daily_report_sent_db
+    now_tr = (now_utc or datetime.now(_tz.utc)).astimezone(_tz(_td(hours=3)))
+    today_tr = now_tr.strftime("%Y-%m-%d")
+    yest_tr = (now_tr - _td(days=1)).strftime("%Y-%m-%d")
+    notifier = _maintenance_notifier()
+    if not is_daily_report_sent_db(yest_tr):
+        send_scheduled_daily_report(notifier, yest_tr)
+    if now_tr.hour == 23 and now_tr.minute >= 50 and not is_daily_report_sent_db(today_tr):
+        send_scheduled_daily_report(notifier, today_tr)
+
 
 def update_terminal_cache_loop():
     """Arka planda piyasa ve pozisyon verilerini kesintisiz ve hatasız günceller (Sıfır Donma, Sıfır Gidip Gelme)."""
@@ -326,23 +370,16 @@ def update_terminal_cache_loop():
                 history = [s for s in all_sigs if s.get("status") not in ("ACTIVE", "PENDING_ENTRY", "ACTIVE_BE", "ACTIVE_LADDER", "ACTIVE_PARTIAL_TP1")]
                 scanner_logs = get_scanner_logs()
                 news_feed = get_live_news_feed()
-                if not news_feed:
+                if not news_feed and _smc_enabled():
                     news_feed = news_agent.fetch_latest_market_news()
                 debates = get_latest_debates_db(limit=8)
                 reflections = get_recent_reflections_db(limit=15)
                 coin_investigations = get_coin_news_investigations_db(limit=25)
                 learning_reports = get_learning_reports_db(limit=15)
 
-                # Otonom Kendi Kendini Eğitme Kontrolü (Her 3 dakikada bir otomatik eğitim döngüsü)
-                if not hasattr(update_terminal_cache_loop, "_last_auto_train_ts"):
-                    update_terminal_cache_loop._last_auto_train_ts = time.time()
-                if time.time() - update_terminal_cache_loop._last_auto_train_ts > 180:
-                    try:
-                        SelfTuningEngine.run_autonomous_training_cycle(auto_commit=True)
-                        update_terminal_cache_loop._last_auto_train_ts = time.time()
-                        learning_reports = get_learning_reports_db(limit=15)
-                    except Exception:
-                        pass
+                # Otonom öğrenme (her 3 dk) yalnızca SMC motoru açıkken: SMC işlemlerini analiz eder
+                if _maybe_auto_train():
+                    learning_reports = get_learning_reports_db(limit=15)
 
                 # Bağımsız Gün Sonu & Shadow Telegram Rapor Zamanlayıcısı (Her 60 sn kontrol)
                 if not hasattr(update_terminal_cache_loop, "_last_daily_report_check_ts"):
@@ -350,20 +387,7 @@ def update_terminal_cache_loop():
                 if time.time() - update_terminal_cache_loop._last_daily_report_check_ts > 60:
                     update_terminal_cache_loop._last_daily_report_check_ts = time.time()
                     try:
-                        from datetime import timezone, timedelta
-                        from core.database import is_daily_report_sent_db, mark_daily_report_sent_db
-                        from agents.notifier_agent import NotifierAgent
-                        now_tr = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=3)))
-                        today_tr = now_tr.strftime("%Y-%m-%d")
-                        yest_tr = (now_tr - timedelta(days=1)).strftime("%Y-%m-%d")
-                        if not is_daily_report_sent_db(yest_tr):
-                            rep_y = NotifierAgent().send_daily_summary_report(target_date_str=yest_tr)
-                            if rep_y.get("sent", False):
-                                mark_daily_report_sent_db(yest_tr)
-                        if now_tr.hour == 23 and now_tr.minute >= 50 and not is_daily_report_sent_db(today_tr):
-                            rep_t = NotifierAgent().send_daily_summary_report(target_date_str=today_tr)
-                            if rep_t.get("sent", False):
-                                mark_daily_report_sent_db(today_tr)
+                        _daily_report_tick()
                     except Exception:
                         pass
             except Exception:
