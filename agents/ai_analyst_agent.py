@@ -1237,3 +1237,128 @@ class AIAnalystAgent:
             "decisions": decisions,
             "source": "Yerel Portföy Uygunluk Motoru"
         }
+
+    def train_from_trade_history(self, limit: int = 50) -> Dict:
+        """
+        Veritabanındaki kapanmış geçmiş işlemleri topluca analiz ederek kalıcı AI kuralları
+        (AI_HISTORICAL_TRAINING) üretir ve hafızaya işler.
+        """
+        from core.database import get_all_signals, save_trade_reflection_db, get_pinned_patron_lessons_db
+
+        active_statuses = {"PENDING_ENTRY", "ACTIVE", "ACTIVE_BE", "ACTIVE_LADDER", "ACTIVE_PARTIAL_TP1"}
+        all_rows = get_all_signals(limit=max(limit * 2, 40)) or []
+        closed = [r for r in all_rows if r.get("status") not in active_statuses][:limit]
+
+        existing_texts = {
+            str(x.get("lesson") or "").strip().lower()
+            for x in (get_pinned_patron_lessons_db(limit=50) or [])
+        }
+
+        if not closed:
+            return {
+                "status": "ok",
+                "trades_analyzed": 0,
+                "rules_learned": [],
+                "summary": "Henüz kapanmış işlem bulunamadı; işlemler kapandıkça ve sohbetten kural işledikçe AI otomatik eğitilecek.",
+                "source": "Tarihsel Eğitim Motoru"
+            }
+
+        wins = [r for r in closed if float(r.get("simulated_pnl_pct") or 0.0) > 0]
+        losses = [r for r in closed if float(r.get("simulated_pnl_pct") or 0.0) < 0]
+        avg_pnl = round(sum(float(r.get("simulated_pnl_pct") or 0.0) for r in closed) / len(closed), 2)
+        win_rate = round((len(wins) / len(closed)) * 100.0, 1)
+
+        tf_stats: Dict[str, Dict] = {}
+        for r in closed:
+            tf = str(r.get("timeframe") or "15m").lower()
+            st = tf_stats.setdefault(tf, {"count": 0, "wins": 0, "pnl_sum": 0.0})
+            st["count"] += 1
+            pnl_v = float(r.get("simulated_pnl_pct") or 0.0)
+            st["pnl_sum"] += pnl_v
+            if pnl_v > 0:
+                st["wins"] += 1
+
+        sample_trades = [
+            {
+                "id": r.get("id"),
+                "symbol": r.get("symbol"),
+                "dir": r.get("direction"),
+                "tf": r.get("timeframe"),
+                "status": r.get("status"),
+                "net_pct": r.get("simulated_pnl_pct"),
+                "reasons": str(r.get("ta_reasons") or "")[:120],
+            }
+            for r in (wins[:10] + losses[:10])
+        ]
+
+        learned_rules: List[str] = []
+        source_label = "Yerel İstatistiksel Eğitim"
+
+        if self._get_active_gemini_key():
+            prompt = (
+                "Sen kurumsal bir kripto vadeli işlemler fonunun Baş Kuant Eğitmenisin.\n"
+                "Aşağıdaki GERÇEK KAPANMIŞ İŞLEM GEÇMİŞİNİ analiz ederek, bundan sonraki tüm komite ve pozisyon uygunluk kararlarında "
+                "uygulanacak 3 ila 5 adet somut, sayısal ve bağlayıcı KURAL çıkar.\n"
+                f"Özet: Toplam {len(closed)} işlem | Win Rate: %{win_rate} | Ort. Net PnL: %{avg_pnl:+.2f}\n"
+                f"Vade Dağılımı: {json.dumps(tf_stats, ensure_ascii=False)}\n"
+                f"Örnek Kazanan & Kaybeden İşlemler: {json.dumps(sample_trades, ensure_ascii=False)}\n\n"
+                "SADECE geçerli tek bir JSON döndür:\n"
+                '{"summary": "Geçmiş performansın 1-2 cümlelik teşhisi", '
+                '"rules": ["Kural 1 (somut vade/yön/stop/RR şartı)", "Kural 2...", "Kural 3..."]}'
+            )
+            res = self._call_gemini_api([{"text": prompt}], temperature=0.3, timeout=24)
+            if isinstance(res, dict) and isinstance(res.get("rules"), list):
+                model_used = res.pop("_gemini_model", "gemini-3-flash-preview")
+                source_label = f"Gerçek Yapay Zeka Eğitimi ({model_used})"
+                summary_txt = str(res.get("summary") or "")
+                for rule in res.get("rules")[:5]:
+                    r_txt = str(rule or "").strip()
+                    if r_txt and r_txt.lower() not in existing_texts:
+                        save_trade_reflection_db(
+                            signal_id=None,
+                            symbol="GENERAL",
+                            direction="BOTH",
+                            status="AI_HISTORICAL_TRAINING",
+                            pnl_pct=avg_pnl,
+                            lesson=r_txt,
+                            reflection_dict={"source": source_label, "trades_analyzed": len(closed), "win_rate": win_rate},
+                        )
+                        existing_texts.add(r_txt.lower())
+                        learned_rules.append(r_txt)
+                return {
+                    "status": "ok",
+                    "trades_analyzed": len(closed),
+                    "win_rate": win_rate,
+                    "avg_pnl_pct": avg_pnl,
+                    "rules_learned": learned_rules,
+                    "summary": summary_txt or f"{len(closed)} geçmiş işlemden {len(learned_rules)} yeni kural hafızaya işlendi.",
+                    "source": source_label,
+                }
+
+        # Yedek istatistiksel kural çıkarımı
+        best_tf = max(tf_stats.items(), key=lambda kv: kv[1]["pnl_sum"])[0] if tf_stats else "15m"
+        fallback_rule = (
+            f"Son {len(closed)} işlemde kazanma oranı %{win_rate} (Ort. %{avg_pnl:+.2f}); "
+            f"en verimli vade {best_tf.upper()} olarak ölçüldü, düşük hacimli zayıf kurulumlar elenmeli."
+        )
+        if fallback_rule.lower() not in existing_texts:
+            save_trade_reflection_db(
+                signal_id=None,
+                symbol="GENERAL",
+                direction="BOTH",
+                status="AI_HISTORICAL_TRAINING",
+                pnl_pct=avg_pnl,
+                lesson=fallback_rule,
+                reflection_dict={"source": source_label, "trades_analyzed": len(closed), "win_rate": win_rate},
+            )
+            learned_rules.append(fallback_rule)
+
+        return {
+            "status": "ok",
+            "trades_analyzed": len(closed),
+            "win_rate": win_rate,
+            "avg_pnl_pct": avg_pnl,
+            "rules_learned": learned_rules,
+            "summary": fallback_rule,
+            "source": source_label,
+        }
