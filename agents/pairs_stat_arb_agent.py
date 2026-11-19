@@ -97,8 +97,8 @@ class StatisticalArbitrageAgent:
         leg_b_direction = None
         reason = ""
 
-        # Z >= +2.1: Varlık A, B'ye göre aşırı değerlendi -> Short A / Long B (korelasyon ve durağanlık şartlı)
-        if z_score >= self.entry_threshold and corr >= 0.65 and ar1_phi < 0.96:
+        # Z >= +2.1: Varlık A, B'ye göre aşırı değerlendi -> Short A / Long B (güçlü korelasyon r>=0.72 ve durağanlık şartlı)
+        if z_score >= self.entry_threshold and corr >= 0.72 and ar1_phi < 0.95:
             is_signal = True
             action = "SHORT_A_LONG_B"
             leg_a_direction = "SHORT"
@@ -106,7 +106,7 @@ class StatisticalArbitrageAgent:
             reason = f"🎯 Pair Z-Score Tavanı (+{z_score:.2f} > +{self.entry_threshold} | r={corr:.2f}, φ={ar1_phi:.2f}). A SHORT / B LONG (Piyasa Nötr)."
 
         # Z <= -2.1: Varlık A, B'ye göre aşırı ucuzladı -> Long A / Short B
-        elif z_score <= -self.entry_threshold and corr >= 0.65 and ar1_phi < 0.96:
+        elif z_score <= -self.entry_threshold and corr >= 0.72 and ar1_phi < 0.95:
             is_signal = True
             action = "LONG_A_SHORT_B"
             leg_a_direction = "LONG"
@@ -134,7 +134,8 @@ class StatisticalArbitrageAgent:
             candles_b = client.get_klines(sym_b, interval="15m", limit=40)
             if not candles_a or not candles_b or len(candles_a) < 20 or len(candles_b) < 20:
                 return None
-            res = self.calculate_pair_spread(candles_a[:-1], candles_b[:-1])
+            # Anlık pozisyon takibinde 15 dk mum kapanışını beklemeden canlı spread Z-skorunu ölç
+            res = self.calculate_pair_spread(candles_a, candles_b)
             return float(res.get("z_score", 0.0))
         except Exception:
             return None
