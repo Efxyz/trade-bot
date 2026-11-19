@@ -116,6 +116,31 @@ def add_no_cache_headers(response):
 def index():
     return render_template_string(HTML_OFFICE_TEMPLATE)
 
+CARRY_TEMPLATE_PATH = Path(__file__).resolve().parent / "templates" / "carry.html"
+
+
+@app.route("/carry")
+def carry_page():
+    return CARRY_TEMPLATE_PATH.read_text(encoding="utf-8")
+
+
+@app.route("/api/carry")
+def api_carry():
+    """v3 Fonlama Motoru durumu (salt-okunur)."""
+    try:
+        from agents.carry_agent import get_live_engine
+        eng = get_live_engine()
+        snap = eng.snapshot()
+        eq = list(reversed(eng.store.recent("carry_equity", limit=24 * 120)))
+        snap["equity_curve"] = [{"t": r["ts"], "v": round(r["equity"], 2)} for r in eq]
+        snap["fills"] = eng.store.recent("carry_fills", limit=60)
+        snap["rebalances"] = [{k: v for k, v in r.items() if k != "signal_json"}
+                              for r in eng.store.recent("carry_rebalances", limit=30)]
+        return jsonify(snap)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/charts/<path:filename>")
 def serve_chart(filename):
     return send_from_directory(CHARTS_DIR, filename)

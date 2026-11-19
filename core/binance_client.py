@@ -225,6 +225,69 @@ class BinanceFuturesClient:
         with BinanceFuturesClient._cache_lock:
             return BinanceFuturesClient._cache.get(cache_key, (None, 0))[0]
 
+    def get_funding_history(self, symbol: str, start_ms: int, end_ms: Optional[int] = None) -> List[Dict]:
+        """Gerçekleşmiş fonlama ödemeleri geçmişi: [{'time': ms, 'rate': float}, ...] (5 dk Cache)."""
+        cache_key = f"funding_hist_{symbol}_{start_ms // 300_000}_{(end_ms or 0) // 300_000}"
+        now = time.time()
+        with BinanceFuturesClient._cache_lock:
+            if cache_key in BinanceFuturesClient._cache:
+                data, exp = BinanceFuturesClient._cache[cache_key]
+                if now < exp:
+                    return data
+        if self._is_rate_limited():
+            return []
+        out: List[Dict] = []
+        cur = int(start_ms)
+        try:
+            for _ in range(20):
+                params = {"symbol": symbol, "startTime": cur, "limit": 1000}
+                if end_ms:
+                    params["endTime"] = int(end_ms)
+                resp = self.session.get(f"{self.base_url}/fapi/v1/fundingRate", params=params, timeout=8)
+                if not self._handle_response(resp):
+                    return []
+                resp.raise_for_status()
+                batch = resp.json()
+                if not batch:
+                    break
+                out += [{"time": int(b["fundingTime"]), "rate": float(b["fundingRate"])} for b in batch]
+                if len(batch) < 1000:
+                    break
+                cur = int(batch[-1]["fundingTime"]) + 1
+        except Exception as e:
+            print(f"⚠️ [Binance get_funding_history Hata] {symbol}: {e}")
+            return []
+        with BinanceFuturesClient._cache_lock:
+            BinanceFuturesClient._cache[cache_key] = (out, now + 300.0)
+        return out
+
+    def get_all_prices(self) -> Dict[str, float]:
+        """Tüm vadeli sembollerin son fiyatı tek istekte (5s Cache)."""
+        cache_key = "all_prices"
+        now = time.time()
+        with BinanceFuturesClient._cache_lock:
+            if cache_key in BinanceFuturesClient._cache:
+                data, exp = BinanceFuturesClient._cache[cache_key]
+                if now < exp:
+                    return data
+        if self._is_rate_limited():
+            with BinanceFuturesClient._cache_lock:
+                return BinanceFuturesClient._cache.get(cache_key, ({}, 0))[0]
+        try:
+            resp = self.session.get(f"{self.base_url}/fapi/v1/ticker/price", timeout=6)
+            if not self._handle_response(resp):
+                with BinanceFuturesClient._cache_lock:
+                    return BinanceFuturesClient._cache.get(cache_key, ({}, 0))[0]
+            resp.raise_for_status()
+            res = {d["symbol"]: float(d["price"]) for d in resp.json() if float(d.get("price", 0) or 0) > 0}
+            with BinanceFuturesClient._cache_lock:
+                BinanceFuturesClient._cache[cache_key] = (res, now + 5.0)
+            return res
+        except Exception as e:
+            print(f"⚠️ [Binance get_all_prices Hata]: {e}")
+            with BinanceFuturesClient._cache_lock:
+                return BinanceFuturesClient._cache.get(cache_key, ({}, 0))[0]
+
     def get_book_ticker(self, symbol: str) -> Optional[Dict]:
         """
         Sembolün anlık en iyi alış (bid) ve en iyi satış (ask) fiyatlarını getirir (3s Cache).
