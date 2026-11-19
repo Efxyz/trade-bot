@@ -41,10 +41,18 @@ VARIANTS = {
     "only_15m": ({"allowed_timeframes": ["15m"]}, {}),
     "no_4h_compass": ({"use_4h_compass": False}, {}),
     "scoring_dedup": ({}, {"SCORING_DEDUP": True}),
+    "no_30m": ({"allowed_timeframes": ["15m", "1h"]}, {}),
+    "long_plus6": ({}, {"LONG_SCORE_EXTRA": 6}),
+    "long_plus10": ({}, {"LONG_SCORE_EXTRA": 10}),
+    "no_30m_long_plus6": ({"allowed_timeframes": ["15m", "1h"]}, {"LONG_SCORE_EXTRA": 6}),
+    "short_only": ({}, {"ENABLE_LONGS": False}),
+    # v2.1 karşılaştırması: 30m açık + LONG ek barajı yok
+    "v21": ({"daily_quota": {"15m": 6, "30m": 5, "1h": 4}}, {"LONG_SCORE_EXTRA": 0}),
     "regime_rr": ({}, {"USE_REGIME_MIN_RR": True}),
     "no_step1_partial": ({}, {"LADDER_STEP1_PARTIAL_PCT": 0.0}),
     # Eski dar merdiven + erken çıkışlar (v2.0 varsayılanları) — karşılaştırma için
-    "legacy_ladder": ({}, {
+    "legacy_ladder": ({"daily_quota": {"15m": 6, "30m": 5, "1h": 4}}, {
+        "LONG_SCORE_EXTRA": 0,
         "ATR_LADDER_ENABLED": True,
         "LADDER_STEP1_PARTIAL_PCT": 0.35,
         "ENABLE_MOMENTUM_STAGNATION_EXIT": True,

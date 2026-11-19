@@ -342,9 +342,10 @@ class TradingBotOrchestrator:
         if today_pnl > 0 and PROFIT_STEP_FOR_BONUS_TRADES > 0:
             bonus_slots = int(today_pnl // PROFIT_STEP_FOR_BONUS_TRADES) * BONUS_TRADES_PER_STEP
 
-        max_15m = DAILY_MAX_TRADES_15M + bonus_slots
-        max_30m = DAILY_MAX_TRADES_30M + bonus_slots
-        max_1h = DAILY_MAX_TRADES_1H + bonus_slots
+        # Kotası 0 olan vade kapalıdır; kâr bonusu kapalı vadeyi yeniden açmaz
+        max_15m = DAILY_MAX_TRADES_15M + bonus_slots if DAILY_MAX_TRADES_15M > 0 else 0
+        max_30m = DAILY_MAX_TRADES_30M + bonus_slots if DAILY_MAX_TRADES_30M > 0 else 0
+        max_1h = DAILY_MAX_TRADES_1H + bonus_slots if DAILY_MAX_TRADES_1H > 0 else 0
 
         today_counts = get_today_trades_count_by_timeframe()
         c_15m = today_counts.get("15m", 0)

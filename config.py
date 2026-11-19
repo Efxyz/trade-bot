@@ -126,10 +126,10 @@ SIDE_STOPLOSS_COOLDOWN_MINUTES = 45        # Kilitlenen yön 45 dakika boyunca y
 # Her zaman diliminin bağımsız günlük kotası vardır.
 # Bir vadenin (örneğin 15m) kotası dolduğunda diğer vadeler (30m ve 1h) fırsat aramaya kesintisiz devam eder!
 DAILY_MAX_TRADES_15M = 6              # ⚡ 15m (Kısa Vade): Günde azami 6 işlem (Keskin Nişancı Kotası)
-DAILY_MAX_TRADES_30M = 5              # 🎯 30m (Orta Vade): Günde azami 5 işlem
+DAILY_MAX_TRADES_30M = 0              # 🎯 30m (Orta Vade): v2.2 KAPALI (iki dönemde de en zararlı vade; eski: 5)
 DAILY_MAX_TRADES_1H = 4               # 👑 1h (Uzun Vade): Günde azami 4 işlem
 
-DAILY_BASE_MAX_TRADES = 15            # Toplam tavan referansı (6 + 5 + 4)
+DAILY_BASE_MAX_TRADES = 10            # Toplam tavan referansı (15m 6 + 30m 0 + 1h 4)
 DAILY_MAX_NEW_TRADES = 15             # Geriye dönük uyumluluk aliası
 PROFIT_STEP_FOR_BONUS_TRADES = 15.0   # Her +$15 net kârda her vadeye +1 ekstra kota slotu eklenir
 BONUS_TRADES_PER_STEP = 1             # Her kâr adımında her vade kotasına ilave hak
@@ -220,10 +220,12 @@ QUALITY_GATE_THRESHOLD = 68.0
 LADDER_STEP1_PARTIAL_PCT = 0.0          # Basamak 1'de realize edilen oran (v2.1: 0 = kısmi satış yok; eski: 0.35)
 ENABLE_MOMENTUM_STAGNATION_EXIT = False  # v2.1: Kapalı. Açılırsa ilk 2 mumda yön teyidi yoksa küçük zararla çıkar
 SCORING_DEDUP = False                    # True: iki yöne birden puan veren faktörler (hacim, RSI 48-52) nötrlenir
-USE_REGIME_MIN_RR = False                # True: rejim politikasındaki min R:R (TRENDING 1.65) gerçekten uygulanır
+USE_REGIME_MIN_RR = False
+LONG_SCORE_EXTRA = 6                     # v2.2: LONG için +6 ek puan barajı (0 = eşit baraj)
+ENABLE_LONGS = True                      # False: yalnızca SHORT (teşhis amaçlı)                # True: rejim politikasındaki min R:R (TRENDING 1.65) gerçekten uygulanır
 
 # Strateji sürüm etiketi: her yeni işleme yazılır; istatistikler sürüm bazında ayrıştırılabilir
-STRATEGY_VERSION = "v2.1-wide-ladder"
+STRATEGY_VERSION = "v2.2-no30m-longplus6"
 
 # Pozisyon takip döngüsü (ana taramadan bağımsız thread): WebSocket fiyatlarıyla saniyelik SL/TP kontrolü
 TRACKER_INTERVAL_SECONDS = 2.0

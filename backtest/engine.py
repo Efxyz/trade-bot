@@ -30,6 +30,12 @@ from backtest.data import INTERVAL_MS
 TR_TZ = timezone(timedelta(hours=3))
 
 
+def _config_quota() -> Dict[str, int]:
+    """Canlı botla aynı vade kotaları (config.py); 0 olan vade taranmaz."""
+    import config
+    return {"15m": config.DAILY_MAX_TRADES_15M, "30m": config.DAILY_MAX_TRADES_30M, "1h": config.DAILY_MAX_TRADES_1H}
+
+
 @dataclass
 class BacktestConfig:
     symbols: List[str]
@@ -37,7 +43,7 @@ class BacktestConfig:
     end_ms: int
     scan_every_minutes: int = 15
     max_concurrent: int = 8
-    daily_quota: Dict[str, int] = field(default_factory=lambda: {"15m": 6, "30m": 5, "1h": 4})
+    daily_quota: Dict[str, int] = field(default_factory=lambda: _config_quota())
     use_mc_gate: bool = True
     mc_simulations: int = 2000
     use_quality_gate: bool = True

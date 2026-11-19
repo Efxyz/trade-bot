@@ -915,7 +915,10 @@ class TechnicalAnalysisAgent:
 
         # --- EŞİK DEĞERLERİ & İŞLEM KARARI (Otonom Kalibre Edilmiş Baraj: target_min_score) ---
         # LONG KONTROLÜ
-        if long_score >= target_min_score and long_score > short_score:
+        import config as _cfg
+        long_min_score = target_min_score + int(getattr(_cfg, "LONG_SCORE_EXTRA", 0) or 0)
+        longs_enabled = bool(getattr(_cfg, "ENABLE_LONGS", True))
+        if longs_enabled and long_score >= long_min_score and long_score > short_score:
             # 0. KURUMSAL SMC YAPISAL TEYİT KONTROLÜ (Mandatory SMC Confirmation Gate)
             # Yalnızca indikatör toplamı yetmez; fiyatta somut kurumsal Smart Money yapısı şarttır:
             has_smc_confirmation_long = (
