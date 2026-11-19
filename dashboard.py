@@ -1698,6 +1698,7 @@ HTML_OFFICE_TEMPLATE = """
                         <button class="debate-tab-btn" id="tabReflectBtn" onclick="switchRightTab('reflections')">🧠 HAFIZA</button>
                         <button class="debate-tab-btn" id="tabTuningBtn" onclick="switchRightTab('tuning')">🧬 OTONOM ÖĞRENME</button>
                         <button class="debate-tab-btn" id="tabNewsBtn" onclick="switchRightTab('news')">📰 HABER</button>
+                        <button class="debate-tab-btn" id="tabAnalyzerBtn" onclick="switchRightTab('analyzer')">🤖 AI ANALİZÖR</button>
                     </div>
                     <span class="counter" id="debateCounter" style="color: #38bdf8;">Canlı Tartışma Odası</span>
                 </div>
@@ -1767,6 +1768,61 @@ HTML_OFFICE_TEMPLATE = """
                     <div class="news-list" id="newsList" style="flex: 1; overflow-y: auto; padding: 8px; display: none; flex-direction: column; gap: 6px;">
                         <div style="text-align: center; color: var(--text-muted); padding: 20px; font-size: 11px;">
                             Piyasa haberleri çekiliyor...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 🤖 Gerçek Yapay Zeka Grafik (Vision) & Coin Analizörü (Tab 5) -->
+                <div id="analyzerContainer" style="display: none; flex-direction: column; height: 100%; overflow: hidden; flex: 1;">
+                    <div class="news-sub-header" style="gap: 6px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;">
+                            <span id="aiStatusBadge" style="font-size: 10px; font-weight: 700; color: #94a3b8; font-family: 'JetBrains Mono';">🔑 Gemini AI Durumu Kontrol Ediliyor...</span>
+                            <button onclick="configureGeminiApiKey()" id="btnConfigAiKey" style="background: rgba(168, 85, 247, 0.22); color: #e9d5ff; border: 1px solid rgba(168, 85, 247, 0.45); font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 4px; cursor: pointer;">🔑 API Anahtarı Bağla</button>
+                        </div>
+
+                        <div style="display: flex; gap: 5px; align-items: center; flex-wrap: wrap;">
+                            <input type="text" id="aiCoinInput" placeholder="Coin (örn: BTC, ETH — boş bırakıp sadece resim de atabilirsiniz)"
+                                   style="background: #0c101b; border: 1px solid rgba(255,255,255,0.1); border-radius: 5px; color: #fff; font-size: 11px; flex: 1; min-width: 140px; padding: 5px 8px; outline: none; font-family: 'JetBrains Mono';"
+                                   onkeydown="if(event.key === 'Enter') runRealAiAnalysis();">
+                            <select id="aiTimeframeSelect" style="background: #141926; border: 1px solid var(--panel-border); color: #38bdf8; font-size: 10px; font-weight: 700; border-radius: 5px; padding: 5px 6px; outline: none; cursor: pointer;">
+                                <option value="15m">⚡ 15m</option>
+                                <option value="30m">🎯 30m</option>
+                                <option value="1h">👑 1h</option>
+                                <option value="4h">🏛️ 4h</option>
+                            </select>
+                        </div>
+
+                        <input type="text" id="aiUserPrompt" placeholder="Özel soru (opsiyonel — örn: Buradan short açılır mı? Likidite nerede?)"
+                               style="background: #0c101b; border: 1px solid rgba(255,255,255,0.08); border-radius: 5px; color: #e2e8f0; font-size: 10.5px; padding: 4px 8px; outline: none; width: 100%;"
+                               onkeydown="if(event.key === 'Enter') runRealAiAnalysis();">
+
+                        <div id="aiImageDropzone" onclick="document.getElementById('aiImageInput').click();"
+                             ondragover="event.preventDefault(); this.style.borderColor='#38bdf8';"
+                             ondragleave="this.style.borderColor='rgba(56,189,248,0.35)';"
+                             ondrop="event.preventDefault(); this.style.borderColor='rgba(56,189,248,0.35)'; if(event.dataTransfer.files[0]) handleAiImageFile(event.dataTransfer.files[0]);"
+                             style="border: 1px dashed rgba(56, 189, 248, 0.35); background: rgba(56, 189, 248, 0.05); border-radius: 6px; padding: 7px 10px; text-align: center; cursor: pointer; font-size: 10.5px; color: #94a3b8;">
+                            <input type="file" id="aiImageInput" accept="image/*" style="display: none;" onchange="if(this.files[0]) handleAiImageFile(this.files[0]);">
+                            <span id="aiDropText">📸 Grafik ekran görüntüsü yükle / sürükle veya <strong>Ctrl+V</strong> ile yapıştır (Vision AI)</span>
+                        </div>
+
+                        <div id="aiImagePreviewWrap" style="display: none; align-items: center; justify-content: space-between; background: #0c101b; padding: 4px 8px; border-radius: 5px; border: 1px solid rgba(56,189,248,0.3);">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <img id="aiImagePreview" src="" alt="Grafik Önizleme" style="height: 36px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.1);">
+                                <span style="font-size: 10px; color: #38bdf8; font-weight: 600;">✅ Grafik görseli hazır</span>
+                            </div>
+                            <button onclick="clearAiImage()" style="background: rgba(239,68,68,0.2); color: #ef4444; border: 1px solid rgba(239,68,68,0.4); border-radius: 4px; font-size: 10px; padding: 2px 6px; cursor: pointer;">✕ Temizle</button>
+                        </div>
+
+                        <button onclick="runRealAiAnalysis()" id="btnRunAiAnalyze"
+                                style="background: linear-gradient(135deg, #2563eb, #7c3aed); color: #fff; border: none; font-size: 11px; font-weight: 800; padding: 6px 12px; border-radius: 5px; cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                            <span id="aiAnalyzeSpinner" style="display: none;">⏳</span>
+                            <span>🧠 Gerçek AI (Gemini 2.5 Flash) ile Analiz Et</span>
+                        </button>
+                    </div>
+
+                    <div id="aiAnalysisResult" style="flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; font-size: 11px;">
+                        <div style="text-align: center; color: var(--text-muted); padding: 20px; font-size: 11px;">
+                            🤖 İster bir TradingView ekran görüntüsü yapıştırın, ister coin adı yazın; gerçek Gemini 2.5 Flash canlı borsa verisi + görseli birleştirip sıfır şablonlu SMC ve işlem planı üretsin.
                         </div>
                     </div>
                 </div>
@@ -2077,22 +2133,26 @@ HTML_OFFICE_TEMPLATE = """
             const reflectList = document.getElementById('reflectionsList');
             const tuningList = document.getElementById('tuningList');
             const newsContainer = document.getElementById('newsContainer');
+            const analyzerContainer = document.getElementById('analyzerContainer');
 
             const tabDebateBtn = document.getElementById('tabDebateBtn');
             const tabReflectBtn = document.getElementById('tabReflectBtn');
             const tabTuningBtn = document.getElementById('tabTuningBtn');
             const tabNewsBtn = document.getElementById('tabNewsBtn');
+            const tabAnalyzerBtn = document.getElementById('tabAnalyzerBtn');
             const counter = document.getElementById('debateCounter');
 
             if (debateList) debateList.style.display = (tab === 'debate' ? 'flex' : 'none');
             if (reflectList) reflectList.style.display = (tab === 'reflections' ? 'flex' : 'none');
             if (tuningList) tuningList.style.display = (tab === 'tuning' ? 'flex' : 'none');
             if (newsContainer) newsContainer.style.display = (tab === 'news' ? 'flex' : 'none');
+            if (analyzerContainer) analyzerContainer.style.display = (tab === 'analyzer' ? 'flex' : 'none');
 
             if (tabDebateBtn) tabDebateBtn.classList.toggle('active', tab === 'debate');
             if (tabReflectBtn) tabReflectBtn.classList.toggle('active', tab === 'reflections');
             if (tabTuningBtn) tabTuningBtn.classList.toggle('active', tab === 'tuning');
             if (tabNewsBtn) tabNewsBtn.classList.toggle('active', tab === 'news');
+            if (tabAnalyzerBtn) tabAnalyzerBtn.classList.toggle('active', tab === 'analyzer');
 
             if (counter) {
                 if (tab === 'debate') {
@@ -2104,6 +2164,10 @@ HTML_OFFICE_TEMPLATE = """
                 } else if (tab === 'tuning') {
                     counter.innerText = 'Otonom Kalibrasyon';
                     counter.style.color = '#10b981';
+                } else if (tab === 'analyzer') {
+                    counter.innerText = 'Gemini 2.5 Vision & SMC';
+                    counter.style.color = '#c084fc';
+                    refreshAiStatusBadge();
                 } else {
                     counter.innerText = 'Haber Konseyi & RSS';
                     counter.style.color = '#f59e0b';
@@ -2156,6 +2220,198 @@ HTML_OFFICE_TEMPLATE = """
             } catch (err) {
                 console.error('Haber konseyi API hatası:', err);
                 alert('Bağlantı hatası: ' + err.message);
+            } finally {
+                if (spinner) spinner.style.display = 'none';
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        let uploadedAiImageB64 = '';
+        let uploadedAiImageMime = 'image/png';
+
+        function escapeAiHtml(s) {
+            return String(s === undefined || s === null ? '' : s)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
+        async function refreshAiStatusBadge() {
+            const badge = document.getElementById('aiStatusBadge');
+            if (!badge) return;
+            try {
+                const res = await fetch('/api/ai/status');
+                const data = await res.json();
+                if (data && data.configured) {
+                    badge.innerHTML = `<span style="color:#10b981;">🟢 Gerçek Gemini 2.5 Flash Aktif</span> <span style="color:#94a3b8;">(${escapeAiHtml(data.masked_key)})</span>`;
+                } else {
+                    badge.innerHTML = '<span style="color:#f59e0b;">🔑 Gemini API Anahtarı Bağlı Değil (Şu an yedek yerel mod)</span>';
+                }
+            } catch (e) {}
+        }
+
+        async function configureGeminiApiKey() {
+            const pin = await getAdminPin();
+            if (!pin) return;
+            const keyVal = prompt('Google AI Studio (aistudio.google.com) üzerinden aldığınız Gemini API anahtarını girin (AIza...):');
+            if (keyVal === null) return;
+            try {
+                const res = await fetch('/api/ai/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Admin-Pin': pin },
+                    body: JSON.stringify({ api_key: keyVal.trim() })
+                });
+                if (res.status === 401) {
+                    sessionStorage.removeItem('admin_pin');
+                    alert('🔒 Hata: Geçersiz Yönetici Güvenlik PIN Kodu!');
+                    return;
+                }
+                const data = await res.json();
+                await refreshAiStatusBadge();
+                if (data && data.configured) {
+                    alert('✅ Gemini API anahtarı kaydedildi! Gerçek LLM + Vision motoru artık aktif.');
+                } else {
+                    alert('ℹ️ Gemini API anahtarı temizlendi.');
+                }
+            } catch (err) {
+                alert('API anahtarı kaydetme hatası: ' + err.message);
+            }
+        }
+
+        function handleAiImageFile(file) {
+            if (!file) return;
+            uploadedAiImageMime = file.type || 'image/png';
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                uploadedAiImageB64 = String(ev.target.result || '');
+                const prev = document.getElementById('aiImagePreview');
+                const wrap = document.getElementById('aiImagePreviewWrap');
+                if (prev) prev.src = uploadedAiImageB64;
+                if (wrap) wrap.style.display = 'flex';
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clearAiImage() {
+            uploadedAiImageB64 = '';
+            const inp = document.getElementById('aiImageInput');
+            const wrap = document.getElementById('aiImagePreviewWrap');
+            if (inp) inp.value = '';
+            if (wrap) wrap.style.display = 'none';
+        }
+
+        document.addEventListener('paste', (e) => {
+            if (activeRightTab !== 'analyzer') return;
+            const items = (e.clipboardData || {}).items || [];
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type && items[i].type.indexOf('image') !== -1) {
+                    const f = items[i].getAsFile();
+                    if (f) handleAiImageFile(f);
+                    break;
+                }
+            }
+        });
+
+        async function runRealAiAnalysis() {
+            const coinInp = document.getElementById('aiCoinInput');
+            const tfSel = document.getElementById('aiTimeframeSelect');
+            const promptInp = document.getElementById('aiUserPrompt');
+            const spinner = document.getElementById('aiAnalyzeSpinner');
+            const btn = document.getElementById('btnRunAiAnalyze');
+            const outBox = document.getElementById('aiAnalysisResult');
+
+            const symbol = (coinInp ? coinInp.value : '').trim().toUpperCase();
+            const timeframe = tfSel ? tfSel.value : '15m';
+            const userPrompt = (promptInp ? promptInp.value : '').trim();
+
+            if (!symbol && !uploadedAiImageB64) {
+                alert('Lütfen analiz edilecek coin sembolü girin veya grafik ekran görüntüsü yükleyin.');
+                return;
+            }
+
+            if (spinner) spinner.style.display = 'inline-block';
+            if (btn) btn.disabled = true;
+            if (outBox) outBox.innerHTML = '<div style="text-align:center; color:#38bdf8; padding:24px;">🧠 Gemini 2.5 Flash canlı borsa verisini ve grafiği yorumluyor...</div>';
+
+            try {
+                const res = await fetch('/api/ai/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        symbol: symbol,
+                        timeframe: timeframe,
+                        image_b64: uploadedAiImageB64,
+                        image_mime: uploadedAiImageMime,
+                        user_prompt: userPrompt
+                    })
+                });
+                const data = await res.json();
+                if (!outBox) return;
+
+                if (data.ai_key_missing) {
+                    const tel = data.telemetry || {};
+                    outBox.innerHTML = `
+                        <div style="background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.4); border-radius: 6px; padding: 10px;">
+                            <div style="font-weight: 800; color: #fbbf24; margin-bottom: 4px;">🔑 Gemini API Anahtarı Gerekli</div>
+                            <div style="color: #e2e8f0; margin-bottom: 8px;">${escapeAiHtml(data.message || '')} Google AI Studio (aistudio.google.com) üzerinden ücretsiz anahtar alıp sağ üstteki <strong>🔑 API Anahtarı Bağla</strong> butonuna girebilirsiniz.</div>
+                            ${tel.current_price ? `<div style="font-size:10px; color:#94a3b8; font-family:'JetBrains Mono';">Canlı Veri (${escapeAiHtml(tel.symbol)} ${escapeAiHtml(tel.timeframe)}): Fiyat=$${tel.current_price} | RSI=${tel.rsi_14} | ADX=${tel.adx} | SuperTrend=${tel.supertrend} | POC=$${tel.poc} | Yapı=${escapeAiHtml(tel.structure_hint)}</div>` : ''}
+                        </div>
+                    `;
+                    return;
+                }
+
+                if (data.status !== 'ok' || !data.analysis) {
+                    outBox.innerHTML = `<div style="background:rgba(239,68,68,0.12); border:1px solid #ef4444; border-radius:6px; padding:10px; color:#fecaca;">⚠️ ${escapeAiHtml(data.message || 'Analiz oluşturulamadı.')}</div>`;
+                    return;
+                }
+
+                const a = data.analysis;
+                const ms = a.market_structure || {};
+                const smc = a.smc_liquidity_map || {};
+                const tp = a.trade_plan || {};
+                const bias = String(a.market_bias || 'NEUTRAL').toUpperCase();
+                const biasColor = bias.includes('BULL') ? '#10b981' : (bias.includes('BEAR') ? '#ef4444' : '#f59e0b');
+                const keyLevelsHtml = Array.isArray(ms.key_levels) ? ms.key_levels.map(x => `<span style="background:rgba(255,255,255,0.06); padding:2px 6px; border-radius:4px; font-family:'JetBrains Mono'; font-size:10px;">${escapeAiHtml(x)}</span>`).join(' ') : '';
+                const patternsHtml = Array.isArray(smc.patterns) ? smc.patterns.map(x => `<span style="background:rgba(168,85,247,0.18); color:#e9d5ff; padding:2px 6px; border-radius:4px; font-size:10px;">${escapeAiHtml(x)}</span>`).join(' ') : '';
+
+                outBox.innerHTML = `
+                    <div style="background: rgba(15,23,42,0.85); border: 1px solid rgba(56,189,248,0.3); border-radius: 7px; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid rgba(255,255,255,0.07); padding-bottom: 6px;">
+                            <div style="font-weight: 800; font-size: 12px;">🪙 ${escapeAiHtml(a.detected_symbol)} (${escapeAiHtml(a.detected_timeframe)}) <span style="color:${biasColor}; margin-left:6px;">${escapeAiHtml(bias)}</span></div>
+                            <div style="display:flex; gap:6px; align-items:center;">
+                                <span style="background:rgba(56,189,248,0.16); color:#38bdf8; padding:2px 7px; border-radius:4px; font-weight:800; font-family:'JetBrains Mono';">Güven: ${a.confidence_score}/100</span>
+                                <span style="font-size:9.5px; color:#a855f7; font-weight:700;">${escapeAiHtml(a.source || 'Gemini AI')}</span>
+                            </div>
+                        </div>
+
+                        <div style="background: rgba(37,99,235,0.1); border-left: 3px solid #38bdf8; padding: 7px 9px; border-radius: 4px; color: #e0f2fe; line-height: 1.45;">
+                            <strong>🧠 AI Muhakemesi:</strong> ${escapeAiHtml(a.deep_ai_commentary || '')}
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                            <div style="background: rgba(255,255,255,0.03); padding: 7px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.06);">
+                                <div style="font-weight: 800; color: #38bdf8; font-size: 10px; margin-bottom: 4px;">📐 PİYASA YAPISI (BOS / CHoCH)</div>
+                                <div><strong>Trend:</strong> ${escapeAiHtml(ms.trend || '-')}</div>
+                                <div style="margin-top:3px;"><strong>Kırılım:</strong> ${escapeAiHtml(ms.bos_choch || '-')}</div>
+                                <div style="margin-top:4px; display:flex; flex-wrap:wrap; gap:4px;">${keyLevelsHtml}</div>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.03); padding: 7px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.06);">
+                                <div style="font-weight: 800; color: #c084fc; font-size: 10px; margin-bottom: 4px;">🏦 SMC & LİKİDİTE HARİTASI</div>
+                                <div><strong>Order Blocks:</strong> ${escapeAiHtml(smc.order_blocks || '-')}</div>
+                                <div style="margin-top:3px;"><strong>FVG:</strong> ${escapeAiHtml(smc.fvg_gaps || '-')}</div>
+                                <div style="margin-top:3px;"><strong>Likidite:</strong> ${escapeAiHtml(smc.liquidity_pools || '-')}</div>
+                                <div style="margin-top:4px; display:flex; flex-wrap:wrap; gap:4px;">${patternsHtml}</div>
+                            </div>
+                        </div>
+
+                        <div style="background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.28); border-radius: 5px; padding: 7px 9px;">
+                            <div style="font-weight: 800; color: #34d399; font-size: 10px; margin-bottom: 4px;">🎯 ÖNERİLEN İŞLEM PLANI: ${escapeAiHtml(tp.action || 'BEKLE')} | R:R ${escapeAiHtml(tp.risk_reward || '-')}</div>
+                            <div style="font-family:'JetBrains Mono'; font-size:10px; color:#e2e8f0;">Giriş: ${escapeAiHtml(tp.entry_zone || '-')} | SL: ${escapeAiHtml(tp.stop_loss || '-')} | TP1: ${escapeAiHtml(tp.take_profit_1 || '-')} | TP2: ${escapeAiHtml(tp.take_profit_2 || '-')}</div>
+                        </div>
+                    </div>
+                `;
+            } catch (err) {
+                if (outBox) outBox.innerHTML = `<div style="color:#ef4444; padding:10px;">⚠️ Bağlantı hatası: ${escapeAiHtml(err.message)}</div>`;
             } finally {
                 if (spinner) spinner.style.display = 'none';
                 if (btn) btn.disabled = false;
@@ -6881,6 +7137,51 @@ def api_reset_quota():
     with _cache_lock:
         _terminal_cache["timeline_quotas"] = timeline_quotas
     return jsonify({"status": "reset", "reset_at_utc": reset_at_utc, "timeline_quotas": timeline_quotas})
+
+
+@app.route("/api/ai/status", methods=["GET"])
+def api_ai_status():
+    from core.database import get_gemini_api_key
+    key = get_gemini_api_key()
+    masked = f"{key[:4]}...{key[-4:]}" if len(key) >= 10 else ("***" if key else "")
+    return jsonify({"configured": bool(key), "masked_key": masked, "model": "gemini-2.5-flash"})
+
+
+@app.route("/api/ai/config", methods=["POST"])
+@require_admin_pin
+def api_ai_config():
+    from core.database import set_gemini_api_key_db, get_gemini_api_key
+    data = request.get_json(silent=True) or {}
+    api_key = str(data.get("api_key") or "").strip()
+    set_gemini_api_key_db(api_key)
+    saved = get_gemini_api_key()
+    masked = f"{saved[:4]}...{saved[-4:]}" if len(saved) >= 10 else ("***" if saved else "")
+    return jsonify({"status": "saved", "configured": bool(saved), "masked_key": masked})
+
+
+@app.route("/api/ai/analyze", methods=["POST"])
+def api_ai_analyze():
+    try:
+        from agents.ai_analyst_agent import AIAnalystAgent
+        data = request.get_json(silent=True) or {}
+        symbol = str(data.get("symbol") or "").strip()
+        timeframe = str(data.get("timeframe") or "15m").strip()
+        image_b64 = str(data.get("image_b64") or "").strip()
+        image_mime = str(data.get("image_mime") or "image/png").strip()
+        user_prompt = str(data.get("user_prompt") or "").strip()
+        if not symbol and not image_b64:
+            return jsonify({"status": "error", "message": "Sembol veya grafik görseli gereklidir."}), 400
+        res = AIAnalystAgent().analyze_chart_or_coin_with_ai(
+            client=client,
+            symbol=symbol,
+            timeframe=timeframe,
+            image_b64=image_b64,
+            image_mime=image_mime,
+            user_prompt=user_prompt
+        )
+        return jsonify(res), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # ========================================================
 # FAST BOT ÖZEL API ENDPOINT'LERİ (BAĞIMSIZ KONTROL & 1m SCALPING)
