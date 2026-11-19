@@ -2,6 +2,7 @@
 Database Layer - SQLite for Signals & Counterfactual (What-If) Paper Trades
 Tracks real performance if the trade had been taken, without risking real funds.
 """
+import os
 import sqlite3
 import json
 import threading
@@ -1000,6 +1001,40 @@ def reset_today_trade_quota_db() -> str:
         cursor.execute("DELETE FROM system_state WHERE key LIKE 'peak_pnl_%'")
         conn.commit()
     return watermark
+
+
+def get_gemini_api_key() -> str:
+    """Aktif Gemini API anahtarını (önce ortam değişkeni, yoksa DB system_state) döner."""
+    env_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if env_key:
+        return env_key
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("CREATE TABLE IF NOT EXISTS system_state (key TEXT PRIMARY KEY, value TEXT, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+            cursor.execute("SELECT value FROM system_state WHERE key = 'gemini_api_key'")
+            row = cursor.fetchone()
+            return str(row[0]).strip() if row and row[0] else ""
+    except Exception:
+        return ""
+
+
+def set_gemini_api_key_db(api_key: str) -> None:
+    """Gemini API anahtarını kalıcı olarak DB system_state tablosuna ve çalışma ortamına kaydeder."""
+    clean_key = str(api_key or "").strip()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("CREATE TABLE IF NOT EXISTS system_state (key TEXT PRIMARY KEY, value TEXT, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        if clean_key:
+            cursor.execute(
+                "INSERT OR REPLACE INTO system_state (key, value, updated_at) VALUES ('gemini_api_key', ?, CURRENT_TIMESTAMP)",
+                (clean_key,)
+            )
+            os.environ["GEMINI_API_KEY"] = clean_key
+        else:
+            cursor.execute("DELETE FROM system_state WHERE key = 'gemini_api_key'")
+            os.environ.pop("GEMINI_API_KEY", None)
+        conn.commit()
 
 
 def get_today_trades_count(timeframe: Optional[str] = None) -> int:
