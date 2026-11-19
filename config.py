@@ -9,11 +9,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "data"
+# TRADEBOT_DATA_DIR: testler ve izole çalıştırmalar için veri klasörünü değiştirir
+DATA_DIR = Path(os.getenv("TRADEBOT_DATA_DIR") or (BASE_DIR / "data"))
 CHARTS_DIR = DATA_DIR / "charts"
 DB_PATH = DATA_DIR / "trading_bot.db"
 
-DATA_DIR.mkdir(exist_ok=True)
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 CHARTS_DIR.mkdir(exist_ok=True)
 
 # Binance Futures Settings
@@ -200,3 +201,12 @@ DAILY_TRAILING_PROFIT_MIN_USDT = 25.0
 ENABLE_MAKER_POST_ONLY = False         # Sanal simülasyonda muhafazakâr Taker (%0.10) korunur; canlı emirde GTX (%0.04) açılır
 MAKER_FEE_PCT = 0.02                   # %0.02 Binance Futures Maker komisyonu
 MAKER_ROUNDTRIP_FEE_PCT = 0.04         # Giriş + TP Maker toplam %0.04 komisyon
+
+# ========================================================
+# ÖZ-KALİBRASYON (SELF-TUNING) KİLİDİ
+# ========================================================
+# Küçük örneklemlerle (5-15 işlem) parametre değiştirmek aşırı uyuma (overfitting) yol açar.
+# False iken: adaptive_hyperparams.json yok sayılır, yalnızca bu dosyadaki sabitler kullanılır,
+# otonom döngü yalnızca rapor üretir (diske yazmaz).
+SELF_TUNING_ENABLED = os.getenv("SELF_TUNING_ENABLED", "false").lower() == "true"
+SELF_TUNING_MIN_TRADES = 150            # Açıksa bile en az bu kadar kapalı işlem olmadan parametre değiştirilmez

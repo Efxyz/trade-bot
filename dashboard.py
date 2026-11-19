@@ -37,20 +37,65 @@ app = Flask(__name__)
 client = BinanceFuturesClient()
 news_agent = NewsAgent()
 
-ADMIN_PIN = os.getenv("ADMIN_PIN", "6004")
+import hmac
+import time as _time
+
+_WEAK_PINS = {"", "6004", "0000", "1234", "123456", "admin", "password"}
+
+
+def _load_admin_pin():
+    """ADMIN_PIN ortam değişkenini okur. Tanımsız/zayıfsa yönetim uç noktaları kapalı kalır (varsayılan PIN yoktur)."""
+    pin = str(os.getenv("ADMIN_PIN") or "").strip()
+    if pin.lower() in _WEAK_PINS or len(pin) < 6:
+        print("🔒 [Güvenlik] ADMIN_PIN tanımlı değil veya zayıf (en az 6 karakter, varsayılan 6004 kabul edilmez). "
+              "Yönetim butonları ADMIN_PIN ortam değişkeni ayarlanana kadar devre dışı.")
+        return None
+    return pin
+
+
+ADMIN_PIN = _load_admin_pin()
+_PIN_MAX_FAILS = 5
+_PIN_LOCK_SECONDS = 15 * 60
+_pin_fail_log: dict = {}
+_pin_fail_lock = threading.Lock()
+
+
+def _client_ip() -> str:
+    fwd = request.headers.get("X-Forwarded-For", "")
+    return (fwd.split(",")[0].strip() if fwd else "") or (request.remote_addr or "unknown")
+
+
+def check_admin_pin_request():
+    """(ok, http_status, mesaj) döner. IP başına 5 hatalı denemede 15 dk kilitler (kaba kuvvet koruması)."""
+    if not ADMIN_PIN:
+        return False, 503, "🔒 Sunucuda ADMIN_PIN tanımlı değil. Yönetim işlemleri için ortam değişkenine en az 6 karakterlik bir PIN ekleyin."
+    ip = _client_ip()
+    now = _time.time()
+    with _pin_fail_lock:
+        fails, first_ts = _pin_fail_log.get(ip, (0, now))
+        if fails >= _PIN_MAX_FAILS and now - first_ts < _PIN_LOCK_SECONDS:
+            return False, 429, "🔒 Çok fazla hatalı PIN denemesi. 15 dakika sonra tekrar deneyin."
+        if now - first_ts >= _PIN_LOCK_SECONDS:
+            fails, first_ts = 0, now
+    pin = request.headers.get("X-Admin-Pin") or (request.get_json(silent=True) or {}).get("pin") or ""
+    if pin and hmac.compare_digest(str(pin).strip().encode(), ADMIN_PIN.encode()):
+        with _pin_fail_lock:
+            _pin_fail_log.pop(ip, None)
+        return True, 200, ""
+    with _pin_fail_lock:
+        _pin_fail_log[ip] = (fails + 1, first_ts)
+    return False, 401, "🔒 Yetkisiz Erişim: Bu işlem için geçerli Yönetici Güvenlik PIN kodu gereklidir!"
+
 
 def require_admin_pin(func):
     """
-    Kritik yönetim ve silme endpointlerini yetkisiz web tarayıcıları ve botlardan korur.
+    Kritik yönetim, tarama ve yapay zeka (ücretli API) uç noktalarını yetkisiz erişime karşı korur.
     """
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
-        pin = request.headers.get("X-Admin-Pin") or request.args.get("pin") or (request.get_json(silent=True) or {}).get("pin")
-        if not pin or str(pin).strip() != str(ADMIN_PIN).strip():
-            return jsonify({
-                "status": "error",
-                "message": "🔒 Yetkisiz Erişim: Bu kritik işlemi gerçekleştirmek için geçerli Yönetici Güvenlik PIN kodu gereklidir!"
-            }), 401
+        ok, code, msg = check_admin_pin_request()
+        if not ok:
+            return jsonify({"status": "error", "success": False, "message": msg, "error": msg}), code
         return func(*args, **kwargs)
     return wrapper
 
@@ -2205,7 +2250,7 @@ HTML_OFFICE_TEMPLATE = """
             if (btn) btn.disabled = true;
 
             try {
-                const res = await fetch(`/api/news/investigate?symbol=${encodeURIComponent(symbol)}&direction=${encodeURIComponent(direction)}`);
+                const res = await adminFetch(`/api/news/investigate?symbol=${encodeURIComponent(symbol)}&direction=${encodeURIComponent(direction)}`);
                 const data = await res.json();
                 if (data && data.success && data.data) {
                     // Konsey alt sekmesine geç ve veriyi anında tazele
@@ -2398,7 +2443,7 @@ HTML_OFFICE_TEMPLATE = """
                 box.scrollTop = box.scrollHeight;
             }
             try {
-                const res = await fetch('/api/ai/review-positions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+                const res = await adminFetch('/api/ai/review-positions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
                 const data = await res.json();
                 const typingEl = document.getElementById('aiTypingIndicator');
                 if (typingEl) typingEl.remove();
@@ -2451,7 +2496,7 @@ HTML_OFFICE_TEMPLATE = """
             }
 
             try {
-                const res = await fetch('/api/ai/chat', {
+                const res = await adminFetch('/api/ai/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -3650,7 +3695,7 @@ HTML_OFFICE_TEMPLATE = """
             if (currentBotMode === 'superfast') url = '/api/superfast/scan';
             else if (currentBotMode === 'fast') url = '/api/fast/scan';
             try {
-                await fetch(url, { method: 'POST' });
+                await adminFetch(url, { method: 'POST' });
                 await fetchTerminal();
             } catch(e) {}
             if (btn) btn.innerText = '⚡ Tara';
@@ -3663,6 +3708,20 @@ HTML_OFFICE_TEMPLATE = """
                 if (pin) sessionStorage.setItem('admin_pin', pin.trim());
             }
             return pin;
+        }
+
+        // PIN korumalı uç noktalar için ortak fetch: başlığa PIN ekler, 401'de kayıtlı PIN'i siler
+        async function adminFetch(url, opts = {}) {
+            const pin = await getAdminPin();
+            const headers = Object.assign({}, opts.headers || {}, { 'X-Admin-Pin': pin || '' });
+            const res = await fetch(url, Object.assign({}, opts, { headers }));
+            if (res.status === 401) {
+                sessionStorage.removeItem('admin_pin');
+            }
+            if (res.status === 401 || res.status === 429 || res.status === 503) {
+                try { const j = await res.clone().json(); alert(j.message || 'Yetkisiz erişim'); } catch(e) {}
+            }
+            return res;
         }
 
         async function closeSinglePosition(symbol, signalId) {
@@ -3868,7 +3927,7 @@ HTML_OFFICE_TEMPLATE = """
             if (btn) btn.disabled = true;
 
             try {
-                const res = await fetch('/api/tuning/run-autonomous', { method: 'POST' });
+                const res = await adminFetch('/api/tuning/run-autonomous', { method: 'POST' });
                 const json = await res.json();
                 if (json && json.success) {
                     await fetchTerminal();
@@ -7000,6 +7059,7 @@ def api_news_coin_investigations():
     return jsonify(get_coin_news_investigations_db(limit=limit))
 
 @app.route("/api/news/investigate", methods=["GET", "POST"])
+@require_admin_pin
 def api_news_investigate():
     global _terminal_cache
     if request.method == "POST" and request.is_json:
@@ -7037,8 +7097,10 @@ def api_reflections():
 
 @app.route("/api/tuning", methods=["GET"])
 def api_tuning():
+    # Salt-okunur: GET isteği parametre değiştirmez veya eğitim döngüsü başlatmaz
     from core.self_tuning_engine import SelfTuningEngine
-    return jsonify(SelfTuningEngine.run_calibration_cycle(min_trades_required=5))
+    from core.database import get_latest_learning_report_db
+    return jsonify({"current_params": SelfTuningEngine.get_current_params(), "latest_report": get_latest_learning_report_db()})
 
 @app.route("/api/tuning/reports", methods=["GET"])
 def api_tuning_reports():
@@ -7047,6 +7109,7 @@ def api_tuning_reports():
     return jsonify(get_learning_reports_db(limit=limit))
 
 @app.route("/api/tuning/run-autonomous", methods=["POST"])
+@require_admin_pin
 def api_tuning_run_autonomous():
     global _terminal_cache
     from core.self_tuning_engine import SelfTuningEngine
@@ -7070,6 +7133,7 @@ def api_tuning_calibrate():
     return jsonify(res)
 
 @app.route("/api/scan", methods=["POST"])
+@require_admin_pin
 def api_scan():
     global _orchestrator
     if _orchestrator:
@@ -7220,6 +7284,7 @@ def api_ai_config():
 
 
 @app.route("/api/ai/analyze", methods=["POST"])
+@require_admin_pin
 def api_ai_analyze():
     try:
         from agents.ai_analyst_agent import AIAnalystAgent
@@ -7245,6 +7310,7 @@ def api_ai_analyze():
 
 
 @app.route("/api/ai/chat", methods=["POST"])
+@require_admin_pin
 def api_ai_chat():
     try:
         from agents.ai_analyst_agent import AIAnalystAgent
@@ -7268,6 +7334,7 @@ def api_ai_chat():
 
 
 @app.route("/api/ai/review-positions", methods=["POST"])
+@require_admin_pin
 def api_ai_review_positions():
     try:
         from agents.ai_analyst_agent import AIAnalystAgent

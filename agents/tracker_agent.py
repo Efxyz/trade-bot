@@ -252,8 +252,9 @@ class CounterfactualTrackerAgent:
                             }
                             # Basamak 1: %35 Kısmi Kârı Cebe Al + Kalan %65'e -%0.08 Nefes Paylı Sıfır Risk Stopu
                             if step_num == 1 and partial_tp_taken == 0:
-                                step1_exec_pct = min(peak_profit_pct, max(trigger_pct, raw_profit_pct))
-                                step1_net_pct = max(3.0, (step1_exec_pct * leverage) - (BINANCE_ROUNDTRIP_FEE_PCT * leverage))
+                                # Gerçekçi dolum: tetik seviyesinde limit emir varsayımı, fiyat tetik altına döndüyse anlık fiyat
+                                step1_exec_pct = min(trigger_pct, raw_profit_pct)
+                                step1_net_pct = (step1_exec_pct * leverage) - (BINANCE_ROUNDTRIP_FEE_PCT * leverage)
                                 step1_usd = round((allocated_margin * 0.35) * (step1_net_pct / 100.0), 2)
                                 current_realized_usd = round(current_realized_usd + step1_usd, 2)
                                 allocated_margin = round(allocated_margin * 0.65, 2)

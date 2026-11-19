@@ -39,6 +39,14 @@ from agents.quant_simulation_agent import QuantSimulationAgent
 from core.binance_streamer import start_streamer, pop_hot_symbols, add_stream_symbol, is_streamer_connected
 from dashboard import start_dashboard
 
+def grade_to_score(risk_grade: str) -> float:
+    """Risk notu metnini ('Grade A+ (...)', 'Grade A (...)', 'Grade B ...') turnuva puanına çevirir."""
+    import re
+    m = re.search(r"Grade\s+([A-C]\+?)", str(risk_grade or ""))
+    letter = m.group(1) if m else str(risk_grade or "").strip()
+    return {"A+": 20.0, "A": 16.0, "B": 12.0, "C": 8.0}.get(letter, 10.0)
+
+
 class TradingBotOrchestrator:
     def __init__(self):
         print("🤖 [Sistem Başlatılıyor] Binance Futures Çoklu Ajanlı Trade Bot (10x / 20x Destekli)...")
@@ -659,8 +667,7 @@ class TradingBotOrchestrator:
                 rr_capped = max(1.5, min(rr, 4.0))
                 rr_score = ((rr_capped - 1.5) / 2.5) * 20.0  # %20 Risk/Ödül Oranı
 
-                grade = risk_report.get("risk_grade", "A")
-                grade_score = 20.0 if grade == "A+" else (16.0 if grade == "A" else 10.0)  # %20 Risk Notu
+                grade_score = grade_to_score(risk_report.get("risk_grade", ""))  # %20 Risk Notu
 
                 total_quality_score = round(mc_score + ai_score + rr_score + grade_score, 1)
                 horizon_badge = ta_setup.get("trade_horizon", "Kısa Vade (15m)")
