@@ -166,8 +166,8 @@ ENABLE_BTC_SHIELD = True
 BTC_DROP_ALERT_PCT = 1.0
 
 # Telegram
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()  # yapıştırırken kalan boşluk/satır sonu token'ı bozmasın
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 ENABLE_TELEGRAM_COMMANDS = True
 CRYPTOPANIC_API_KEY = os.getenv("CRYPTOPANIC_API_KEY", "")
 
