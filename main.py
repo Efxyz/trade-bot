@@ -253,7 +253,8 @@ class TradingBotOrchestrator:
             get_today_net_dollar_pnl,
             get_and_update_today_peak_profit,
             get_open_unprotected_risk_usdt,
-            get_current_equity
+            get_current_equity,
+            get_active_and_pending_signals
         )
 
         if ENABLE_CIRCUIT_BREAKER:
@@ -402,6 +403,19 @@ class TradingBotOrchestrator:
 
         found_setups_count = 0
         shortlist_candidates = []
+        active_positions_snapshot = get_active_and_pending_signals() or []
+        current_equity_snapshot = get_current_equity()
+        portfolio_context = {
+            "equity_usdt": round(float(current_equity_snapshot or 0.0), 2),
+            "today_net_pnl_usdt": round(float(today_pnl or 0.0), 2),
+            "open_count": len(active_positions_snapshot),
+            "open_longs": sum(1 for p in active_positions_snapshot if str(p.get("direction") or "").upper() == "LONG"),
+            "open_shorts": sum(1 for p in active_positions_snapshot if str(p.get("direction") or "").upper() == "SHORT"),
+            "open_positions": [
+                {"symbol": p.get("symbol"), "direction": p.get("direction"), "tf": p.get("timeframe"), "margin": p.get("allocated_margin_usdt")}
+                for p in active_positions_snapshot
+            ],
+        }
 
         # 4. Haber masasını güncelle (Sağ Alttaki Haber Masası için)
         try:
@@ -618,7 +632,8 @@ class TradingBotOrchestrator:
 
                 # Ajan 3.5: AI Baş Analisti & Yatırım Komitesi Tartışması (Adversarial Multi-Agent Chamber)
                 ai_verdict = self.ai_analyst.evaluate_setup(
-                    ta_setup, risk_report, news_analysis, btc_regime, ticker, funding_data, quant_sim=quant_sim
+                    ta_setup, risk_report, news_analysis, btc_regime, ticker, funding_data,
+                    quant_sim=quant_sim, portfolio_context=portfolio_context
                 )
                 debate_data = ai_verdict.get("debate_data", {})
 
@@ -831,6 +846,31 @@ class TradingBotOrchestrator:
                     add_scanner_log(symbol, "REJECTED", "2. Teyit: BTC Ralli Rejimi (SHORT Engelli)", "Yönlü BTC Koruması")
                     continue
 
+                # Teyit 4: AI Pozisyon Karar & Portföy Uygunluk Kapısı
+                suitability = self.ai_analyst.evaluate_position_suitability(
+                    ta_setup=ta_setup,
+                    risk_report=risk_report,
+                    btc_regime=fresh_btc,
+                    live_price=fresh_price,
+                    active_positions=get_active_and_pending_signals() or [],
+                    account_equity=current_equity_snapshot,
+                    today_pnl=today_pnl,
+                    daily_quotas=today_counts,
+                )
+                suit_score = int(suitability.get("suitability_score", 75))
+                suit_verdict = str(suitability.get("verdict") or "APPROVE").upper()
+                suit_reason = str(suitability.get("reason") or "")
+                if not suitability.get("suitable", True) or suit_verdict == "REJECT":
+                    self._record_shadow_rejection(symbol, ta_setup, "AI_SUITABILITY", f"{suit_score}/100: {suit_reason[:100]}")
+                    print(f"⛔ [{symbol}] AI Pozisyon Uygunluk Vetosu ({suit_score}/100): {suit_reason}")
+                    add_scanner_log(symbol, "REJECTED", f"AI Pozisyon Uygunluk Vetosu ({suit_score}/100)", suit_reason[:90])
+                    continue
+                if suit_verdict == "REDUCE_SIZE":
+                    mult = max(0.4, min(0.95, float(suitability.get("recommended_margin_multiplier") or 0.7)))
+                    risk_report["allocated_margin_usdt"] = round(float(risk_report["allocated_margin_usdt"]) * mult, 1)
+                    risk_report["risk_usd"] = round(float(risk_report["risk_usd"]) * mult, 2)
+                    print(f"⚖️ [{symbol}] AI Pozisyon Uygunluğu Marjin Ölçekledi (x{mult:.2f} | Skor: {suit_score}/100): {suit_reason}")
+
                 # =========================================================================
                 # 🎉 İKİNCİ TEYİT BAŞARILI: İŞLEMİ AÇ VE SİSTEME KAYDET (EXECUTION)
                 # =========================================================================
@@ -867,7 +907,7 @@ class TradingBotOrchestrator:
                     "tp2_pct": ta_setup["tp2_pct"],
                     "allocated_margin_usdt": risk_report["allocated_margin_usdt"],
                     "risk_usd": risk_report["risk_usd"],
-                    "news_summary": f"[{horizon_badge}] {news_analysis.get('summary', '')} | 🏆 Turnuva: {cand['quality_score']}/100",
+                    "news_summary": f"[{horizon_badge}] {news_analysis.get('summary', '')} | 🏆 Turnuva: {cand['quality_score']}/100 | 🤖 Uygunluk: {suit_score}/100 ({suit_verdict})",
                     "ta_reasons": ta_setup["ta_reasons"],
                     "ai_verdict": ai_verdict,
                     "quant_sim": quant_sim,
