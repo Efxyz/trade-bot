@@ -106,18 +106,38 @@ class TradingBotOrchestrator:
             return False
         try:
             from agents.pairs_stat_arb_agent import StatisticalArbitrageAgent
-            from core.database import get_active_and_pending_signals, get_current_equity
+            from core.database import (
+                get_active_and_pending_signals,
+                get_current_equity,
+                get_recently_traded_symbols,
+                get_db_connection,
+                get_quota_reset_watermark_utc,
+            )
             active_pair_sigs = get_active_and_pending_signals() or []
             if any(int(s.get("is_pair_trade") or 0) == 1 for s in active_pair_sigs):
                 return False
+
+            # Günlük Pair Kotası Kalkanı: günde en fazla 2 pair çifti (4 bacak = 2.0 kota), kalan 15m kotası ana yönlü motor için saklanır
+            tr_tz = timezone(timedelta(hours=3))
+            today_start_tr = datetime.now(timezone.utc).astimezone(tr_tz).replace(hour=0, minute=0, second=0, microsecond=0)
+            today_floor_utc = max(today_start_tr.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"), get_quota_reset_watermark_utc())
+            with get_db_connection() as p_conn:
+                pair_legs_today = p_conn.execute(
+                    "SELECT COUNT(*) FROM signals WHERE is_pair_trade = 1 AND created_at >= ?",
+                    (today_floor_utc,)
+                ).fetchone()[0]
+            if int(pair_legs_today or 0) >= 4:
+                return False
+
             active_syms_now = {s.get("symbol") for s in active_pair_sigs}
+            recent_syms = get_recently_traded_symbols(within_minutes=45)
             eq_now = get_current_equity()
             pair_leg_margin = round(max(40.0, eq_now * 0.065), 1)
             pair_leg_risk = round(pair_leg_margin * 0.13, 2)
             pair_opps = StatisticalArbitrageAgent(z_score_entry_threshold=2.35).evaluate_all_pairs(self.client)
             for popp in pair_opps:
                 sa, sb = popp["sym_a"], popp["sym_b"]
-                if sa in active_syms_now or sb in active_syms_now:
+                if sa in active_syms_now or sb in active_syms_now or sa in recent_syms or sb in recent_syms:
                     continue
                 pa, pb = popp["price_a"], popp["price_b"]
                 la, lb = popp["leg_a_direction"], popp["leg_b_direction"]
