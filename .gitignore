@@ -19,6 +19,8 @@ ENV/
 *.sqlite
 *.sqlite3
 data/*.db
+*.db-shm
+*.db-wal
 data/charts/*.png
 
 # Local tools & downloads
