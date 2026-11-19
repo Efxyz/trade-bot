@@ -185,6 +185,8 @@ def stats(store: MemoryCarryStore, capital: float, eng: CarryEngine) -> Dict:
         "fees_usd": round(st["fees_paid"], 2), "funding_paid_usd": round(st["funding_paid"], 2),
         "fills": st["n_fills"], "fills_per_week": round(st["n_fills"] / (years * 52.14), 1) if years else 0,
         "rebalances": st["n_rebalances"], "years": round(years, 2), "yearly": yearly,
+        "avg_leverage": round(sum(r["gross_exposure"] / r["equity"] for r in store.equity) / len(store.equity), 2),
+        "max_leverage": round(max(r["gross_exposure"] / r["equity"] for r in store.equity), 2),
     }
 
 
@@ -198,6 +200,9 @@ def main():
     ap.add_argument("--lookback-days", type=int, default=None)
     ap.add_argument("--out", default=None)
     ap.add_argument("--tranches", type=int, default=None, help="1 = haftalık tek dengeleme, 7 = günlük dilimli")
+    ap.add_argument("--target-vol", type=float, default=None, help="Portföy hedef yıllık volatilitesi (örn. 0.20)")
+    ap.add_argument("--gross-cap", type=float, default=None, help="Brüt kaldıraç tavanı (notional / özsermaye)")
+    ap.add_argument("--dd-cut", type=float, default=None, help="Kesici eşiği (örn. -0.20); restore = yarısı")
     ap.add_argument("--oos", action="store_true",
                     help="Örneklem dışı: stratejinin tasarlandığı 3 yıldan ÖNCEKİ 3 yıl (ayrı önbellek)")
     a = ap.parse_args()
@@ -219,6 +224,12 @@ def main():
         p = replace(p, rebalance_hour=(d * 3) % 24) if ap_tr > 1 else replace(p, rebalance_weekday=d)
         if a.fee is not None:
             p = replace(p, fee_rate=a.fee)
+        if a.target_vol is not None:
+            p = replace(p, portfolio_target_vol=a.target_vol)
+        if a.gross_cap is not None:
+            p = replace(p, gross_cap=a.gross_cap)
+        if a.dd_cut is not None:
+            p = replace(p, dd_cut=a.dd_cut, dd_restore=a.dd_cut / 2)
         if a.k is not None:
             p = replace(p, k=a.k)
         if a.lookback_days is not None:
@@ -233,6 +244,13 @@ def main():
     summary = {k: round(sum(v[k] for v in vals) / len(vals), 2) for k in ("sharpe", "cagr_%", "max_dd_%", "positive_months_%", "worst_month_%", "fills_per_week")}
     summary["min_sharpe"] = min(v["sharpe"] for v in vals)
     summary["worst_dd_%"] = min(v["max_dd_%"] for v in vals)
+    summary["avg_leverage"] = round(sum(v["avg_leverage"] for v in vals) / len(vals), 2)
+    summary["max_leverage"] = max(v["max_leverage"] for v in vals)
+    yrs = {}
+    for v in vals:
+        for y, d in v["yearly"].items():
+            yrs.setdefault(y, []).append(d["ret_%"])
+    summary["yearly_ret_%"] = {y: [min(r), round(sum(r) / len(r), 1), max(r)] for y, r in sorted(yrs.items())}
     print("ORTALAMA:", json.dumps(summary, ensure_ascii=False))
     if a.out:
         Path(a.out).write_text(json.dumps({"summary": summary, "runs": results}, indent=1, ensure_ascii=False), encoding="utf-8")
