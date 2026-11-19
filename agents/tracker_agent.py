@@ -183,8 +183,10 @@ class CounterfactualTrackerAgent:
 
             sig_tf = sig.get("timeframe") or ("1h" if "1h" in str(sig.get("trade_horizon")) else ("30m" if "30m" in str(sig.get("trade_horizon")) else "15m"))
             ladder_mult = 2.0 if sig_tf == "1h" else (1.25 if sig_tf == "30m" else 1.0)
+            is_pair_trade = int(sig.get("is_pair_trade") or 0)
 
-            if ENABLE_LADDER_PROFIT:
+            # Market-Neutral Pair Trade bacakları kombine spread kârına göre yönetilir; tek bacak merdiven stopuyla bozulmaz
+            if ENABLE_LADDER_PROFIT and is_pair_trade == 0:
                 active_ladder_steps = LADDER_STEPS
                 step_mult = ladder_mult
 
@@ -306,9 +308,9 @@ class CounterfactualTrackerAgent:
             exit_price = current_price
             raw_change = 0.0
 
-            # 4a. Time-Decay Erken Kâr Kilidi (Freqtrade Minimal ROI Prensibi)
+            # 4a. Time-Decay Erken Kâr Kilidi (Freqtrade Minimal ROI Prensibi - Pair bacakları tekil kilitlenmez)
             net_unrealized_margin = (raw_profit_pct * leverage) - (0.10 * leverage)
-            if minutes_open >= (30 * ladder_mult) and net_unrealized_margin >= (2.5 * ladder_mult):
+            if is_pair_trade == 0 and minutes_open >= (30 * ladder_mult) and net_unrealized_margin >= (2.5 * ladder_mult):
                 protect_sl = round(entry_price * (1.0 + 0.0025 * ladder_mult), 8) if is_long else round(entry_price * (1.0 - 0.0025 * ladder_mult), 8)
                 if (is_long and protect_sl > current_sl) or (not is_long and protect_sl < current_sl):
                     current_sl = protect_sl
@@ -396,7 +398,6 @@ class CounterfactualTrackerAgent:
                 effective_inval_loss *= 1.35
 
             # Eğer henüz SL'e çarpmamışsa, vadeye göre erken süreyi geçmişse ve ladder_step == 0 ise (Pair hedge bacakları hariç):
-            is_pair_trade = int(sig.get("is_pair_trade") or 0)
             if not is_closed and is_pair_trade == 0 and EARLY_INVALIDATION_ENABLED and current_ladder_step == 0 and minutes_open >= effective_early_inval_min:
                 raw_c = ((current_price - entry_price) / entry_price) if is_long else ((entry_price - current_price) / entry_price)
                 if raw_c <= -(effective_inval_loss / 100.0):
@@ -439,7 +440,7 @@ class CounterfactualTrackerAgent:
                     raw_change = raw_c_2b
                     print(f"⚡ [{symbol}] [{sig_tf}] 2-Mum Momentum İptali ({minutes_open:.0f} dk, Zirve: +%{peak_profit_pct:.2f}, Anlık: {raw_c_2b*100:+.2f}%) -> Ölü sermaye serbest bırakıldı.")
 
-            # 5c. STAT-ARB SPREAD ORTALAMAYA DÖNÜŞ ÇIKIŞI (|Z| <= 0.40 veya partner bacak kapanmışsa eşzamanlı kapat)
+            # 5c. STAT-ARB SPREAD ORTALAMAYA DÖNÜŞ & KOMBİNE KÂR ÇIKIŞI (Kombine Net Kâr veya |Z| <= 0.45)
             pair_peer = sig.get("pair_symbol") or ""
             if not is_closed and is_pair_trade == 1 and pair_peer and pair_peer not in active_syms_set:
                 is_closed = True
@@ -447,18 +448,57 @@ class CounterfactualTrackerAgent:
                 exit_price = current_price
                 raw_change = ((current_price - entry_price) / entry_price) if is_long else ((entry_price - current_price) / entry_price)
                 print(f"⚖️ [{symbol}] Partner bacak ({pair_peer}) kapalı olduğu için hedge'siz kalmamak adına kapatıldı.")
-            elif not is_closed and is_pair_trade == 1 and pair_peer and minutes_open >= 15:
-                try:
-                    from agents.pairs_stat_arb_agent import StatisticalArbitrageAgent
-                    z_now = StatisticalArbitrageAgent().get_pair_live_zscore(self.client, symbol, pair_peer)
-                    if z_now is not None and abs(z_now) <= 0.40:
-                        is_closed = True
-                        final_status = "PAIR_MEAN_REVERSION_EXIT"
-                        exit_price = current_price
-                        raw_change = ((current_price - entry_price) / entry_price) if is_long else ((entry_price - current_price) / entry_price)
-                        print(f"⚖️ [{symbol}/{pair_peer}] Spread Z-Skoru ortalamaya döndü (Z={z_now:+.2f}) -> Pair çıkışı.")
-                except Exception:
-                    pass
+            elif not is_closed and is_pair_trade == 1 and pair_peer:
+                combined_triggered = False
+                peer_sig = next((s for s in signals if s.get("symbol") == pair_peer and s.get("id") != sig_id), None)
+                if peer_sig and entry_price > 0:
+                    try:
+                        peer_entry = float(peer_sig.get("actual_entry_price") or peer_sig.get("entry_min") or 0.0)
+                        peer_margin = float(peer_sig.get("allocated_margin_usdt") or 100.0)
+                        peer_lev = int(peer_sig.get("leverage") or 10)
+                        peer_is_long = (peer_sig.get("direction") == "LONG")
+                        peer_ws = None
+                        try:
+                            from core.binance_streamer import get_live_price
+                            peer_ws = get_live_price(pair_peer)
+                        except Exception:
+                            peer_ws = None
+                        peer_ticker = tickers.get(pair_peer) or {}
+                        peer_price = float(peer_ws or peer_ticker.get("lastPrice") or 0.0)
+                        if peer_entry > 0 and peer_price > 0:
+                            leg1_raw = ((current_price - entry_price) / entry_price) if is_long else ((entry_price - current_price) / entry_price)
+                            leg1_net_pct = (leg1_raw * leverage * 100.0) - (BINANCE_ROUNDTRIP_FEE_PCT * leverage)
+                            leg1_net_usd = allocated_margin * (leg1_net_pct / 100.0) + current_realized_usd
+
+                            peer_raw = ((peer_price - peer_entry) / peer_entry) if peer_is_long else ((peer_entry - peer_price) / peer_entry)
+                            peer_net_pct = (peer_raw * peer_lev * 100.0) - (BINANCE_ROUNDTRIP_FEE_PCT * peer_lev)
+                            leg2_net_usd = peer_margin * (peer_net_pct / 100.0) + float(peer_sig.get("realized_pnl_usd") or 0.0)
+
+                            combined_net_usd = round(leg1_net_usd + leg2_net_usd, 2)
+                            combined_margin = allocated_margin + peer_margin
+                            target_fast_usd = max(2.20, round(combined_margin * 0.0175, 2))
+                            if (minutes_open >= 3 and combined_net_usd >= target_fast_usd) or (minutes_open >= 35 and combined_net_usd >= 1.10):
+                                is_closed = True
+                                combined_triggered = True
+                                final_status = "PAIR_MEAN_REVERSION_EXIT"
+                                exit_price = current_price
+                                raw_change = leg1_raw
+                                print(f"⚖️ [{symbol}/{pair_peer}] Kombine Net Kâr hedefine ulaştı (+${combined_net_usd:.2f}) -> Eşzamanlı Pair çıkışı.")
+                    except Exception:
+                        pass
+
+                if not combined_triggered and minutes_open >= 10:
+                    try:
+                        from agents.pairs_stat_arb_agent import StatisticalArbitrageAgent
+                        z_now = StatisticalArbitrageAgent().get_pair_live_zscore(self.client, symbol, pair_peer)
+                        if z_now is not None and abs(z_now) <= 0.45:
+                            is_closed = True
+                            final_status = "PAIR_MEAN_REVERSION_EXIT"
+                            exit_price = current_price
+                            raw_change = ((current_price - entry_price) / entry_price) if is_long else ((entry_price - current_price) / entry_price)
+                            print(f"⚖️ [{symbol}/{pair_peer}] Spread Z-Skoru ortalamaya döndü (Z={z_now:+.2f}) -> Pair çıkışı.")
+                    except Exception:
+                        pass
 
             # 6. ZAMAN AŞIMI (TIMEOUT / VADEYE GÖRE HAREKETSİZLİK ÇIKIŞI)
             if not is_closed and minutes_open >= effective_max_hold:
