@@ -691,6 +691,29 @@ def get_recent_reflections_db(limit: int = 10, symbol: Optional[str] = None) -> 
             reflections.append(r)
         return reflections
 
+
+def get_pinned_patron_lessons_db(limit: int = 8) -> List[Dict]:
+    """Patron tarafından işlenen veya toplu eğitimle çıkarılan kalıcı AI kurallarını döner."""
+    import json
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, created_at, time_str, signal_id, symbol, direction, status, pnl_pct, lesson, reflection_json
+            FROM trade_reflections
+            WHERE status IN ('AI_MENTOR_LESSON', 'AI_HISTORICAL_TRAINING')
+            ORDER BY id DESC
+            LIMIT ?
+        """, (limit,))
+        out = []
+        for row in cursor.fetchall():
+            r = dict(row)
+            try:
+                r["reflection_data"] = json.loads(r["reflection_json"]) if r["reflection_json"] else {}
+            except Exception:
+                r["reflection_data"] = {}
+            out.append(r)
+        return out
+
 def save_tuning_log_db(
     trades_analyzed: int,
     win_rate: float,
