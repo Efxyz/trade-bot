@@ -8,6 +8,7 @@ Saatler kullanıcıya Türkiye saatiyle (TSİ, UTC+3) gösterilir.
 from __future__ import annotations
 
 import os
+import threading
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
 
@@ -295,3 +296,26 @@ def send_daily_report(notifier, date_tr: str, engine=None) -> bool:
     if notifier is None or not getattr(notifier, "has_telegram", False):
         return False
     return bool(notifier.send_text_message(daily_report_message(engine, date_tr, final=True)))
+
+
+_REPORT_LOCK = threading.Lock()
+
+
+def send_scheduled_daily_report(notifier, date_tr: str) -> bool:
+    """
+    Gün sonu raporunu o gün için yalnızca BİR KEZ gönderir. Ana döngü ve panel döngüsü aynı anda
+    tetiklese bile kilit + "gönderildi" kaydı çift gönderimi önler. SMC kapalıyken v3 raporu gider.
+    """
+    from core.database import is_daily_report_sent_db, mark_daily_report_sent_db
+    if notifier is None:
+        return False
+    with _REPORT_LOCK:
+        if is_daily_report_sent_db(date_tr):
+            return False
+        if config.ENABLE_SMC_ENGINE:
+            sent = bool((notifier.send_daily_summary_report(target_date_str=date_tr) or {}).get("sent", False))
+        else:
+            sent = send_daily_report(notifier, date_tr)
+        if sent:
+            mark_daily_report_sent_db(date_tr)
+        return sent

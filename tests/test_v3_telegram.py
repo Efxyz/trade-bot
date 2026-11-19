@@ -171,3 +171,88 @@ def test_equity_schema_migration(tmp_path):
     cols = {r[1] for r in sqlite3.connect(str(db)).execute("PRAGMA table_info(carry_equity)")}
     assert {"fees_paid", "funding_paid", "realized_pnl"} <= cols
     assert st.equity_at_or_before(5)["equity"] == 1000 and st.equity_at_or_before(5)["funding_paid"] is None
+
+
+# ---------------- gün sonu raporu: tek gönderim ve yönlendirme ----------------
+class ReportNotif(Notif):
+    def __init__(self, delay=0.0):
+        super().__init__()
+        self.smc_reports = []
+        self.delay = delay
+
+    def send_text_message(self, text):
+        import time as _t
+        _t.sleep(self.delay)
+        return super().send_text_message(text)
+
+    def send_daily_summary_report(self, target_date_str=None):
+        self.smc_reports.append(target_date_str)
+        return {"sent": True}
+
+
+def test_scheduled_report_sent_once_even_with_concurrent_callers(engine, monkeypatch):
+    import threading
+    import agents.carry_agent as ca
+    monkeypatch.setattr(ca, "_ENGINE", engine)
+    monkeypatch.setattr(config, "ENABLE_SMC_ENGINE", False)
+    n = ReportNotif(delay=0.2)               # yavaş gönderim: yarış penceresini büyütür
+    date = "2099-01-01"
+    results = []
+    threads = [threading.Thread(target=lambda: results.append(tg.send_scheduled_daily_report(n, date))) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(results) == [False, False, False, True]
+    assert len([m for m in n.msgs if "Gün Sonu Raporu" in m]) == 1 and n.smc_reports == []
+    from core.database import is_daily_report_sent_db
+    assert is_daily_report_sent_db(date)
+    assert tg.send_scheduled_daily_report(n, date) is False      # aynı gün tekrar gönderilmez
+
+
+def test_scheduled_report_routes_to_smc_when_enabled(monkeypatch):
+    monkeypatch.setattr(config, "ENABLE_SMC_ENGINE", True)
+    n = ReportNotif()
+    assert tg.send_scheduled_daily_report(n, "2099-01-02") is True
+    assert n.smc_reports == ["2099-01-02"] and n.msgs == []
+
+
+def test_unsent_report_is_retried_later(engine, monkeypatch):
+    import agents.carry_agent as ca
+    monkeypatch.setattr(ca, "_ENGINE", engine)
+    monkeypatch.setattr(config, "ENABLE_SMC_ENGINE", False)
+    n = ReportNotif()
+    n.has_telegram = False                   # Telegram yoksa gönderilmedi sayılır, işaretlenmez
+    assert tg.send_scheduled_daily_report(n, "2099-01-03") is False
+    n.has_telegram = True
+    assert tg.send_scheduled_daily_report(n, "2099-01-03") is True
+
+
+def test_dashboard_daily_tick_uses_shared_function(monkeypatch):
+    from datetime import datetime, timezone
+    import dashboard
+    import agents.v3_telegram as v3
+    import core.database as db
+    calls = []
+    monkeypatch.setattr(v3, "send_scheduled_daily_report", lambda n, d: calls.append(d) or True)
+    monkeypatch.setattr(db, "is_daily_report_sent_db", lambda d: False)
+    dashboard._daily_report_tick(datetime(2099, 3, 10, 20, 55, tzinfo=timezone.utc))   # 23:55 TSİ
+    assert calls == ["2099-03-09", "2099-03-10"]                                          # dün telafisi + bugün
+    calls.clear()
+    dashboard._daily_report_tick(datetime(2099, 3, 10, 12, 0, tzinfo=timezone.utc))    # 15:00 TSİ: yalnızca telafi
+    assert calls == ["2099-03-09"]
+
+
+def test_auto_training_disabled_when_smc_off(monkeypatch):
+    import dashboard
+    calls = []
+    monkeypatch.setattr(dashboard.SelfTuningEngine, "run_autonomous_training_cycle",
+                        classmethod(lambda cls, **kw: calls.append(1) or {}))
+    monkeypatch.setattr(dashboard, "_AUTO_TRAIN_STATE", {"last": None})
+    monkeypatch.setattr(config, "ENABLE_SMC_ENGINE", False)
+    assert dashboard._maybe_auto_train(now=0) is False and dashboard._maybe_auto_train(now=1000) is False
+    assert calls == []
+    monkeypatch.setattr(config, "ENABLE_SMC_ENGINE", True)
+    assert dashboard._maybe_auto_train(now=2000) is False      # ilk çağrı yalnızca saati başlatır
+    assert dashboard._maybe_auto_train(now=2100) is False      # 3 dk dolmadı
+    assert dashboard._maybe_auto_train(now=2200) is True and calls == [1]
