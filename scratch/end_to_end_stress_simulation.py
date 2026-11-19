@@ -1010,6 +1010,63 @@ def run_all_stress_tests():
     except Exception as e:
         record("Gerçek AI Endpoint Testi", False, "EXCEPTION", str(e))
 
+    # =========================================================================
+    # SENARYO 19: AI POZİSYON KARAR & PORTFÖY UYGUNLUK KAPISI (ENTRY + AÇIK POZİSYON)
+    # =========================================================================
+    try:
+        ai_agent_suit = AIAnalystAgent()
+        cand_setup = {
+            "symbol": "SOLUSDT",
+            "direction": "LONG",
+            "timeframe": "15m",
+            "current_price": 150.0,
+            "stop_loss": 148.5,
+            "take_profit_1": 153.0,
+            "take_profit_2": 156.0,
+            "risk_reward": 2.0,
+            "leverage": 10,
+            "confluence_score": 82,
+        }
+        cand_risk = {"allocated_margin_usdt": 120.0, "risk_usd": 12.0, "leverage": 10}
+
+        # 1) Aynı coin zaten açıksa REJECT
+        dup_res = ai_agent_suit.evaluate_position_suitability(
+            cand_setup, cand_risk,
+            active_positions=[{"id": 1, "symbol": "SOLUSDT", "direction": "LONG", "allocated_margin_usdt": 100.0}],
+            account_equity=1000.0
+        )
+        # 2) Aynı yönde >=2 pozisyon açıksa REDUCE_SIZE (0.7x)
+        crowd_res = ai_agent_suit.evaluate_position_suitability(
+            cand_setup, cand_risk,
+            active_positions=[
+                {"id": 2, "symbol": "BTCUSDT", "direction": "LONG", "allocated_margin_usdt": 100.0},
+                {"id": 3, "symbol": "ETHUSDT", "direction": "LONG", "allocated_margin_usdt": 100.0},
+            ],
+            account_equity=1000.0
+        )
+        # 3) Açık pozisyon uygunluk tarama endpoint'i ve UI butonu
+        rev_resp = dashboard.app.test_client().post("/api/ai/review-positions", json={})
+        rev_json = rev_resp.get_json() or {}
+        home_suit_html = dashboard.app.test_client().get("/").get_data(as_text=True)
+
+        suit_ok = (
+            dup_res.get("suitable") is False
+            and dup_res.get("verdict") == "REJECT"
+            and crowd_res.get("verdict") == "REDUCE_SIZE"
+            and abs(float(crowd_res.get("recommended_margin_multiplier") or 0) - 0.7) < 0.05
+            and rev_resp.status_code == 200
+            and rev_json.get("status") == "ok"
+            and "runOpenPositionsSuitabilityReview" in home_suit_html
+        )
+        record(
+            "AI Pozisyon Karar Alma & Portföy Uygunluk Denetimi",
+            suit_ok,
+            "AI_POSITION_SUITABILITY",
+            f"dup={dup_res.get('verdict')}, crowd={crowd_res.get('verdict')}(x{crowd_res.get('recommended_margin_multiplier')}), review_status={rev_json.get('status')}, msg={rev_json.get('message')}"
+        )
+    except Exception as e:
+        record("AI Pozisyon Uygunluk Testi", False, "EXCEPTION", str(e))
+
     print("\n" + "=" * 80)
     passed_cnt = sum(1 for r in results if r["passed"])
     failed_cnt = sum(1 for r in results if not r["passed"])
