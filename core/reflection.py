@@ -53,10 +53,10 @@ class ReflectorEngine:
             "generationConfig": {"temperature": 0.35, "response_mime_type": "application/json"}
         }).encode("utf-8")
 
-        for model_name in ("gemini-2.5-flash", "gemini-2.0-flash"):
-            vtx = f"https://aiplatform.googleapis.com/v1/publishers/google/models/{model_name}:generateContent?key={api_key}"
+        for model_name in ("gemini-3-flash-preview", "gemini-3.8-flash", "gemini-flash-latest"):
             gl = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-            urls = [vtx, gl] if api_key.startswith("AQ.") else [gl, vtx]
+            vtx = f"https://aiplatform.googleapis.com/v1/publishers/google/models/{model_name}:generateContent?key={api_key}"
+            urls = [gl, vtx]
             for url in urls:
                 try:
                     req = urllib.request.Request(url, data=req_body, headers={"Content-Type": "application/json"}, method="POST")
