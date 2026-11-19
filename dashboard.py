@@ -1787,6 +1787,7 @@ HTML_OFFICE_TEMPLATE = """
                             <button onclick="sendQuickAiPrompt('Son işlemlerimi tek tek incele; nerede hata yaptık, nerede iyi çalıştık ve bugünden kalıcı hangi dersi çıkarmalıyız?')" style="background: rgba(56,189,248,0.12); color: #38bdf8; border: 1px solid rgba(56,189,248,0.3); font-size: 9.5px; font-weight: 700; padding: 2px 7px; border-radius: 4px; cursor: pointer;">📊 Son İşlemleri Yorumla</button>
                             <button onclick="sendQuickAiPrompt('Şu anki açık pozisyonlarımı ve kasa/kota durumumu incele; hangisini tutalım, hangisini kapatalım?')" style="background: rgba(16,185,129,0.12); color: #34d399; border: 1px solid rgba(16,185,129,0.3); font-size: 9.5px; font-weight: 700; padding: 2px 7px; border-radius: 4px; cursor: pointer;">⚖️ İşlemlerime Karar Ver</button>
                             <button onclick="sendQuickAiPrompt('Piyasa rejimini, BTC durumunu ve öğrenilen hafıza derslerini değerlendir; sıradaki en mantıklı stratejimiz ne olmalı?')" style="background: rgba(168,85,247,0.14); color: #d8b4fe; border: 1px solid rgba(168,85,247,0.35); font-size: 9.5px; font-weight: 700; padding: 2px 7px; border-radius: 4px; cursor: pointer;">🧠 Strateji Tartış</button>
+                            <button onclick="runOpenPositionsSuitabilityReview()" style="background: rgba(245,158,11,0.14); color: #fbbf24; border: 1px solid rgba(245,158,11,0.35); font-size: 9.5px; font-weight: 700; padding: 2px 7px; border-radius: 4px; cursor: pointer;">🛡️ Açık Pozisyon Uygunluğu</button>
                         </div>
 
                         <div style="display: flex; gap: 5px; align-items: center; flex-wrap: wrap;">
@@ -2337,6 +2338,41 @@ HTML_OFFICE_TEMPLATE = """
                 }
             } catch (err) {
                 alert('⚠️ Bağlantı hatası: ' + err.message);
+            }
+        }
+
+        async function runOpenPositionsSuitabilityReview() {
+            const box = document.getElementById('aiChatBox');
+            aiChatHistory.push({ role: 'user', text: '🛡️ Açık pozisyonlarımın portföy ve piyasa uygunluğunu tek tek denetle ve karar ver.' });
+            renderAiChatHistory();
+            if (box) {
+                const typingDiv = document.createElement('div');
+                typingDiv.id = 'aiTypingIndicator';
+                typingDiv.style.cssText = 'color:#fbbf24; font-size:10.5px; padding:4px 8px;';
+                typingDiv.innerText = '🛡️ Açık pozisyonlar ve portföy korelasyonu denetleniyor...';
+                box.appendChild(typingDiv);
+                box.scrollTop = box.scrollHeight;
+            }
+            try {
+                const res = await fetch('/api/ai/review-positions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+                const data = await res.json();
+                const typingEl = document.getElementById('aiTypingIndicator');
+                if (typingEl) typingEl.remove();
+                if (data && data.status === 'ok') {
+                    const decLines = (data.decisions || []).map(d =>
+                        `• **#${d.id || '?'} ${d.symbol} (${d.direction})** → **${d.decision}** (Uygunluk: ${d.suitability_score}/100)\n  ${d.reason}`
+                    ).join('\n');
+                    const txt = `**Genel Portföy Uygunluk Skoru:** ${data.overall_suitability}/100\n${data.summary || ''}` + (decLines ? `\n\n${decLines}` : '');
+                    aiChatHistory.push({ role: 'model', text: txt, source: data.source || 'AI Uygunluk Motoru', isError: false });
+                } else {
+                    aiChatHistory.push({ role: 'model', text: '⚠️ ' + (data.message || 'Uygunluk taraması başarısız.'), source: 'Hata', isError: true });
+                }
+                renderAiChatHistory();
+            } catch (err) {
+                const typingEl = document.getElementById('aiTypingIndicator');
+                if (typingEl) typingEl.remove();
+                aiChatHistory.push({ role: 'model', text: '⚠️ Bağlantı hatası: ' + err.message, source: 'Hata', isError: true });
+                renderAiChatHistory();
             }
         }
 
@@ -7182,6 +7218,16 @@ def api_ai_chat():
             symbol=symbol,
             timeframe=timeframe
         )
+        return jsonify(res), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/ai/review-positions", methods=["POST"])
+def api_ai_review_positions():
+    try:
+        from agents.ai_analyst_agent import AIAnalystAgent
+        res = AIAnalystAgent().review_open_positions_suitability(client=client)
         return jsonify(res), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
