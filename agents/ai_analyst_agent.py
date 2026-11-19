@@ -392,10 +392,10 @@ class AIAnalystAgent:
 
     @staticmethod
     def _build_gemini_endpoints(api_key: str, model_name: str) -> List[str]:
-        """Anahtar tipine göre (AQ.* -> Vertex Express, AIza* -> AI Studio) uygun REST uç noktalarını sırayla döner."""
-        vtx = f"https://aiplatform.googleapis.com/v1/publishers/google/models/{model_name}:generateContent?key={api_key}"
+        """Generative Language (AI Studio) ve Vertex AI REST uç noktalarını sırayla döner."""
         gl = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-        return [vtx, gl] if api_key.startswith("AQ.") else [gl, vtx]
+        vtx = f"https://aiplatform.googleapis.com/v1/publishers/google/models/{model_name}:generateContent?key={api_key}"
+        return [gl, vtx]
 
     @staticmethod
     def _extract_http_error(err: Exception) -> str:
@@ -428,7 +428,7 @@ class AIAnalystAgent:
         }
         encoded = json.dumps(payload).encode("utf-8")
 
-        for model_name in ("gemini-2.5-flash", "gemini-2.0-flash"):
+        for model_name in ("gemini-3-flash-preview", "gemini-3.8-flash", "gemini-flash-latest"):
             for url in self._build_gemini_endpoints(api_key, model_name):
                 try:
                     req = urllib.request.Request(url, data=encoded, headers=headers, method="POST")
@@ -761,7 +761,7 @@ class AIAnalystAgent:
         }
         encoded = json.dumps(payload).encode("utf-8")
 
-        for model_name in ("gemini-2.5-flash", "gemini-2.0-flash"):
+        for model_name in ("gemini-3-flash-preview", "gemini-3.8-flash", "gemini-flash-latest"):
             for url in self._build_gemini_endpoints(api_key, model_name):
                 try:
                     req = urllib.request.Request(url, data=encoded, headers=headers, method="POST")
