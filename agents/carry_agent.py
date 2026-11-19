@@ -27,6 +27,8 @@ from core.carry_strategy import (combine_sleeves, compute_target_weights, drawdo
 
 HOUR_MS = 3_600_000
 WEEK_MS = 7 * 24 * HOUR_MS
+# v3.1'in ilk canlı sürümü bu risk seviyesiyle çalıştı; durumda "target_vol_used" yoksa o sürümde oluşturulmuştur.
+LEGACY_TARGET_VOL = 0.10
 
 
 # --------------------------------------------------------------------------------------
@@ -74,6 +76,7 @@ def default_state(capital: float) -> Dict:
         "fees_paid": 0.0, "funding_paid": 0.0, "realized_pnl": 0.0,
         "n_fills": 0, "n_rebalances": 0,
         "last_targets": {}, "last_signal": {}, "tranche_weights": [], "tranche_contribs": [],
+        "target_vol_used": None, "risk_changes": [],
     }
 
 
@@ -376,7 +379,46 @@ class CarryEngine:
                 tot[s] = tot.get(s, 0.0) + v
         n = len(hist)
         sc = self.state["scale"]
-        return {s: v / n * sc for s, v in tot.items() if abs(v) > 1e-12}
+        out = {s: v / n * sc for s, v in tot.items() if abs(v) > 1e-12}
+        gross = sum(abs(v) for v in out.values())
+        if gross > self.p.gross_cap > 0:              # risk ölçeklemesinden sonra da kaldıraç tavanı korunur
+            out = {s: v * self.p.gross_cap / gross for s, v in out.items()}
+        return out
+
+    def apply_risk_level(self, now_ms: int) -> Optional[Dict]:
+        """
+        Risk seviyesi (portfolio_target_vol) değiştiyse kayıtlı 7 günlük dilimleri yeni seviyeye ölçekler.
+        Böylece değişiklik 7 gün beklemeden bir sonraki dengelemede tam olarak uygulanır.
+        """
+        new = float(self.p.portfolio_target_vol)
+        if not self.state.get("tranche_weights"):
+            self.state["target_vol_used"] = new       # henüz portföy yok: ölçeklenecek bir şey yok
+            return None
+        old = float(self.state.get("target_vol_used") or LEGACY_TARGET_VOL)
+        if abs(old - new) < 1e-9:
+            self.state["target_vol_used"] = new
+            return None
+        f = new / old
+        self.state["tranche_weights"] = [{s: v * f for s, v in w.items()} for w in self.state["tranche_weights"]]
+        self.state["tranche_contribs"] = [{k: {s: v * f for s, v in d.items()} for k, d in c.items()}
+                                          for c in (self.state.get("tranche_contribs") or [])]
+        self.state["target_vol_used"] = new
+        change = {"from": old, "to": new, "at": _fmt(now_ms), "factor": round(f, 4)}
+        self.state.setdefault("risk_changes", []).append(change)
+        self._log(f"🎚️ [Carry] Risk seviyesi %{old * 100:.0f} -> %{new * 100:.0f}: dilimler {f:.2f}x ölçeklendi, "
+                  f"bir sonraki dengelemede uygulanacak.")
+        if self.notifier is not None and getattr(self.notifier, "has_telegram", False):
+            try:
+                from agents.v3_telegram import risk_change_message
+                self.notifier.send_text_message(risk_change_message(change, self.p, self.snapshot_light()))
+            except Exception as tg_err:
+                print(f"⚠️ [Carry] Risk bildirimi gönderilemedi: {tg_err}")
+        return change
+
+    def snapshot_light(self) -> Dict:
+        """Bildirimler için hafif özet (fiyat çekmeden)."""
+        nxt = self._last_due(self.data.now_ms()) + (24 * HOUR_MS if self.p.tranches > 1 else WEEK_MS)
+        return {"next_rebalance": _fmt(nxt), "n_positions": len(self.state["positions"])}
 
     def factor_contrib(self) -> Dict[str, Dict[str, float]]:
         """Sembol -> kol -> hedef ağırlık katkısı (dilim ortalaması × risk ölçeği)."""
@@ -455,6 +497,7 @@ class CarryEngine:
                 return {"skipped": True}
             self.state.setdefault("started_ms", now_ms)
             self.state["last_step_ms"] = now_ms
+            self.apply_risk_level(now_ms)
             self.accrue_funding(now_ms, prices)
             eq = self.equity(prices)
             self.state["peak_equity"] = max(self.state["peak_equity"], eq)
@@ -520,6 +563,7 @@ class CarryEngine:
             "last_step": _fmt(st["last_step_ms"]) if st.get("last_step_ms") else None,
             "server_time": _fmt(self.data.now_ms()),
             "unrealized_pnl": sum(x["upnl"] for x in pos),
+            "risk_changes": st.get("risk_changes", [])[-5:],
             "params": {"k": self.p.k, "target_vol": self.p.portfolio_target_vol, "gross_cap": self.p.gross_cap,
                        "dd_cut": self.p.dd_cut, "dd_restore": self.p.dd_restore, "fee_rate": self.p.fee_rate,
                        "slippage_rate": self.p.slippage_rate, "tranches": self.p.tranches},
