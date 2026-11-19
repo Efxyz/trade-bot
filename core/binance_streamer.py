@@ -97,7 +97,10 @@ def _run_streamer():
                 p_str = trade_data.get("p")
                 q_str = trade_data.get("q")
 
-                if sym and p_str:
+                # Yalnızca gerçek piyasa işlemleri: Binance vadeli @trade akışı fiyatı 0 olan / piyasa dışı
+                # (ADL, sigorta fonu, NA) olaylar gönderebilir; bunlar fiyat ve fitil takibini bozar.
+                trade_type = trade_data.get("X", "MARKET")
+                if sym and p_str and trade_type == "MARKET" and float(p_str) > 0:
                     price = float(p_str)
                     qty = float(q_str) if q_str else 0.0
                     trade_val = price * qty
@@ -171,7 +174,9 @@ def pop_price_extremes(symbol: str) -> Optional[Tuple[float, float]]:
 
 
 def _record_tick_for_test(symbol: str, price: float):
-    """Test yardımcı fonksiyonu: WebSocket olmadan tick simüle eder."""
+    """Test yardımcı fonksiyonu: WebSocket olmadan tick simüle eder (canlı akışla aynı filtre)."""
+    if not price or price <= 0:
+        return
     with _PRICE_LOCK:
         _LIVE_PRICES[symbol] = price
         _LIVE_TIMESTAMPS[symbol] = time.time()

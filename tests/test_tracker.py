@@ -209,3 +209,55 @@ def test_wide_ladder_default_locks_breakeven_at_1r(clean_signals, tracker):
     assert int(r["ladder_step"]) == 1 and int(r["partial_tp_taken"] or 0) == 0
     assert r["stop_loss"] == pytest.approx(100.15)
     assert float(r["allocated_margin_usdt"]) == 100.0
+
+
+def test_zero_or_wild_ticks_are_ignored(clean_signals, tracker):
+    """Regresyon: 0 fiyatlı / aşırı sapan tick SHORT'ta sahte %100 kâr ve stop=0 üretmemeli."""
+    sid = _open(direction="SHORT", sl=101.0, tp1=98.0, tp2=97.0)
+    streamer._record_tick_for_test("TESTUSDT", 0.0)  # filtrelenmeli
+    with streamer._PRICE_LOCK:  # filtreyi aşan bozuk bir uç değer de olsa takip yok saymalı
+        streamer._TICK_EXTREMES["TESTUSDT"] = [100.1, 1.0]
+        streamer._LIVE_PRICES["TESTUSDT"] = 100.0
+        import time as _t
+        streamer._LIVE_TIMESTAMPS["TESTUSDT"] = _t.time()
+    tracker.update_tracked_trades(evaluate_shadows=False)
+    r = _row(sid)
+    assert r["status"] == "ACTIVE"
+    assert r["stop_loss"] == 101.0 and r["lowest_price"] > 90
+
+
+def test_streamer_drops_non_market_trades(monkeypatch):
+    import json as _json
+    msgs = [
+        _json.dumps({"data": {"s": "ZZZUSDT", "p": "0", "q": "1", "X": "NA"}}),
+        _json.dumps({"data": {"s": "ZZZUSDT", "p": "50.5", "q": "1", "X": "INSURANCE_FUND"}}),
+        _json.dumps({"data": {"s": "ZZZUSDT", "p": "100.0", "q": "1", "X": "MARKET"}}),
+    ]
+
+    class WS:
+        def __init__(self): self.i = 0
+        def recv(self):
+            if self.i < len(msgs):
+                self.i += 1
+                return msgs[self.i - 1]
+            raise KeyboardInterrupt  # döngüden çık
+        def close(self): pass
+
+    monkeypatch.setattr(streamer.websocket, "create_connection", lambda *a, **k: WS())
+    streamer._TICK_EXTREMES.pop("ZZZUSDT", None)
+    try:
+        streamer._run_streamer()
+    except KeyboardInterrupt:
+        pass
+    assert streamer.pop_price_extremes("ZZZUSDT") == (100.0, 100.0)
+
+
+def test_pre_entry_ticks_do_not_leak_into_position(clean_signals, tracker):
+    """Regresyon: girişten önce biriken uç değerler (ör. SHORT için girişin üstü) yeni pozisyonu etkilememeli."""
+    _ticks(97.0, 101.5, 100.0)  # giriş öncesi: SHORT için hem stop (101) hem TP1 (98) seviyesini aşan tick'ler
+    sid = _open(direction="SHORT", sl=101.0, tp1=98.0, tp2=97.0)
+    _ticks(100.1, 99.9)
+    tracker.update_tracked_trades(evaluate_shadows=False)
+    r = _row(sid)
+    assert r["status"] == "ACTIVE"
+    assert r["highest_price"] <= 100.1 + 1e-9 and r["lowest_price"] >= 99.9 - 1e-9

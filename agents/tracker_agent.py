@@ -123,6 +123,11 @@ class CounterfactualTrackerAgent:
                 ws_price = None
 
             current_price = ws_price if ws_price else ticker["lastPrice"]
+            # Savunma: geçersiz/aşırı sapan tick uç değerlerini (ör. 0 fiyatlı olay, bozuk veri) yok say
+            if tick_ext is not None and current_price and current_price > 0:
+                hi_t, lo_t = tick_ext
+                if lo_t <= 0 or hi_t <= 0 or lo_t < current_price * 0.85 or hi_t > current_price * 1.15:
+                    tick_ext = None
             has_ticks = bool(ws_price) and tick_ext is not None
             bar_high = max(current_price, tick_ext[0]) if has_ticks else current_price
             bar_low = min(current_price, tick_ext[1]) if has_ticks else current_price
@@ -185,6 +190,8 @@ class CounterfactualTrackerAgent:
             # 1. ZİRVE / DİP FİYAT VE ANLIK KÂR TAKİBİ
             highest_price = sig.get("highest_price") or entry_price
             lowest_price = sig.get("lowest_price") or entry_price
+            if lowest_price <= 0:
+                lowest_price = entry_price
 
             if bar_high > highest_price:
                 highest_price = bar_high

@@ -953,7 +953,14 @@ def save_signal(data: Dict) -> int:
             data.get("strategy_version") or STRATEGY_VERSION
         ))
         conn.commit()
-        return cursor.lastrowid
+        new_id = cursor.lastrowid
+    # Giriş öncesi biriken tick uç değerlerini sıfırla: takip yalnızca girişten SONRAKİ fitilleri görmeli
+    try:
+        from core.binance_streamer import pop_price_extremes
+        pop_price_extremes(data["symbol"])
+    except Exception:
+        pass
+    return new_id
 
 def get_active_positions_count() -> int:
     """Açık ve aktif işlem sayısını döner (Kasa Kalkanı kontrolü için)."""
