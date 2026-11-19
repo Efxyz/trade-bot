@@ -68,6 +68,7 @@ class TradingBotOrchestrator:
         self._cycle_lock = threading.Lock()
         self._tracker_thread = None
         self._tracker_stop = threading.Event()
+        self._carry_thread = None
 
         # Canlı WebSocket Veri Boru Hattını Başlat
         try:
@@ -219,6 +220,31 @@ class TradingBotOrchestrator:
     def stop_tracker_loop(self):
         self._tracker_stop.set()
 
+    def start_carry_loop(self, interval_sec: float = None):
+        """v3 Çok Faktörlü Motor (trend + kesitsel momentum + fonlama): SMC taramasından bağımsız thread, dakikalık adım (dengeleme günde bir)."""
+        from config import ENABLE_CARRY_ENGINE, CARRY_LOOP_SECONDS
+        if not ENABLE_CARRY_ENGINE:
+            print("⏸️ [v3 Motor] ENABLE_CARRY_ENGINE=false, başlatılmadı.")
+            return None
+        if self._carry_thread and self._carry_thread.is_alive():
+            return self._carry_thread
+        from agents.carry_agent import get_live_engine
+        engine = get_live_engine(notifier=self.notifier)
+        interval = float(interval_sec or CARRY_LOOP_SECONDS)
+
+        def _loop():
+            while not self._tracker_stop.is_set():
+                try:
+                    engine.step()
+                except Exception as carry_err:
+                    print(f"⚠️ [v3 Motor Hatası]: {carry_err}")
+                self._tracker_stop.wait(interval)
+
+        self._carry_thread = threading.Thread(target=_loop, daemon=True, name="CarryEngine")
+        self._carry_thread.start()
+        print(f"💰 [v3 Çok Faktörlü Motor] {len(engine.p.universe)} coin, kollar: {', '.join(engine.p.sleeves)} · {interval:.0f} sn aralıkla başlatıldı.")
+        return self._carry_thread
+
     def run_cycle(self):
         """Tek bir tam analiz ve takip döngüsü yürütür (Thread-Safe)."""
         if not self._cycle_lock.acquire(blocking=False):
@@ -267,6 +293,13 @@ class TradingBotOrchestrator:
         resolved = self.tracker.update_tracked_trades(self.notifier)
         if resolved:
             print(f"🎯 {len(resolved)} adet sanal işlem sonuçlandı!")
+
+        # 1.4 v3: SMC sinyal motoru varsayılan olarak yeni işlem açmaz (teşhis: yön bilgisi yok).
+        # Açık SMC işlemleri yukarıdaki tracker ile kapanana kadar takip edilmeye devam eder.
+        from config import ENABLE_SMC_ENGINE
+        if not ENABLE_SMC_ENGINE:
+            print("⏸️ [SMC Motoru] Kapalı (ENABLE_SMC_ENGINE=false). İşlemleri v3 Çok Faktörlü Motor yönetiyor (/carry).")
+            return
 
         # 1.5 KASA KALKANI KONTROLÜ (Maksimum Eşzamanlı Açık İşlem Limiti)
         active_count = get_active_positions_count()
@@ -1059,6 +1092,9 @@ class TradingBotOrchestrator:
 
         # Saniyelik canlı pozisyon takibi (ana taramadan bağımsız)
         self.start_tracker_loop()
+
+        # v3 Çok Faktörlü Motor
+        self.start_carry_loop()
 
         # Telegram Komut Dinleyicisini Başlat
         if ENABLE_TELEGRAM_COMMANDS:

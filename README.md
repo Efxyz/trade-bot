@@ -161,6 +161,39 @@ Testler geçici bir veri klasörü (`TRADEBOT_DATA_DIR`) kullanır; gerçek veri
 
 ---
 
+## 💰 v3 Çok Faktörlü Motor (varsayılan işlem motoru)
+Geniş çaplı araştırmada SMC sinyal motorunun 11.894 kurulumda yön bilgisi taşımadığı görüldü (ters yöne girmek daha iyi sonuç veriyordu; komisyon işlem başına ~0.14R). Bu yüzden yeni işlemler artık literatürde belgelenmiş üç faktörün eşit riskli karışımıyla açılır:
+
+| Kol | Kural |
+|---|---|
+| Trend (TSMOM) | Son 28 günün getirisi pozitifse LONG, negatifse SHORT |
+| Kesitsel momentum | Son 30 günün (son 1 gün hariç) en iyi 5 coini LONG, en kötü 5 coini SHORT |
+| Fonlama faktörü | Son 7 günün fonlama toplamı en düşük 5 coin LONG, en yüksek 5 coin SHORT |
+
+- Evren: 20 likit USDT-M perp (`CARRY_UNIVERSE`). Coin başına ters-volatilite ağırlığı; her kol kovaryans tabanlı tahmini volatilitesine göre eşit riske ölçeklenir (toplam hedef ~%10 yıllık vol, brüt tavan 3x).
+- Portföy 7 dilime bölünür: her gün 00:00 UTC'de bir dilim yenilenir (hedef = son 7 günlük sinyalin ortalaması). Böylece sonuç, dengelemenin yapıldığı güne bağlı kalmaz.
+- Portföy kesicisi: tepeden -%10 düşüşte risk yarıya iner, -%5'in üstüne dönünce normale döner.
+- Panel: **`/carry`** · API: `GET /api/carry`. Durum `carry_*` tablolarında saklanır; yeniden başlatmada kaldığı yerden devam eder.
+- Anahtarlar: `ENABLE_CARRY_ENGINE` (varsayılan true), `ENABLE_SMC_ENGINE` (varsayılan false; açık SMC işlemleri her durumda takip edilip kapatılır), `CARRY_CAPITAL_USDT`.
+
+**Doğrulama** (canlı motorun kendisi saatlik simüle saatle; taraf başına %0.05 komisyon + %0.02 kayma, gerçek fonlama; 8 farklı dengeleme saati):
+
+| Dönem | Sharpe ort. (en kötü) | Yıllık | En kötü düşüş | Kârlı ay |
+|---|---|---|---|---|
+| Kas 2023 – Kas 2026 | 1.13 (1.01) | +12.5% | -8.0% | %61 |
+| Eki 2020 – Kas 2023 (örneklem dışı) | 1.38 (1.10) | +13.9% | -11.9% | %63 |
+| Komisyon 2 katı | 1.01 / 1.32 | | | |
+
+Tek başına fonlama faktörü 2023–26'da Sharpe 1.7 verirken 2020–23'te negatifti; kesitsel momentumda tam tersi oldu. Karışım, sonuçlar görülmeden önce tanımlanmıştı ve iki dönemde de pozitif kaldı. Uyarılar: evren bugünün büyük coinlerinden seçildi (hayatta kalma yanlılığı); 2022 gibi yıllarda sonuç sıfıra yakın olabilir; geçmiş performans garanti değildir.
+
+```bash
+python -m backtest.carry_backtest                 # son 3 yıl, 8 kaydırma
+python -m backtest.carry_backtest --oos           # önceki 3 yıl (örneklem dışı)
+python -m backtest.carry_backtest --fee 0.001     # komisyon stresi
+```
+
+---
+
 ## 🔬 Backtest (Strateji Doğrulama)
 Backtest motoru canlı botun **kendi** sinyal, risk ve takip kodunu simüle saatle çalıştırır. Çıkışlar 1 dakikalık mumların tick'leriyle (fitil temasları dahil, muhafazakâr sıralama) gerçek `CounterfactualTrackerAgent` tarafından yönetilir; komisyon, kayma ve fonlama dahildir.
 ```bash

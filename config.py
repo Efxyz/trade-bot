@@ -220,9 +220,9 @@ QUALITY_GATE_THRESHOLD = 68.0
 LADDER_STEP1_PARTIAL_PCT = 0.0          # Basamak 1'de realize edilen oran (v2.1: 0 = kısmi satış yok; eski: 0.35)
 ENABLE_MOMENTUM_STAGNATION_EXIT = False  # v2.1: Kapalı. Açılırsa ilk 2 mumda yön teyidi yoksa küçük zararla çıkar
 SCORING_DEDUP = False                    # True: iki yöne birden puan veren faktörler (hacim, RSI 48-52) nötrlenir
-USE_REGIME_MIN_RR = False
+USE_REGIME_MIN_RR = False                # True: rejim politikasındaki min R:R (TRENDING 1.65) gerçekten uygulanır
 LONG_SCORE_EXTRA = 6                     # v2.2: LONG için +6 ek puan barajı (0 = eşit baraj)
-ENABLE_LONGS = True                      # False: yalnızca SHORT (teşhis amaçlı)                # True: rejim politikasındaki min R:R (TRENDING 1.65) gerçekten uygulanır
+ENABLE_LONGS = True                      # False: yalnızca SHORT (teşhis amaçlı)
 
 # Strateji sürüm etiketi: her yeni işleme yazılır; istatistikler sürüm bazında ayrıştırılabilir
 STRATEGY_VERSION = "v2.2-no30m-longplus6"
@@ -238,3 +238,36 @@ TRACKER_INTERVAL_SECONDS = 2.0
 # otonom döngü yalnızca rapor üretir (diske yazmaz).
 SELF_TUNING_ENABLED = os.getenv("SELF_TUNING_ENABLED", "false").lower() == "true"
 SELF_TUNING_MIN_TRADES = 150            # Açıksa bile en az bu kadar kapalı işlem olmadan parametre değiştirilmez
+
+# ========================================================
+# v3: FONLAMA FAKTÖRÜ MOTORU (kesitsel funding carry, piyasa-nötr)
+# ========================================================
+# Araştırma (3 yıl, 20 coin, maliyetler dahil): Sharpe ~1.7, max düşüş ~-%7, BTC betası ~0.
+# SMC sinyal motoru 11.894 kurulumluk teşhiste yön bilgisi göstermediği için yeni işlem açmaz
+# (ENABLE_SMC_ENGINE=true ile geri açılabilir; açık SMC işlemleri her durumda takip edilip kapatılır).
+ENABLE_SMC_ENGINE = os.getenv("ENABLE_SMC_ENGINE", "false").lower() == "true"
+ENABLE_CARRY_ENGINE = os.getenv("ENABLE_CARRY_ENGINE", "true").lower() == "true"
+CARRY_UNIVERSE = [
+    "BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "DOGEUSDT", "BNBUSDT", "ADAUSDT", "AVAXUSDT", "LINKUSDT", "DOTUSDT",
+    "LTCUSDT", "NEARUSDT", "TRXUSDT", "BCHUSDT", "ATOMUSDT", "UNIUSDT", "FILUSDT", "APTUSDT", "ARBUSDT", "SUIUSDT",
+]
+CARRY_CAPITAL_USDT = float(os.getenv("CARRY_CAPITAL_USDT", "1000"))
+CARRY_SLEEVES = ["trend", "xsmom", "funding"]   # v3.1 çok faktörlü karışım (tek faktör: ["funding"])
+CARRY_TSMOM_LOOKBACK_H = 24 * 28         # Trend kolu: 28 günlük getiri işareti
+CARRY_XSMOM_LOOKBACK_H = 24 * 30         # Kesitsel momentum kolu: 30 günlük getiri (son 1 gün hariç)
+CARRY_PORTFOLIO_TARGET_VOL = 0.10        # Kollar toplamı için hedef yıllık volatilite (kol başına 0.10/√3)
+CARRY_K = 5                              # Kesitsel kollarda bacak başına coin sayısı (5 long + 5 short)
+CARRY_FUNDING_LOOKBACK_H = 24 * 7        # Sıralama: son 7 günün fonlama toplamı
+CARRY_VOL_LOOKBACK_H = 24 * 30           # Ters-volatilite ağırlığı için 30 günlük saatlik volatilite
+CARRY_TARGET_VOL = 0.20                  # Varlık başına hedef vol = 0.20 / sqrt(evren) -> portföy ~%11 yıllık vol
+CARRY_GROSS_CAP = 3.0                    # Brüt kaldıraç tavanı (notional / özsermaye)
+CARRY_TRANCHES = 7                       # 7 dilim: her gün 1/7 yenilenir (takvim-günü şansını ortadan kaldırır)
+CARRY_REBALANCE_WEEKDAY = 0              # Yalnızca CARRY_TRANCHES=1 iken: 0 = Pazartesi
+CARRY_REBALANCE_HOUR_UTC = 0
+CARRY_MIN_TRADE_USDT = 10.0              # Bundan küçük boyut ayarlamaları atlanır (yön değişimi/kapanış hariç)
+CARRY_FEE_RATE = 0.0005                  # Taker %0.05 (muhafazakâr; limit emirle %0.02 olur)
+CARRY_SLIPPAGE_RATE = 0.0002             # %0.02 kayma
+CARRY_DD_CUT = -0.10                     # Tepeden -%10 düşüşte risk yarıya
+CARRY_DD_RESTORE = -0.05                 # -%5'in üstüne dönünce tam risk
+CARRY_LOOP_SECONDS = 60
+CARRY_STRATEGY_VERSION = "v3.1-multifactor"
