@@ -202,6 +202,12 @@ ENABLE_MAKER_POST_ONLY = False         # Sanal simülasyonda muhafazakâr Taker 
 MAKER_FEE_PCT = 0.02                   # %0.02 Binance Futures Maker komisyonu
 MAKER_ROUNDTRIP_FEE_PCT = 0.04         # Giriş + TP Maker toplam %0.04 komisyon
 
+# Strateji sürüm etiketi: her yeni işleme yazılır; istatistikler sürüm bazında ayrıştırılabilir
+STRATEGY_VERSION = "v2.0-overhaul"
+
+# Pozisyon takip döngüsü (ana taramadan bağımsız thread): WebSocket fiyatlarıyla saniyelik SL/TP kontrolü
+TRACKER_INTERVAL_SECONDS = 2.0
+
 # ========================================================
 # ÖZ-KALİBRASYON (SELF-TUNING) KİLİDİ
 # ========================================================

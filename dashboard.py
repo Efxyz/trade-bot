@@ -25,6 +25,7 @@ from config import (
     PORTFOLIO_EQUITY_USDT
 )
 from core.binance_client import BinanceFuturesClient
+from core.timeutil import utc_now
 from core.database import (
     get_all_signals,
     get_active_and_pending_signals,
@@ -6877,7 +6878,7 @@ def update_terminal_cache_loop():
                     try:
                         t_str = str(entered_str).replace('T', ' ').split('.')[0]
                         dt = datetime.strptime(t_str, "%Y-%m-%d %H:%M:%S")
-                        diff_sec = max(0, int((datetime.now() - dt).total_seconds()))
+                        diff_sec = max(0, int((utc_now() - dt).total_seconds()))
                         mins = diff_sec // 60
                         secs = diff_sec % 60
                         if mins == 0:

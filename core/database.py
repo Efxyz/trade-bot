@@ -10,7 +10,8 @@ import time
 import random
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple, Any, Callable, Union
-from config import DB_PATH
+from config import DB_PATH, STRATEGY_VERSION
+from core.timeutil import utc_now, utc_now_str, tr_day_start_utc_str
 
 _THREAD_LOCAL = threading.local()
 
@@ -126,7 +127,9 @@ def init_db():
             "is_pair_trade": "INTEGER DEFAULT 0",
             "pair_symbol": "TEXT DEFAULT ''",
             "timeframe": "TEXT DEFAULT '15m'",
-            "trade_horizon": "TEXT DEFAULT 'Kısa Vade (15m)'"
+            "trade_horizon": "TEXT DEFAULT 'Kısa Vade (15m)'",
+            "funding_usd": "REAL DEFAULT 0.0",
+            "strategy_version": "TEXT DEFAULT 'legacy'"
         }
         for col_name, col_def in new_cols.items():
             if col_name not in existing_cols:
@@ -906,7 +909,7 @@ def save_signal(data: Dict) -> int:
     import json
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        current_time = utc_now_str()
         entry_price = data.get("actual_entry_price") or data.get("current_price") or data["entry_min"]
         debate_json_str = data.get("debate_json")
         if isinstance(debate_json_str, dict):
@@ -928,8 +931,8 @@ def save_signal(data: Dict) -> int:
                 risk_grade, news_summary, ta_reasons, chart_entry_png, status,
                 allocated_margin_usdt, risk_usd, highest_price, lowest_price,
                 debate_json, entry_limit_2, timeframe, trade_horizon,
-                is_pair_trade, pair_symbol
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                is_pair_trade, pair_symbol, strategy_version
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             data["symbol"], data["direction"], data.get("leverage", 10),
             data["entry_min"], data["entry_max"],
@@ -946,7 +949,8 @@ def save_signal(data: Dict) -> int:
             timeframe,
             trade_horizon,
             is_pair_trade,
-            pair_symbol
+            pair_symbol,
+            data.get("strategy_version") or STRATEGY_VERSION
         ))
         conn.commit()
         return cursor.lastrowid
@@ -959,23 +963,16 @@ def get_active_positions_count() -> int:
         return cursor.fetchone()[0]
 
 def _get_local_today_start_str() -> str:
-    """closed_at / entered_at (datetime.now() ile yazılan) sütunları için Türkiye günü (00:00 TSİ) başlangıcını yerel saat diliminde döner."""
-    from datetime import timezone, timedelta
-    tr_tz = timezone(timedelta(hours=3))
-    now_tr = datetime.now(timezone.utc).astimezone(tr_tz)
-    today_start_tr = now_tr.replace(hour=0, minute=0, second=0, microsecond=0)
-    return today_start_tr.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    """Bugünün TSİ 00:00 başlangıcını naive UTC olarak döner (tüm DB zaman damgaları UTC'dir)."""
+    return tr_day_start_utc_str()
 
 
 def _get_closed_at_tr_shift_modifier() -> str:
-    """Sunucu saati ile TSİ (UTC+3) arasındaki farkı SQLite datetime() modifier olarak döner (Windows TSİ: '+0 hours', Railway UTC: '+3 hours')."""
-    from datetime import timezone
-    local_offset_hours = int(round((datetime.now() - datetime.now(timezone.utc).replace(tzinfo=None)).total_seconds() / 3600.0))
-    diff_to_tr = 3 - local_offset_hours
-    return f"{diff_to_tr:+d} hours"
+    """UTC olarak saklanan closed_at değerlerini TSİ gününe çevirmek için SQLite datetime() modifier'ı."""
+    return "+3 hours"
 
 
-QUOTA_RESET_FLOOR_UTC = "2026-11-18 02:00:30"
+QUOTA_RESET_FLOOR_UTC = "1970-01-01 00:00:00"
 
 
 def get_quota_reset_watermark_utc() -> str:
@@ -996,14 +993,10 @@ def get_quota_reset_watermark_utc() -> str:
 
 
 def _get_local_quota_reset_start_str() -> str:
-    """closed_at / entered_at sütunları için Türkiye günü başlangıcı ile kota sıfırlama watermark'ının büyüğünü sunucu yerel saatinde döner."""
-    from datetime import datetime, timezone
+    """TSİ gün başlangıcı ile manuel kota sıfırlama watermark'ının büyüğünü (UTC) döner."""
     base_start = _get_local_today_start_str()
     try:
-        wm_utc_str = get_quota_reset_watermark_utc()
-        wm_dt = datetime.strptime(wm_utc_str[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-        wm_local_str = wm_dt.astimezone().strftime("%Y-%m-%d %H:%M:%S")
-        return max(base_start, wm_local_str)
+        return max(base_start, get_quota_reset_watermark_utc()[:19])
     except Exception:
         return base_start
 
@@ -1291,12 +1284,12 @@ def get_active_and_pending_signals() -> List[Dict]:
 def get_recently_traded_symbols(within_minutes: int = 45) -> set:
     """Son belirlenen dakikada işlem açılmış veya kapatılmış coinleri döner (Tekrar aynı coine girmemek için)."""
     from datetime import datetime, timedelta
-    cutoff_time = (datetime.now() - timedelta(minutes=within_minutes)).strftime("%Y-%m-%d %H:%M:%S")
+    cutoff_time = (utc_now() - timedelta(minutes=within_minutes)).strftime("%Y-%m-%d %H:%M:%S")
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT DISTINCT symbol FROM signals
-            WHERE status IN ('ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'PENDING_ENTRY')
+            WHERE status IN ('ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'ACTIVE_PARTIAL_TP1', 'PENDING_ENTRY')
                OR (closed_at IS NOT NULL AND closed_at >= ?)
                OR (entered_at IS NOT NULL AND entered_at >= ?)
         """, (cutoff_time, cutoff_time))
@@ -1609,9 +1602,15 @@ def close_single_signal_db(symbol_or_id: Union[str, int], client=None, close_sta
             except Exception:
                 pass
 
+    # Piyasa emriyle kapanış: aleyhe kayma uygula
+    from config import ESTIMATED_SLIPPAGE_PCT, BINANCE_ROUNDTRIP_FEE_PCT
+    _slip = ESTIMATED_SLIPPAGE_PCT / 100.0
+    if exit_price != entry_price:
+        exit_price = round(exit_price * (1.0 - _slip) if direction == "LONG" else exit_price * (1.0 + _slip), 8)
+
     raw_change = ((exit_price - entry_price) / entry_price) if direction == "LONG" else ((entry_price - exit_price) / entry_price) if entry_price > 0 else 0.0
     gross_pnl_pct = round(raw_change * leverage * 100, 2)
-    fee_pct = round(0.10 * leverage, 2)
+    fee_pct = round(BINANCE_ROUNDTRIP_FEE_PCT * leverage, 2)
     net_pnl_pct = round(gross_pnl_pct - fee_pct, 2)
 
     # Kısmi kâr (Basamak 1 veya TP1) alınmışsa birleşik kâr ve orijinal marjini koru
@@ -1622,7 +1621,20 @@ def close_single_signal_db(symbol_or_id: Union[str, int], client=None, close_sta
         allocated_margin, partial_tp_taken, prev_realized_usd, net_pnl_pct, fee_pct, close_status
     )
 
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now_str = utc_now_str()
+
+    # Fonlama maliyeti
+    funding_usd = 0.0
+    try:
+        from core.accounting import estimate_funding_usd, apply_funding_to_pnl
+        from core.timeutil import parse_db_ts, utc_now
+        if client and sig.get("entered_at"):
+            fr = float((client.get_funding_rate(clean_sym) or {}).get("lastFundingRate", 0.0))
+            funding_usd = estimate_funding_usd(parse_db_ts(sig["entered_at"]), utc_now(),
+                                               final_margin_to_save * leverage, fr, direction == "LONG")
+            net_pnl_pct, gross_pnl_pct = apply_funding_to_pnl(net_pnl_pct, gross_pnl_pct, final_margin_to_save, funding_usd)
+    except Exception:
+        funding_usd = 0.0
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -1634,9 +1646,10 @@ def close_single_signal_db(symbol_or_id: Union[str, int], client=None, close_sta
                 simulated_pnl_pct = ?,
                 gross_pnl_pct = ?,
                 fee_pct = ?,
-                allocated_margin_usdt = ?
+                allocated_margin_usdt = ?,
+                funding_usd = ?
             WHERE id = ? AND status IN ('ACTIVE', 'ACTIVE_BE', 'ACTIVE_LADDER', 'PENDING_ENTRY', 'ACTIVE_PARTIAL_TP1')
-        """, (close_status, now_str, exit_price, net_pnl_pct, gross_pnl_pct, fee_pct, final_margin_to_save, sig_id))
+        """, (close_status, now_str, exit_price, net_pnl_pct, gross_pnl_pct, fee_pct, final_margin_to_save, funding_usd, sig_id))
         if cursor.rowcount == 0:
             conn.commit()
             return None
@@ -1777,7 +1790,7 @@ def close_all_active_signals_db(client=None) -> int:
         except Exception:
             pass
 
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now_str = utc_now_str()
     closed_count = 0
 
     try:
@@ -2155,7 +2168,7 @@ def check_side_stoploss_guard(
 
             if consecutive_losses >= max_consecutive_losses and last_loss_closed_at:
                 loss_dt = datetime.strptime(str(last_loss_closed_at)[:19], "%Y-%m-%d %H:%M:%S")
-                now = datetime.now()
+                now = utc_now()
                 elapsed_min = (now - loss_dt).total_seconds() / 60.0
                 if elapsed_min < cooldown_minutes:
                     remaining_min = int(cooldown_minutes - elapsed_min)
