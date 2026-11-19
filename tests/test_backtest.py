@@ -76,3 +76,41 @@ def test_engine_end_to_end_synthetic():
     # Gerçek DB'ye dokunulmadı ve saat sıfırlandı
     from core import timeutil
     assert timeutil._CLOCK_OVERRIDE is None
+
+
+def test_config_overrides_patch_and_restore():
+    import config
+    import agents.tracker_agent as tr
+    from backtest.run import config_overrides
+    before = (config.EARLY_INVALIDATION_ENABLED, tr.EARLY_INVALIDATION_ENABLED, config.LADDER_STEP1_PARTIAL_PCT)
+    with config_overrides({"EARLY_INVALIDATION_ENABLED": False, "LADDER_STEP1_PARTIAL_PCT": 0.0, "NEW_FLAG_X": 1}):
+        assert config.EARLY_INVALIDATION_ENABLED is False and tr.EARLY_INVALIDATION_ENABLED is False
+        assert config.LADDER_STEP1_PARTIAL_PCT == 0.0 and config.NEW_FLAG_X == 1
+    assert (config.EARLY_INVALIDATION_ENABLED, tr.EARLY_INVALIDATION_ENABLED, config.LADDER_STEP1_PARTIAL_PCT) == before
+    assert not hasattr(config, "NEW_FLAG_X")
+
+
+def test_step1_partial_disabled_means_no_partial(clean_signals, monkeypatch):
+    import config
+    import core.binance_streamer as streamer
+    from agents.tracker_agent import CounterfactualTrackerAgent
+    from core.database import save_signal, get_db_connection
+    import core.reflection as refl
+    monkeypatch.setattr(config, "LADDER_STEP1_PARTIAL_PCT", 0.0)
+    monkeypatch.setattr(CounterfactualTrackerAgent, "generate_outcome_chart", lambda *a, **k: "")
+    monkeypatch.setattr(refl.ReflectorEngine, "reflect_on_trade", staticmethod(lambda d: {"lesson": ""}))
+
+    class C:
+        def get_24hr_tickers(self): return {"TESTUSDT": {"lastPrice": 100.6}}
+        def get_klines(self, *a, **k): return []
+        def get_funding_rate(self, s): return {"lastFundingRate": 0.0}
+
+    streamer._TICK_EXTREMES.clear()
+    sid = save_signal({"symbol": "TESTUSDT", "direction": "LONG", "leverage": 10, "entry_min": 100, "entry_max": 100,
+                       "actual_entry_price": 100.0, "stop_loss": 99.0, "take_profit_1": 102.0, "take_profit_2": 103.0,
+                       "risk_reward": 2, "risk_grade": "Grade A", "allocated_margin_usdt": 100.0, "risk_usd": 11})
+    streamer._record_tick_for_test("TESTUSDT", 100.6)
+    CounterfactualTrackerAgent(C()).update_tracked_trades(evaluate_shadows=False)
+    r = dict(get_db_connection().execute("SELECT * FROM signals WHERE id=?", (sid,)).fetchone())
+    assert int(r["ladder_step"]) == 1 and int(r["partial_tp_taken"] or 0) == 0
+    assert float(r["allocated_margin_usdt"]) == 100.0 and float(r["realized_pnl_usd"] or 0) == 0.0
