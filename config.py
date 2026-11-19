@@ -271,3 +271,15 @@ CARRY_DD_CUT = -0.10                     # Tepeden -%10 düşüşte risk yarıya
 CARRY_DD_RESTORE = -0.05                 # -%5'in üstüne dönünce tam risk
 CARRY_LOOP_SECONDS = 60
 CARRY_STRATEGY_VERSION = "v3.1-multifactor"
+
+# ========================================================
+# BAKIM: depolama, eski kayıt temizliği ve gece yedeği (core/maintenance.py)
+# ========================================================
+STORAGE_LIMIT_MB = float(os.getenv("STORAGE_LIMIT_MB", "500"))         # Railway volume boyutu (panel göstergesi)
+DATA_RETENTION_DAYS = int(os.getenv("DATA_RETENTION_DAYS", "30"))      # Tarama/komite/haber kayıtları ve grafikler için saklama
+ENABLE_AUTO_MAINTENANCE = os.getenv("ENABLE_AUTO_MAINTENANCE", "true").lower() == "true"
+MAINTENANCE_HOUR_UTC = 0                 # Gece bakımı 00:20 UTC (03:20 TSİ), günlük dengelemeden sonra
+MAINTENANCE_MINUTE_UTC = 20
+BACKUP_KEEP = 3                          # Volume'da saklanan son yedek sayısı
+BACKUP_TELEGRAM = os.getenv("BACKUP_TELEGRAM", "true").lower() == "true"  # Yedeği Telegram'a gönder
+VACUUM_MIN_RECLAIM_MB = 20.0             # En az bu kadar boş alan oluştuysa veritabanı sıkıştırılır

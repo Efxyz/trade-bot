@@ -1096,6 +1096,13 @@ class TradingBotOrchestrator:
         # v3 Çok Faktörlü Motor
         self.start_carry_loop()
 
+        # Gece bakımı: eski tanı kayıtlarının temizliği + yedek (Telegram)
+        try:
+            from core.maintenance import start_scheduler
+            start_scheduler(self.notifier)
+        except Exception as m_err:
+            print(f"⚠️ [Bakım] Zamanlayıcı başlatılamadı: {m_err}")
+
         # Telegram Komut Dinleyicisini Başlat
         if ENABLE_TELEGRAM_COMMANDS:
             self.cmd_agent.start_in_background()
