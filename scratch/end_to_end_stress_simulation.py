@@ -1067,6 +1067,38 @@ def run_all_stress_tests():
     except Exception as e:
         record("AI Pozisyon Uygunluk Testi", False, "EXCEPTION", str(e))
 
+    # =========================================================================
+    # SENARYO 20: GEÇMİŞ İŞLEMLERDEN TOPLU EĞİTİM & SABİT PATRON ANAYASASI
+    # =========================================================================
+    try:
+        train_unauth = dashboard.app.test_client().post("/api/ai/train-history", json={"limit": 30})
+        train_auth = dashboard.app.test_client().post(
+            "/api/ai/train-history",
+            headers={"X-Admin-Pin": dashboard.ADMIN_PIN},
+            json={"limit": 30}
+        )
+        train_json = train_auth.get_json() or {}
+        past_ctx_with_pinned = ReflectorEngine.get_past_context_for_committee("BTCUSDT", limit=4)
+        home_train_html = dashboard.app.test_client().get("/").get_data(as_text=True)
+
+        train_ok = (
+            train_unauth.status_code == 401
+            and train_auth.status_code == 200
+            and train_json.get("status") == "ok"
+            and int(train_json.get("trades_analyzed") or 0) >= 1
+            and len(train_json.get("rules_learned") or []) >= 1
+            and "SABİT PATRON & EĞİTİM KURALLARI" in past_ctx_with_pinned
+            and "trainAiFromHistory" in home_train_html
+        )
+        record(
+            "Geçmiş İşlemlerden Toplu AI Eğitimi & Sabit Kurallar Testi",
+            train_ok,
+            "AI_HISTORICAL_TRAINING",
+            f"analyzed={train_json.get('trades_analyzed')}, rules={len(train_json.get('rules_learned') or [])}, pinned_injected={'SABİT PATRON' in past_ctx_with_pinned}"
+        )
+    except Exception as e:
+        record("AI Toplu Eğitim Testi", False, "EXCEPTION", str(e))
+
     print("\n" + "=" * 80)
     passed_cnt = sum(1 for r in results if r["passed"])
     failed_cnt = sum(1 for r in results if not r["passed"])
