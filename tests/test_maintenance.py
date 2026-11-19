@@ -53,7 +53,8 @@ def _seed_logs(old_n=3, new_n=2):
 
 
 # ---------------- temizlik ----------------
-def test_cleanup_removes_only_old_diagnostic_rows(carry_rows):
+def test_cleanup_removes_only_old_diagnostic_rows(carry_rows, monkeypatch):
+    monkeypatch.setattr(config, "ENABLE_SMC_ENGINE", True)   # motor açıkken: 30 günlük saklama
     _seed_logs(old_n=12, new_n=2)
     res = mt.cleanup_old_data(retention_days=30, vacuum_min_mb=0, batch=5)  # küçük parti: döngü de test edilir
     with _conn() as c:
@@ -66,6 +67,20 @@ def test_cleanup_removes_only_old_diagnostic_rows(carry_rows):
     assert res["error"] is None
     assert res["vacuumed"] is True                # eşik 0: sıkıştırma gerçekten çalışır
     assert mt.load_state()["last_cleanup"]["deleted_total"] == 24
+
+
+def test_disabled_engine_logs_are_purged_entirely(carry_rows, monkeypatch):
+    monkeypatch.setattr(config, "ENABLE_SMC_ENGINE", False)
+    _seed_logs(old_n=3, new_n=4)                     # yeni kayıtlar da silinir: motor kapalı
+    assert mt.disabled_engine_rows() == 3 + 3 + 4    # scanner (3 eski + 4 yeni) + committee (3)
+    res = mt.cleanup_old_data(retention_days=30, vacuum_min_mb=10_000)
+    assert res["deleted_rows"] == {"scanner_logs": 7, "committee_debates": 3}
+    assert "scanner_logs" in res["purged_tables"] and "fast_scanner_logs" in res["purged_tables"]
+    assert mt.disabled_engine_rows() == 0
+    with _conn() as c:
+        assert c.execute("SELECT COUNT(*) FROM carry_fills").fetchone()[0] == 1   # işlem geçmişi korunur
+    monkeypatch.setattr(config, "PURGE_DISABLED_ENGINE_LOGS", False)
+    assert mt.purge_tables() == []
 
 
 def test_cleanup_removes_old_chart_files():

@@ -283,3 +283,4 @@ MAINTENANCE_MINUTE_UTC = 20
 BACKUP_KEEP = 3                          # Volume'da saklanan son yedek sayısı
 BACKUP_TELEGRAM = os.getenv("BACKUP_TELEGRAM", "true").lower() == "true"  # Yedeği Telegram'a gönder
 VACUUM_MIN_RECLAIM_MB = 20.0             # En az bu kadar boş alan oluştuysa veritabanı sıkıştırılır
+PURGE_DISABLED_ENGINE_LOGS = os.getenv("PURGE_DISABLED_ENGINE_LOGS", "true").lower() == "true"  # Kapalı motorların (SMC, FAST) tanı kayıtları tutulmaz

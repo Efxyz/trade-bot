@@ -102,6 +102,14 @@ class MemoryCarryStore:
     def record_rebalance(self, row: Dict) -> None:
         self.rebalances.append(row)
 
+    def between(self, table: str, start_ms: int, end_ms: int) -> List[Dict]:
+        src = {"carry_fills": self.fills, "carry_equity": self.equity, "carry_rebalances": self.rebalances}[table]
+        return sorted((r for r in src if start_ms <= r["ts_ms"] < end_ms), key=lambda r: r["ts_ms"])
+
+    def equity_at_or_before(self, ts_ms: int) -> Optional[Dict]:
+        rows = [r for r in self.equity if r["ts_ms"] <= ts_ms]
+        return max(rows, key=lambda r: r["ts_ms"]) if rows else None
+
 
 class SQLiteCarryStore:
     """Bot veritabanında carry_* tabloları."""
@@ -129,6 +137,10 @@ class SQLiteCarryStore:
             c.execute("""CREATE TABLE IF NOT EXISTS carry_rebalances (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, ts_ms INTEGER, equity REAL, n_orders INTEGER,
                 turnover_usdt REAL, fees REAL, scale REAL, reason TEXT, signal_json TEXT)""")
+            cols = {r[1] for r in c.execute("PRAGMA table_info(carry_equity)")}
+            for col in ("fees_paid", "funding_paid", "realized_pnl"):
+                if col not in cols:
+                    c.execute(f"ALTER TABLE carry_equity ADD COLUMN {col} REAL")
 
     def load(self) -> Optional[Dict]:
         with self._lock, self._conn() as c:
@@ -148,9 +160,10 @@ class SQLiteCarryStore:
 
     def record_equity(self, r: Dict) -> None:
         with self._lock, self._conn() as c:
-            c.execute("INSERT OR REPLACE INTO carry_equity(ts_ms, ts, equity, gross_exposure, net_exposure, n_positions, scale) "
-                      "VALUES(?,?,?,?,?,?,?)",
-                      (r["ts_ms"], r["ts"], r["equity"], r["gross_exposure"], r["net_exposure"], r["n_positions"], r["scale"]))
+            c.execute("INSERT OR REPLACE INTO carry_equity(ts_ms, ts, equity, gross_exposure, net_exposure, n_positions, scale, "
+                      "fees_paid, funding_paid, realized_pnl) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                      (r["ts_ms"], r["ts"], r["equity"], r["gross_exposure"], r["net_exposure"], r["n_positions"], r["scale"],
+                       r.get("fees_paid"), r.get("funding_paid"), r.get("realized_pnl")))
 
     def record_rebalance(self, r: Dict) -> None:
         with self._lock, self._conn() as c:
@@ -158,6 +171,19 @@ class SQLiteCarryStore:
                       "VALUES(?,?,?,?,?,?,?,?,?)",
                       (r["ts"], r["ts_ms"], r["equity"], r["n_orders"], r["turnover_usdt"], r["fees"], r["scale"], r["reason"],
                        json.dumps(r.get("signal", {}))))
+
+    def between(self, table: str, start_ms: int, end_ms: int) -> List[Dict]:
+        """start_ms <= ts_ms < end_ms aralığındaki kayıtlar (eskiden yeniye)."""
+        assert table in ("carry_fills", "carry_equity", "carry_rebalances")
+        with self._lock, self._conn() as c:
+            rows = c.execute(f"SELECT * FROM {table} WHERE ts_ms >= ? AND ts_ms < ? ORDER BY ts_ms",
+                             (int(start_ms), int(end_ms))).fetchall()
+        return [dict(r) for r in rows]
+
+    def equity_at_or_before(self, ts_ms: int) -> Optional[Dict]:
+        with self._lock, self._conn() as c:
+            r = c.execute("SELECT * FROM carry_equity WHERE ts_ms <= ? ORDER BY ts_ms DESC LIMIT 1", (int(ts_ms),)).fetchone()
+        return dict(r) if r else None
 
     # Dashboard okumaları
     def recent(self, table: str, limit: int = 200, order: str = "ts_ms DESC") -> List[Dict]:
@@ -402,16 +428,13 @@ class CarryEngine:
                "reason": reason, "signal": self.state["last_signal"]}
         self.store.record_rebalance(row)
         self._log(f"🔁 [Carry] Yeniden dengeleme ({reason}): {len(orders)} emir, devir ${turnover:,.0f}, özsermaye ${row['equity']:,.2f}")
-        if self.notifier is not None and getattr(self.notifier, "has_telegram", False):
+        if orders and self.notifier is not None and getattr(self.notifier, "has_telegram", False):
             try:
-                longs = [s.replace("USDT", "") for s, v in w.items() if v > 0]
-                shorts = [s.replace("USDT", "") for s, v in w.items() if v < 0]
-                self.notifier.send_text_message(
-                    f"🔁 *v3 Çok Faktörlü Motor – Yeniden Dengeleme*\n"
-                    f"LONG: {', '.join(longs)}\nSHORT: {', '.join(shorts)}\n"
-                    f"Özsermaye: ${row['equity']:,.2f} | Emir: {len(orders)} | Risk ölçeği: {self.state['scale']:.1f}x")
-            except Exception:
-                pass
+                from agents.v3_telegram import rebalance_message
+                after = {s: p["qty"] for s, p in self.state["positions"].items()}
+                self.notifier.send_text_message(rebalance_message(row, qty, after, self.equity(prices), self.state))
+            except Exception as tg_err:
+                print(f"⚠️ [Carry] Dengeleme bildirimi gönderilemedi: {tg_err}")
         return row
 
     def _last_due(self, now_ms: int) -> int:
@@ -457,7 +480,9 @@ class CarryEngine:
                 g, n = self.exposures(prices)
                 self.store.record_equity({"ts_ms": hour * HOUR_MS, "ts": _fmt(hour * HOUR_MS), "equity": eq,
                                           "gross_exposure": g, "net_exposure": n,
-                                          "n_positions": len(self.state["positions"]), "scale": self.state["scale"]})
+                                          "n_positions": len(self.state["positions"]), "scale": self.state["scale"],
+                                          "fees_paid": self.state["fees_paid"], "funding_paid": self.state["funding_paid"],
+                                          "realized_pnl": self.state["realized_pnl"]})
                 self.state["last_snapshot_hour"] = hour
             self.store.save(self.state)
             result["equity"] = eq

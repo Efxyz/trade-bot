@@ -1,6 +1,7 @@
 """
 Telegram Interactive Command Agent
-Listens for user commands from Telegram in the background:
+SMC motoru kapalıyken (varsayılan) /durum, /pozisyonlar, /rapor, /yedek, /yardim komutları v3 motorunu
+gösterir (agents/v3_telegram.py). Aşağıdaki liste eski SMC davranışıdır:
 - /tara veya /scan : Anında piyasa taraması başlatır.
 - /durum veya /stats : Geçmiş sanal işlem başarı ve PnL istatistiklerini getirir.
 - /aktif : Açıkta olan sanal pozisyonları listeler.
@@ -34,7 +35,48 @@ class TelegramCommandAgent:
         self.is_running = True
         thread = threading.Thread(target=self._poll_loop, daemon=True, name="TelegramListener")
         thread.start()
+        self._set_command_menu()
         print("📱 [Telegram Komut Dinleyici] Aktif! Telegram'dan /tara, /durum, /btc yazabilirsiniz.")
+
+    def _set_command_menu(self):
+        """Telegram'daki "/" menüsünü v3 komutlarıyla doldurur (SMC kapalıyken)."""
+        from config import ENABLE_SMC_ENGINE
+        if ENABLE_SMC_ENGINE:
+            return
+        try:
+            from agents.v3_telegram import COMMANDS
+            requests.post(f"https://api.telegram.org/bot{self.bot_token}/setMyCommands",
+                          json={"commands": [{"command": c, "description": d} for c, d in COMMANDS]}, timeout=10)
+        except Exception as e:
+            print(f"⚠️ [Telegram] Komut menüsü ayarlanamadı: {str(e).replace(self.bot_token, '***')}")
+
+    def _handle_v3(self, base_cmd: str, args) -> bool:
+        """v3 motoru komutları. True: komut işlendi; False: eski (SMC) davranışa bırak."""
+        from agents import v3_telegram as tg
+        n = self.orchestrator.notifier
+        try:
+            if base_cmd in ("/durum", "/stats", "/performans"):
+                n.send_text_message(tg.status_text())
+            elif base_cmd in ("/pozisyonlar", "/aktif", "/pozisyon"):
+                n.send_text_message(tg.positions_text())
+            elif base_cmd in ("/rapor", "/gunsonu", "/daily", "/24s"):
+                n.send_text_message(tg.daily_report_message(final=False))
+            elif base_cmd in ("/yedek", "/backup"):
+                from core import maintenance as mt
+                if mt.run_in_background("backup", n):
+                    n.send_text_message("🗄️ Yedek hazırlanıyor, birazdan dosya olarak gelecek.")
+                else:
+                    n.send_text_message("⏳ Şu anda başka bir bakım işlemi sürüyor, biraz sonra tekrar dene.")
+            elif base_cmd in ("/tara", "/scan"):
+                n.send_text_message("ℹ️ SMC tarama motoru kapalı. v3 motoru tarama yapmaz; portföyü her gün kendisi "
+                                    "dengeler. Durum için /durum yaz.")
+            elif base_cmd in ("/yardim", "/help", "/start", "/komutlar"):
+                n.send_text_message(tg.help_text())
+            else:
+                return False
+        except Exception as e:
+            n.send_text_message(f"⚠️ Komut çalıştırılamadı: {e}")
+        return True
 
     def _poll_loop(self):
         url = f"https://api.telegram.org/bot{self.bot_token}/getUpdates"
@@ -70,8 +112,12 @@ class TelegramCommandAgent:
         parts = cmd.strip().split()
         if not parts:
             return
-        base_cmd = parts[0]
+        base_cmd = parts[0].split("@")[0]   # menüden gelen "/durum@botadi" biçimi
         args = parts[1:]
+
+        from config import ENABLE_SMC_ENGINE
+        if not ENABLE_SMC_ENGINE and self._handle_v3(base_cmd, args):
+            return
         
         if base_cmd in ("/tara", "/scan"):
             self.orchestrator.notifier.send_text_message("🔍 *Piyasa Taraması Başlatıldı...*\nBinance Futures taranıyor, birazdan sonuç gelecek.")
