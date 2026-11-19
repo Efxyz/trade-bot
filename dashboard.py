@@ -2369,8 +2369,8 @@ HTML_OFFICE_TEMPLATE = """
                     sessionStorage.removeItem('tradebot_admin_pin');
                     aiChatHistory.push({ role: 'model', text: '⚠️ Yetkisiz PIN.', source: 'Hata', isError: true });
                 } else if (data && data.status === 'ok') {
-                    const rulesTxt = (data.rules_learned || []).map((r, i) => `${i + 1}. ${r}`).join('\n');
-                    const txt = `**Eğitim Tamamlandı** (${data.trades_analyzed || 0} işlem incelendi)\n${data.summary || ''}` + (rulesTxt ? `\n\n📌 **Hafızaya İşlenen Kalıcı Kurallar:**\n${rulesTxt}` : '');
+                    const rulesTxt = (data.rules_learned || []).map((r, i) => `${i + 1}. ${r}`).join('\\n');
+                    const txt = `**Eğitim Tamamlandı** (${data.trades_analyzed || 0} işlem incelendi)\\n${data.summary || ''}` + (rulesTxt ? `\\n\\n📌 **Hafızaya İşlenen Kalıcı Kurallar:**\\n${rulesTxt}` : '');
                     aiChatHistory.push({ role: 'model', text: txt, source: data.source || 'AI Eğitim Motoru', isError: false });
                     fetchTerminal();
                 } else {
@@ -2404,9 +2404,9 @@ HTML_OFFICE_TEMPLATE = """
                 if (typingEl) typingEl.remove();
                 if (data && data.status === 'ok') {
                     const decLines = (data.decisions || []).map(d =>
-                        `• **#${d.id || '?'} ${d.symbol} (${d.direction})** → **${d.decision}** (Uygunluk: ${d.suitability_score}/100)\n  ${d.reason}`
-                    ).join('\n');
-                    const txt = `**Genel Portföy Uygunluk Skoru:** ${data.overall_suitability}/100\n${data.summary || ''}` + (decLines ? `\n\n${decLines}` : '');
+                        `• **#${d.id || '?'} ${d.symbol} (${d.direction})** → **${d.decision}** (Uygunluk: ${d.suitability_score}/100)\\n  ${d.reason}`
+                    ).join('\\n');
+                    const txt = `**Genel Portföy Uygunluk Skoru:** ${data.overall_suitability}/100\\n${data.summary || ''}` + (decLines ? `\\n\\n${decLines}` : '');
                     aiChatHistory.push({ role: 'model', text: txt, source: data.source || 'AI Uygunluk Motoru', isError: false });
                 } else {
                     aiChatHistory.push({ role: 'model', text: '⚠️ ' + (data.message || 'Uygunluk taraması başarısız.'), source: 'Hata', isError: true });
