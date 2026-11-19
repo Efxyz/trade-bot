@@ -2160,7 +2160,7 @@ HTML_OFFICE_TEMPLATE = """
                     counter.innerText = 'Otonom Kalibrasyon';
                     counter.style.color = '#10b981';
                 } else if (tab === 'analyzer') {
-                    counter.innerText = 'Gemini 2.5 Vision & SMC';
+                    counter.innerText = 'Gemini 3 AI Baş Stratejist';
                     counter.style.color = '#c084fc';
                     refreshAiStatusBadge();
                 } else {
@@ -2244,7 +2244,7 @@ HTML_OFFICE_TEMPLATE = """
                 const res = await fetch('/api/ai/status');
                 const data = await res.json();
                 if (data && data.configured) {
-                    badge.innerHTML = `<span style="color:#10b981;">🟢 Gerçek Gemini 2.5 Flash Aktif</span> <span style="color:#94a3b8;">(${escapeAiHtml(data.masked_key)})</span>`;
+                    badge.innerHTML = `<span style="color:#10b981;">🟢 Gerçek Gemini 3 AI Aktif</span> <span style="color:#94a3b8;">(${escapeAiHtml(data.masked_key)})</span>`;
                 } else {
                     badge.innerHTML = '<span style="color:#f59e0b;">🔑 Gemini API Anahtarı Bağlı Değil (Bağlayın)</span>';
                 }
@@ -7124,7 +7124,7 @@ def api_ai_status():
     from core.database import get_gemini_api_key
     key = get_gemini_api_key()
     masked = f"{key[:4]}...{key[-4:]}" if len(key) >= 10 else ("***" if key else "")
-    return jsonify({"configured": bool(key), "masked_key": masked, "model": "gemini-2.5-flash"})
+    return jsonify({"configured": bool(key), "masked_key": masked, "model": "gemini-3-flash-preview"})
 
 
 @app.route("/api/ai/config", methods=["POST"])
