@@ -49,33 +49,36 @@ class ReflectorEngine:
             '"lesson": "Sonraki işlemler için somut sayısal referanslı 1-2 cümlelik net kural/ders"}'
         )
         req_body = json.dumps({
-            "contents": [{"parts": [{"text": prompt}]}],
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": {"temperature": 0.35, "response_mime_type": "application/json"}
         }).encode("utf-8")
 
         for model_name in ("gemini-2.5-flash", "gemini-2.0-flash"):
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-            try:
-                req = urllib.request.Request(url, data=req_body, headers={"Content-Type": "application/json"}, method="POST")
-                with urllib.request.urlopen(req, timeout=12) as resp:
-                    res_data = json.loads(resp.read().decode("utf-8"))
-                cands = res_data.get("candidates") or []
-                if not cands:
+            vtx = f"https://aiplatform.googleapis.com/v1/publishers/google/models/{model_name}:generateContent?key={api_key}"
+            gl = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+            urls = [vtx, gl] if api_key.startswith("AQ.") else [gl, vtx]
+            for url in urls:
+                try:
+                    req = urllib.request.Request(url, data=req_body, headers={"Content-Type": "application/json"}, method="POST")
+                    with urllib.request.urlopen(req, timeout=12) as resp:
+                        res_data = json.loads(resp.read().decode("utf-8"))
+                    cands = res_data.get("candidates") or []
+                    if not cands:
+                        continue
+                    raw_txt = "".join(
+                        p.get("text", "") for p in ((cands[0].get("content") or {}).get("parts") or []) if isinstance(p, dict)
+                    ).strip()
+                    if raw_txt.startswith("```"):
+                        raw_txt = raw_txt.strip("`")
+                        if raw_txt.lower().startswith("json"):
+                            raw_txt = raw_txt[4:].strip()
+                    parsed = json.loads(raw_txt)
+                    th = str(parsed.get("thesis_evaluation") or "").strip()
+                    ls = str(parsed.get("lesson") or "").strip()
+                    if th and ls:
+                        return th, ls
+                except Exception:
                     continue
-                raw_txt = "".join(
-                    p.get("text", "") for p in ((cands[0].get("content") or {}).get("parts") or []) if isinstance(p, dict)
-                ).strip()
-                if raw_txt.startswith("```"):
-                    raw_txt = raw_txt.strip("`")
-                    if raw_txt.lower().startswith("json"):
-                        raw_txt = raw_txt[4:].strip()
-                parsed = json.loads(raw_txt)
-                th = str(parsed.get("thesis_evaluation") or "").strip()
-                ls = str(parsed.get("lesson") or "").strip()
-                if th and ls:
-                    return th, ls
-            except Exception:
-                continue
         return None
 
     @staticmethod
