@@ -1441,6 +1441,9 @@
                     <button class="view-tab-btn" id="tabViewPositions" onclick="switchLeftView('positions')">
                         ⚡ POZİSYONLAR (<span id="activeCountBtn">0</span>)
                     </button>
+                    <button class="view-tab-btn" id="tabViewV3" onclick="switchLeftView('v3')" style="border-color: rgba(47, 111, 222, 0.5); color: #93c5fd;" title="v3 Çok Faktörlü Motorun açık pozisyonları">
+                        💰 V3 MOTOR (<span id="v3CountBtn">0</span>)
+                    </button>
                     <button class="view-tab-btn" id="tabViewSplit" onclick="switchLeftView('split')">
                         🔲 İKİLİ GÖRÜNÜM
                     </button>
@@ -1467,6 +1470,38 @@
             <div id="btcChartContainer" class="btc-chart-wrapper">
                 <button class="btn-exit-fullscreen" id="btnExitFs" onclick="toggleBtcFullscreen()" style="display: none;">✕ Tam Ekrandan Çık (ESC)</button>
                 <div id="tv_chart_target" style="width: 100%; height: 100%;"></div>
+            </div>
+
+            <!-- v3 ÇOK FAKTÖRLÜ MOTOR POZİSYONLARI -->
+            <div id="v3Container" style="display: none; flex-direction: column; flex: 1; overflow: hidden;">
+                <div class="active-summary-bar">
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <span class="sum-badge all">💰 Özsermaye: <strong id="v3Equity">$0.00</strong></span>
+                        <span class="sum-badge all">K/Z: <strong id="v3Pnl">$0.00</strong></span>
+                        <span class="sum-badge all">🎯 <strong id="v3PosCount">0</strong> pozisyon (L <strong id="v3Longs">0</strong> / S <strong id="v3Shorts">0</strong>)</span>
+                        <span class="sum-badge all" title="Fonlama: + ödenen / − alınan">Fonlama: <strong id="v3Funding">$0.00</strong> · Komisyon: <strong id="v3Fees">$0.00</strong></span>
+                    </div>
+                    <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                        <span class="sum-badge green">🟢 Kârda: <strong id="v3GreenCount">0</strong> (<strong id="v3GreenDollar">+$0.00</strong>)</span>
+                        <span class="sum-badge red">🔴 Zararda: <strong id="v3RedCount">0</strong> (<strong id="v3RedDollar">-$0.00</strong>)</span>
+                        <span class="sum-badge all" style="font-size:10px;">Sonraki dengeleme: <strong id="v3Next">—</strong></span>
+                        <a href="/carry" target="_blank" class="sum-badge all" style="text-decoration:none; color:#93c5fd;">📊 Detay ↗</a>
+                    </div>
+                </div>
+                <div class="active-two-cols">
+                    <div class="active-sub-col">
+                        <div class="pos-section-header green-sec"><span>🟢 KÂRDAKİLER (<span id="v3ProfitCount">0</span>)</span></div>
+                        <div class="cards-sub-list" id="v3ProfitList"></div>
+                    </div>
+                    <div class="active-sub-col">
+                        <div class="pos-section-header red-sec"><span>🔴 ZARARDAKİLER (<span id="v3LossCount">0</span>)</span></div>
+                        <div class="cards-sub-list" id="v3LossList"></div>
+                    </div>
+                </div>
+                <div style="border-top: 1px solid var(--panel-border); max-height: 32%; overflow-y: auto; padding: 6px 10px;">
+                    <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 4px;">🧾 SON V3 DOLUMLARI (UTC)</div>
+                    <div id="v3Fills" style="font-size: 11px;"></div>
+                </div>
             </div>
 
             <!-- AKTİF POZİSYONLAR ALANI -->
@@ -1916,6 +1951,19 @@
             if (tabPos) tabPos.classList.toggle('active', mode === 'positions');
             if (tabSplit) tabSplit.classList.toggle('active', mode === 'split');
             if (tabOffice) tabOffice.classList.toggle('active', mode === 'office');
+            const v3Container = document.getElementById('v3Container');
+            const tabV3 = document.getElementById('tabViewV3');
+            if (tabV3) tabV3.classList.toggle('active', mode === 'v3');
+            if (v3Container) v3Container.style.display = 'none';
+            if (mode === 'v3') {
+                if (btcContainer) btcContainer.style.display = 'none';
+                if (posContainer) posContainer.style.display = 'none';
+                if (officeContainer) officeContainer.style.display = 'none';
+                if (tfGroup) tfGroup.style.display = 'none';
+                if (v3Container) { v3Container.style.display = 'flex'; v3Container.style.flex = '1'; v3Container.style.height = '100%'; }
+                if (window.loadV3Positions) window.loadV3Positions();
+                return;
+            }
 
             if (mode === 'btc') {
                 if (btcContainer) {
@@ -6568,5 +6616,71 @@ window.initOffice3D = initOrResizeOffice3D;
         setInterval(fetchTerminal, 2000);
     </script>
 <a href="/carry" title="v3 Çok Faktörlü Motor" style="position:fixed;right:16px;bottom:16px;z-index:99999;background:#2f6fde;color:#fff;padding:10px 14px;border-radius:999px;font:600 13px system-ui,sans-serif;text-decoration:none;box-shadow:0 4px 14px rgba(0,0,0,.3)">💰 v3 Motor</a>
+<script>
+// ===== v3 Çok Faktörlü Motor: ana panel sekmesi =====
+(function () {
+    const fmt = v => (v < 0 ? '-' : '+') + '$' + Math.abs(v).toFixed(2);
+    const usd = v => (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    const px = v => v >= 100 ? v.toFixed(2) : (v >= 1 ? v.toFixed(4) : v.toPrecision(5));
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    function card(p) {
+        const pct = p.avg_price ? ((p.price / p.avg_price - 1) * 100 * (p.side === 'LONG' ? 1 : -1)) : 0;
+        const c = p.upnl >= 0 ? '#22c55e' : '#ef4444';
+        const sc = p.side === 'LONG' ? '#22c55e' : '#ef4444';
+        return `<div style="border:1px solid var(--panel-border);border-left:3px solid ${c};border-radius:6px;padding:8px 10px;margin:6px 8px;background:rgba(255,255,255,0.02);font-size:11.5px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <strong style="font-size:12.5px;">${p.symbol}</strong>
+              <span style="border:1px solid ${sc};color:${sc};border-radius:4px;padding:0 6px;font-size:10px;font-weight:700;">${p.side}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:4px;color:var(--text-muted);">
+              <span>Büyüklük ${usd(Math.abs(p.notional))}</span><span>Giriş ${px(p.avg_price)} → ${px(p.price)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:2px;">
+              <span style="color:var(--text-muted);">Açılış ${p.opened.slice(5, 16)} UTC</span>
+              <strong style="color:${c};">${fmt(p.upnl)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)</strong>
+            </div></div>`;
+    }
+    window.loadV3Positions = async function () {
+        try {
+            const r = await fetch('/api/carry');
+            const d = await r.json();
+            if (d.error) return;
+            const pos = d.positions || [];
+            set('v3CountBtn', pos.length);
+            const box = document.getElementById('v3Container');
+            if (!box || box.style.display === 'none') return;
+            const win = pos.filter(p => p.upnl >= 0).sort((a, b) => b.upnl - a.upnl);
+            const los = pos.filter(p => p.upnl < 0).sort((a, b) => a.upnl - b.upnl);
+            const sum = a => a.reduce((t, p) => t + p.upnl, 0);
+            set('v3Equity', usd(d.equity));
+            set('v3Pnl', fmt(d.pnl) + ' (' + d.pnl_pct.toFixed(2) + '%)');
+            set('v3PosCount', pos.length);
+            set('v3Longs', pos.filter(p => p.side === 'LONG').length);
+            set('v3Shorts', pos.filter(p => p.side === 'SHORT').length);
+            set('v3Funding', usd(d.funding_paid));
+            set('v3Fees', usd(d.fees_paid));
+            set('v3GreenCount', win.length); set('v3GreenDollar', fmt(sum(win)));
+            set('v3RedCount', los.length); set('v3RedDollar', fmt(sum(los)));
+            set('v3ProfitCount', win.length); set('v3LossCount', los.length);
+            set('v3Next', (d.next_rebalance || '—').slice(5, 16) + ' UTC');
+            const empty = t => `<div style="text-align:center;color:var(--text-muted);padding:30px 10px;font-size:11px;">${t}</div>`;
+            document.getElementById('v3ProfitList').innerHTML = win.length ? win.map(card).join('') : empty('Kârda pozisyon yok.');
+            document.getElementById('v3LossList').innerHTML = los.length ? los.map(card).join('') : empty('Zararda pozisyon yok.');
+            const f = d.fills || [];
+            document.getElementById('v3Fills').innerHTML = f.length ? f.slice(0, 40).map(x =>
+                `<div style="display:flex;gap:10px;padding:2px 0;border-bottom:1px dashed var(--panel-border);">
+                   <span style="color:var(--text-muted);min-width:88px;">${x.ts.slice(5, 16)}</span>
+                   <strong style="min-width:80px;">${x.symbol}</strong>
+                   <span style="color:${x.side === 'BUY' ? '#22c55e' : '#ef4444'};min-width:36px;">${x.side === 'BUY' ? 'AL' : 'SAT'}</span>
+                   <span style="min-width:80px;">${usd(x.notional)}</span>
+                   <span style="color:var(--text-muted);">@ ${px(x.price)}</span>
+                   <span style="margin-left:auto;color:${x.realized_pnl > 0 ? '#22c55e' : (x.realized_pnl < 0 ? '#ef4444' : 'var(--text-muted)')};">${x.realized_pnl ? fmt(x.realized_pnl) : ''}</span>
+                 </div>`).join('') : '<span style="color:var(--text-muted);">Henüz dolum yok.</span>';
+        } catch (e) { /* sessiz: ana panel çalışmaya devam eder */ }
+    };
+    loadV3Positions();
+    setInterval(loadV3Positions, 15000);
+})();
+</script>
 </body>
 </html>
