@@ -14,13 +14,20 @@ import urllib.request
 import urllib.error
 from datetime import datetime
 from typing import Dict, Tuple, Optional, List
-from core.database import save_committee_debate_db
+from core.database import save_committee_debate_db, get_gemini_api_key
 from core.reflection import ReflectorEngine
 
 class AIAnalystAgent:
     def __init__(self):
-        self.gemini_api_key = os.getenv("GEMINI_API_KEY", "").strip()
+        self.gemini_api_key = get_gemini_api_key()
         self.openai_api_key = os.getenv("OPENAI_API_KEY", "").strip()
+
+    def _get_active_gemini_key(self) -> str:
+        """Güncel Gemini API anahtarını dinamik olarak döner (DB veya env)."""
+        key = get_gemini_api_key()
+        if key:
+            self.gemini_api_key = key
+        return key or self.gemini_api_key
 
     def evaluate_setup(
         self,
@@ -86,12 +93,13 @@ class AIAnalystAgent:
 
         # 🧠 Tauric Reflector: Episodik Hafıza Defterinden son dersleri al
         past_context = ReflectorEngine.get_past_context_for_committee(symbol, limit=4)
-        
-        # 1. Eğer Gemini API Anahtarı mevcutsa LLM tabanlı canlı komiteyi çağır
-        if self.gemini_api_key:
+
+        # 1. Eğer Gemini API Anahtarı mevcutsa gerçek Gemini LLM komitesini çağır
+        if self._get_active_gemini_key():
             try:
                 llm_debate = self._call_gemini_committee(
-                    ta_setup, risk_report, news_analysis, btc_regime, ticker, funding_data, past_context
+                    ta_setup, risk_report, news_analysis, btc_regime, ticker, funding_data,
+                    past_context, quant_sim=quant_sim
                 )
                 if llm_debate:
                     llm_debate["past_memory_used"] = past_context
@@ -382,6 +390,50 @@ class AIAnalystAgent:
             "source": "Ajanlar Yatırım Komitesi (Tauric Multi-Agent Framework)"
         }
 
+    def _call_gemini_api(self, parts: List[Dict], temperature: float = 0.45, timeout: int = 24) -> Optional[Dict]:
+        """Google Gemini API'yi (gemini-2.5-flash -> gemini-2.0-flash fallback) çağırır ve JSON döner."""
+        api_key = self._get_active_gemini_key()
+        if not api_key:
+            return None
+
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "contents": [{"parts": parts}],
+            "generationConfig": {
+                "temperature": temperature,
+                "response_mime_type": "application/json"
+            }
+        }
+        encoded = json.dumps(payload).encode("utf-8")
+
+        for model_name in ("gemini-2.5-flash", "gemini-2.0-flash"):
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+            try:
+                req = urllib.request.Request(url, data=encoded, headers=headers, method="POST")
+                with urllib.request.urlopen(req, timeout=timeout) as response:
+                    res_data = json.loads(response.read().decode("utf-8"))
+                candidates = res_data.get("candidates") or []
+                if not candidates:
+                    continue
+                part_list = (candidates[0].get("content") or {}).get("parts") or []
+                raw_text = "".join(p.get("text", "") for p in part_list if isinstance(p, dict)).strip()
+                if not raw_text:
+                    continue
+                if raw_text.startswith("```"):
+                    raw_text = raw_text.strip("`")
+                    if raw_text.lower().startswith("json"):
+                        raw_text = raw_text[4:].strip()
+                parsed = json.loads(raw_text)
+                if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
+                    parsed = parsed[0]
+                if isinstance(parsed, dict):
+                    parsed["_gemini_model"] = model_name
+                    return parsed
+            except Exception as err:
+                print(f"⚠️ [Gemini API - {model_name}] Çağrı hatası: {err}")
+                continue
+        return None
+
     def _call_gemini_committee(
         self,
         ta_setup: Dict,
@@ -390,60 +442,277 @@ class AIAnalystAgent:
         btc_regime: Optional[Dict],
         ticker: Optional[Dict],
         funding_data: Optional[Dict],
-        past_context: str = ""
+        past_context: str = "",
+        quant_sim: Optional[Dict] = None
     ) -> Optional[Dict]:
-        """Gemini LLM kullanarak 4 ajanlı adversarial diyalog üretir (Tauric Research Modeli)."""
+        """Gerçek Gemini LLM kullanarak ham teknik/kuant verileriyle 4 ajanlı adversarial münazara üretir."""
         symbol = ta_setup["symbol"]
         direction = ta_setup["direction"]
         leverage = ta_setup.get("leverage", 10)
         score = ta_setup.get("confluence_score", 76)
-        
-        prompt = f"""
-Sen bir Kripto Vadeli İşlemler Hedge Fund Yatırım Komitesinin 4 farklı üyesini canlandıran Baş Yapay Zekasın.
-Parite: {symbol} | Yön: {direction} ({leverage}x Kaldıraç) | SMC Güven Skoru: {score}/100
-Fiyat: {ta_setup.get('current_price')} | SL: %{ta_setup.get('sl_pct')} | TP: %{ta_setup.get('tp1_pct')} | R:R: 1:{ta_setup.get('risk_reward')}
-Nedenler: {ta_setup.get('ta_reasons')}
-Haber: {news_analysis.get('summary')}
-BTC Durumu: {btc_regime.get('summary') if btc_regime else 'Nötr'}
+        indicators = ta_setup.get("indicators", {})
+        rsi_list = indicators.get("rsi") or []
+        vwap_list = indicators.get("vwap") or []
+        lr_ch = indicators.get("lr_channel") or {}
+        vp = indicators.get("volume_profile") or {}
+        adx_d = indicators.get("adx_data") or {}
+        st_d = indicators.get("supertrend") or {}
+        mc = quant_sim or {}
 
-{past_context}
-
-4 Ajan birbiriyle canlı olarak Türkçe tartışacak:
-1. Boğa Analisti (Alpha Hunter): Neden bu işlem açılmalı, hangi göstergeler ve SMC formasyonu iyi?
-2. Ayı Analisti (Muhafazakar Risk Şefi): Geçmiş hafıza kayıtlarındaki dersleri ve tuzak risklerini (RSI/fonlama/BTC dead chop) ortaya koyarak itiraz eder.
-3. Makro & Duygu Masası: BTC ve piyasa genel durumu ne diyor?
-4. Komite Başkanı: Argümanları tartar, Ayı mı Boğa mı haklı karar verir, ONAY veya RET kararı ile rating (STRONG_LONG, TACTICAL_LONG, REJECT) açıklar.
-
-SADECE geçerli bir JSON döndür:
-{{
-    "symbol": "{symbol}",
-    "direction": "{direction}",
-    "timestamp": "{datetime.now().strftime('%H:%M:%S')}",
-    "consensus_verdict": "APPROVED" veya "REJECTED",
-    "consensus_score": 1.0 ile 10.0 arasında sayı (örnek 8.5),
-    "rating": "STRONG_{direction}" veya "TACTICAL_{direction}" veya "NEUTRAL_PASS",
-    "decision_summary": "Başkanın 1-2 cümlelik nihai gerekçesi",
-    "debate_dialogue": [
-        {{"role": "BULL", "agent_name": "Boğa Analisti (Alpha Hunter)", "avatar": "🟢", "argument": "..."}},
-        {{"role": "BEAR", "agent_name": "Ayı Analisti (Risk Şefi)", "avatar": "🔴", "argument": "..."}},
-        {{"role": "MACRO", "agent_name": "Makro & Duygu Masası", "avatar": "📰", "argument": "..."}},
-        {{"role": "CHIEF", "agent_name": "Yatırım Komitesi Başkanı (Nihai Karar)", "avatar": "👑", "argument": "..."}}
-    ],
-    "strengths": ["...", "..."],
-    "concerns": ["...", "..."],
-    "source": "Gemini Multi-Agent Committee"
-}}
-"""
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={self.gemini_api_key}"
-        headers = {"Content-Type": "application/json"}
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.4, "response_mime_type": "application/json"}
+        telemetry_summary = {
+            "rsi_latest": round(float(rsi_list[-1]), 2) if rsi_list and rsi_list[-1] is not None else None,
+            "vwap_latest": round(float(vwap_list[-1]), 6) if vwap_list else None,
+            "poc": vp.get("poc"),
+            "vah": vp.get("vah"),
+            "val": vp.get("val"),
+            "lr_trend": lr_ch.get("trend"),
+            "lr_pos_pct": lr_ch.get("position_pct"),
+            "adx": adx_d.get("adx"),
+            "supertrend": st_d.get("trend"),
+            "mc_win_prob_pct": mc.get("win_probability_pct"),
+            "mc_expectancy_r": mc.get("expectancy_r"),
+            "funding_rate_pct": funding_data.get("fundingRatePct") if isinstance(funding_data, dict) else None,
+            "change_24h_pct": ticker.get("priceChangePercent") if isinstance(ticker, dict) else None,
+            "quote_vol_24h": ticker.get("quoteVolume") if isinstance(ticker, dict) else None,
+            "allocated_margin_usdt": risk_report.get("allocated_margin_usdt") if isinstance(risk_report, dict) else None,
+            "risk_usd": risk_report.get("risk_usd") if isinstance(risk_report, dict) else None,
         }
 
-        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=9) as response:
-            res_data = json.loads(response.read().decode("utf-8"))
-            candidate = res_data.get("candidates", [])[0]
-            raw_text = candidate["content"]["parts"][0]["text"]
-            return json.loads(raw_text)
+        prompt = (
+            f"Sen kurumsal bir kripto vadeli işlemler hedge fonunun 4 üyeli Yatırım Komitesini gerçek zamanlı yöneten Baş Yapay Zekasın.\n"
+            f"KESİNLİKLE kalıp/jenerik cümleler kurma! Yalnızca aşağıdaki ham verilere ve geçmiş derslere dayanarak her ajan için somut fiyat ve oran içeren özgün teknik muhakeme üret.\n\n"
+            f"Parite: {symbol} | Önerilen Yön: {direction} ({leverage}x) | Vade: {ta_setup.get('timeframe', '15m')} | SMC Skor: {score}/100\n"
+            f"Giriş: {ta_setup.get('current_price')} | SL: {ta_setup.get('stop_loss')} (-%{ta_setup.get('sl_pct')}) | "
+            f"TP1: {ta_setup.get('take_profit_1')} (+%{ta_setup.get('tp1_pct')}) | TP2: {ta_setup.get('take_profit_2')} | R:R: 1:{ta_setup.get('risk_reward')}\n"
+            f"SMC Bulguları: {ta_setup.get('ta_reasons')}\n"
+            f"Ham Telemetri JSON: {json.dumps(telemetry_summary, ensure_ascii=False)}\n"
+            f"Haber Özeti: {news_analysis.get('summary') if isinstance(news_analysis, dict) else 'Nötr'}\n"
+            f"BTC Rejimi: {btc_regime.get('summary') if isinstance(btc_regime, dict) else 'Nötr'}\n"
+            f"{past_context}\n\n"
+            f"Türkçe olarak 4 üyenin somut sayısal verilerle çatışan tartışmasını ve bağlayıcı kararını SADECE geçerli JSON formatında döndür:\n"
+            f'{{"symbol": "{symbol}", "direction": "{direction}", "timestamp": "{datetime.now().strftime("%H:%M:%S")}", '
+            f'"consensus_verdict": "APPROVED" veya "REJECTED", "consensus_score": 1.0-10.0 arası sayı, '
+            f'"rating": "STRONG_{direction}" veya "TACTICAL_{direction}" veya "NEUTRAL_PASS", '
+            f'"decision_summary": "Başkanın somut seviye içeren 1-2 cümlelik nihai kararı", '
+            f'"debate_dialogue": ['
+            f'{{"role": "BULL", "agent_name": "Boğa Analisti (Alpha Hunter)", "avatar": "🟢", "argument": "..."}}, '
+            f'{{"role": "BEAR", "agent_name": "Ayı Analisti (Risk Şefi)", "avatar": "🔴", "argument": "..."}}, '
+            f'{{"role": "MACRO", "agent_name": "Makro & Kuant Masası", "avatar": "📰", "argument": "..."}}, '
+            f'{{"role": "CHIEF", "agent_name": "Yatırım Komitesi Başkanı", "avatar": "👑", "argument": "..."}}'
+            f'], "strengths": ["somut güç 1", "somut güç 2"], "concerns": ["somut risk 1", "somut risk 2"]}}'
+        )
+
+        res = self._call_gemini_api([{"text": prompt}], temperature=0.45, timeout=20)
+        if not res:
+            return None
+        model_used = res.pop("_gemini_model", "gemini-2.5-flash")
+        res.setdefault("symbol", symbol)
+        res.setdefault("direction", direction)
+        res.setdefault("timestamp", datetime.now().strftime("%H:%M:%S"))
+        res["consensus_score"] = round(max(1.0, min(10.0, float(res.get("consensus_score") or 7.0))), 1)
+        res["consensus_verdict"] = "APPROVED" if str(res.get("consensus_verdict", "")).upper() == "APPROVED" else "REJECTED"
+        res["source"] = f"Gerçek Yapay Zeka ({model_used})"
+        return res
+
+    def analyze_chart_or_coin_with_ai(
+        self,
+        client,
+        symbol: str = "",
+        timeframe: str = "15m",
+        image_b64: str = "",
+        image_mime: str = "image/png",
+        user_prompt: str = ""
+    ) -> Dict:
+        """
+        Grafik ekran görüntüsü (Multimodal Vision) ve/veya canlı Binance Futures verisi üzerinde
+        sıfır şablonlu gerçek Gemini 2.5 Flash teknik/SMC muhakemesi çalıştırır.
+        """
+        clean_sym = str(symbol or "").upper().strip()
+        if clean_sym and not clean_sym.endswith("USDT"):
+            clean_sym = f"{clean_sym}USDT"
+        clean_tf = str(timeframe or "15m").lower().strip()
+        if clean_tf not in ("5m", "15m", "30m", "1h", "4h"):
+            clean_tf = "15m"
+
+        telemetry: Dict = {"symbol": clean_sym, "timeframe": clean_tf}
+
+        if clean_sym and client is not None:
+            try:
+                from agents.ta_agent import TechnicalAnalysisAgent
+                from core.advanced_indicators import (
+                    calculate_linear_regression_channel,
+                    calculate_volume_profile,
+                    calculate_adx,
+                    calculate_supertrend,
+                    calculate_vwap_bands,
+                )
+                candles_tf = client.get_klines(clean_sym, interval=clean_tf, limit=60) or []
+                candles_4h = client.get_klines(clean_sym, interval="4h", limit=45) if clean_tf != "4h" else candles_tf
+                tickers = client.get_24hr_tickers() or {}
+                ticker_sym = tickers.get(clean_sym, {})
+                funding_sym = client.get_funding_rate(clean_sym) or {}
+                book_sym = client.get_book_ticker(clean_sym) or {}
+
+                if candles_tf and len(candles_tf) >= 20:
+                    closes = [float(c["close"]) for c in candles_tf]
+                    rsi_vals = TechnicalAnalysisAgent.calculate_rsi(closes, 14)
+                    atr_vals = TechnicalAnalysisAgent.calculate_atr(candles_tf, 14)
+                    fvg_res = TechnicalAnalysisAgent.detect_fvg(candles_tf, max_lookback=15)
+                    ob_res = TechnicalAnalysisAgent.detect_order_blocks(candles_tf, max_lookback=20)
+                    sweep_res = TechnicalAnalysisAgent.detect_liquidity_sweep(candles_tf, lookback=15)
+                    lr_res = calculate_linear_regression_channel(candles_tf)
+                    vp_res = calculate_volume_profile(candles_tf)
+                    adx_res = calculate_adx(candles_tf)
+                    st_res = calculate_supertrend(candles_tf)
+                    vwap_res = calculate_vwap_bands(candles_tf)
+
+                    recent_20 = candles_tf[-20:]
+                    swing_high = round(max(float(c["high"]) for c in candles_tf[-35:]), 6)
+                    swing_low = round(min(float(c["low"]) for c in candles_tf[-35:]), 6)
+                    curr_close = closes[-1]
+                    prev_20_high = max(float(c["high"]) for c in candles_tf[-25:-5])
+                    prev_20_low = min(float(c["low"]) for c in candles_tf[-25:-5])
+                    if curr_close > prev_20_high:
+                        bos_choch_hint = "Bullish BOS / Yukarı Yapı Kırılımı"
+                    elif curr_close < prev_20_low:
+                        bos_choch_hint = "Bearish BOS / Aşağı Yapı Kırılımı"
+                    else:
+                        bos_choch_hint = "Range / Yapı İçi Konsolidasyon"
+
+                    bid_px = float(book_sym.get("bidPrice") or 0.0)
+                    ask_px = float(book_sym.get("askPrice") or 0.0)
+                    spread_pct = round(((ask_px - bid_px) / bid_px) * 100.0, 4) if bid_px > 0 and ask_px > 0 else None
+
+                    compact_candles = [
+                        {
+                            "o": round(float(c["open"]), 6),
+                            "h": round(float(c["high"]), 6),
+                            "l": round(float(c["low"]), 6),
+                            "c": round(float(c["close"]), 6),
+                            "v": round(float(c.get("volume", 0.0)), 2)
+                        }
+                        for c in recent_20
+                    ]
+                    st_4h = calculate_supertrend(candles_4h).get("trend") if candles_4h and len(candles_4h) >= 15 else "N/A"
+
+                    telemetry.update({
+                        "current_price": curr_close,
+                        "change_24h_pct": ticker_sym.get("priceChangePercent"),
+                        "quote_volume_24h": ticker_sym.get("quoteVolume"),
+                        "funding_rate_pct": funding_sym.get("fundingRatePct"),
+                        "spread_pct": spread_pct,
+                        "rsi_14": round(float(rsi_vals[-1]), 2) if rsi_vals and rsi_vals[-1] is not None else None,
+                        "atr_14": round(float(atr_vals[-1]), 6) if atr_vals and atr_vals[-1] is not None else None,
+                        "adx": adx_res.get("adx"),
+                        "supertrend": st_res.get("trend"),
+                        "supertrend_4h": st_4h,
+                        "vwap": vwap_res.get("vwap"),
+                        "vwap_z_score": vwap_res.get("z_score"),
+                        "poc": vp_res.get("poc"),
+                        "vah": vp_res.get("vah"),
+                        "val": vp_res.get("val"),
+                        "lr_trend": lr_res.get("trend"),
+                        "lr_pos_pct": lr_res.get("position_pct"),
+                        "swing_high_35": swing_high,
+                        "swing_low_35": swing_low,
+                        "structure_hint": bos_choch_hint,
+                        "fvg": {"bull": fvg_res.get("bullish_fvg"), "bear": fvg_res.get("bearish_fvg")},
+                        "order_blocks": {"bull": ob_res.get("bullish_ob"), "bear": ob_res.get("bearish_ob")},
+                        "liquidity_sweep": sweep_res,
+                        "last_20_candles": compact_candles,
+                    })
+            except Exception as tel_err:
+                telemetry["telemetry_error"] = str(tel_err)
+
+        if not clean_sym and not image_b64:
+            return {"status": "error", "message": "Lütfen bir coin sembolü girin veya grafik ekran görüntüsü yükleyin."}
+
+        if not self._get_active_gemini_key():
+            return {
+                "status": "key_required",
+                "ai_key_missing": True,
+                "symbol": clean_sym or "GÖRSEL",
+                "timeframe": clean_tf,
+                "telemetry": telemetry,
+                "message": "Gerçek Gemini 2.5 Flash muhakemesi ve grafik okuma için önce panelden Google Gemini API anahtarınızı kaydedin."
+            }
+
+        parts: List[Dict] = []
+        clean_b64 = str(image_b64 or "").strip()
+        if clean_b64:
+            if "," in clean_b64 and clean_b64.startswith("data:"):
+                header_part, clean_b64 = clean_b64.split(",", 1)
+                if ";" in header_part and ":" in header_part:
+                    image_mime = header_part.split(":", 1)[1].split(";", 1)[0]
+            parts.append({
+                "inline_data": {
+                    "mime_type": str(image_mime or "image/png"),
+                    "data": clean_b64
+                }
+            })
+
+        past_notes = ReflectorEngine.get_past_context_for_committee(clean_sym or "BTCUSDT", limit=3)
+        prompt_text = (
+            "Sen kurumsal bir Kripto Vadeli İşlemler Baş Analisti ve SMC/Fiyat Aksiyonu (Price Action) uzmanısın.\n"
+            "Sana verilen verileri (varsa yüklenen grafik ekran görüntüsündeki mumlar, fitiller, sağdaki fiyat ekseni, çizili indikatörler ve formasyonlar; ayrıca varsa canlı Binance Futures OHLCV ve SMC telemetrisi) birleştirerek GERÇEK, ÖZGÜN ve DERİN bir analiz üret.\n"
+            "ASLA yuvarlak/jenerik şablon ifadeler yazma; mutlaka somut fiyat seviyeleri, yapısal kırılım noktaları, Boğa ve Ayı senaryolarını anlat.\n\n"
+            f"Hedef Sembol: {clean_sym or 'Grafikten Tespit Et'} | Vade: {clean_tf}\n"
+            f"Kullanıcı Sorusu / Notu: {user_prompt or 'Genel kurumsal SMC, likidite ve risk/ödül değerlendirmesi yap.'}\n"
+            f"Canlı Borsa Telemetrisi: {json.dumps(telemetry, ensure_ascii=False)}\n"
+            f"{past_notes}\n\n"
+            "Yalnızca geçerli tek bir Türkçe JSON nesnesi döndür:\n"
+            "{\n"
+            '  "detected_symbol": "Sembol (örn: ETHUSDT)",\n'
+            '  "detected_timeframe": "Vade (örn: 15m)",\n'
+            '  "market_bias": "BULLISH" veya "BEARISH" veya "NEUTRAL_RANGE",\n'
+            '  "confidence_score": 0-100 arası tam sayı,\n'
+            '  "market_structure": {\n'
+            '    "trend": "Ana/ikincil trend yönü özeti",\n'
+            '    "bos_choch": "Tespit edilen BOS / CHoCH kırılım seviyeleri ve fiyatları",\n'
+            '    "key_levels": ["Direnç/Destek fiyat seviyesi 1", "Seviye 2", "Seviye 3"]\n'
+            '  },\n'
+            '  "smc_liquidity_map": {\n'
+            '    "order_blocks": "Tespit edilen OB bölgeleri (fiyat aralığı)",\n'
+            '    "fvg_gaps": "Doldurulmamış FVG dengesizlik bölgeleri",\n'
+            '    "liquidity_pools": "Eşit tepeler/dipler ve olası stop-avı (sweep) hedefleri",\n'
+            '    "patterns": ["Görülen mum / grafik formasyonları"]\n'
+            '  },\n'
+            '  "deep_ai_commentary": "3-5 cümlelik sıfır şablonlu, fiyat seviyeli, hem fırsat hem tuzak senaryosunu anlatan derin yapay zeka yorumu",\n'
+            '  "trade_plan": {\n'
+            '    "action": "LONG" veya "SHORT" veya "BEKLE",\n'
+            '    "entry_zone": "Önerilen giriş fiyatı/aralığı",\n'
+            '    "stop_loss": "Geçersiz kılma (SL) seviyesi ve gerekçesi",\n'
+            '    "take_profit_1": "İlk likidite/TP1 hedefi",\n'
+            '    "take_profit_2": "Runner TP2 hedefi",\n'
+            '    "risk_reward": "Tahmini R:R oranı (örn: 1:2.2)"\n'
+            '  }\n'
+            "}"
+        )
+        parts.append({"text": prompt_text})
+
+        ai_res = self._call_gemini_api(parts, temperature=0.35, timeout=28)
+        if not ai_res:
+            return {
+                "status": "error",
+                "ai_key_missing": False,
+                "symbol": clean_sym or "GÖRSEL",
+                "timeframe": clean_tf,
+                "telemetry": telemetry,
+                "message": "Gemini API yanıt vermedi. API anahtarınızı veya kotanızı kontrol edip tekrar deneyin."
+            }
+
+        model_used = ai_res.pop("_gemini_model", "gemini-2.5-flash")
+        ai_res.setdefault("detected_symbol", clean_sym or "Bilinmiyor")
+        ai_res.setdefault("detected_timeframe", clean_tf)
+        ai_res.setdefault("market_bias", "NEUTRAL_RANGE")
+        ai_res["confidence_score"] = int(max(0, min(100, float(ai_res.get("confidence_score") or 50))))
+        ai_res["source"] = f"Gerçek Yapay Zeka ({model_used}{' + Vision' if clean_b64 else ''})"
+
+        return {
+            "status": "ok",
+            "ai_key_missing": False,
+            "symbol": ai_res["detected_symbol"],
+            "timeframe": ai_res["detected_timeframe"],
+            "telemetry": telemetry,
+            "analysis": ai_res
+        }
