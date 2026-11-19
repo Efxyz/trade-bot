@@ -173,7 +173,7 @@ Geniş çaplı araştırmada SMC sinyal motorunun 11.894 kurulumda yön bilgisi 
 - Evren: 20 likit USDT-M perp (`CARRY_UNIVERSE`). Coin başına ters-volatilite ağırlığı; her kol kovaryans tabanlı tahmini volatilitesine göre eşit riske ölçeklenir (toplam hedef ~%10 yıllık vol, brüt tavan 3x).
 - Portföy 7 dilime bölünür: her gün 00:00 UTC'de bir dilim yenilenir (hedef = son 7 günlük sinyalin ortalaması). Böylece sonuç, dengelemenin yapıldığı güne bağlı kalmaz.
 - Portföy kesicisi: tepeden -%10 düşüşte risk yarıya iner, -%5'in üstüne dönünce normale döner.
-- Panel: **`/carry`** · API: `GET /api/carry`. Durum `carry_*` tablolarında saklanır; yeniden başlatmada kaldığı yerden devam eder.
+- Panel: ana sayfa **`/`** (v3 terminali: özsermaye eğrisi, risk durumu, faktör katkılı pozisyonlar, sinyal matrisi, işlem geçmişi). Eski SMC paneli **`/legacy`** adresinde. API: `GET /api/carry`, `GET /api/v3/market`. Durum `carry_*` tablolarında saklanır; yeniden başlatmada kaldığı yerden devam eder.
 - Anahtarlar: `ENABLE_CARRY_ENGINE` (varsayılan true), `ENABLE_SMC_ENGINE` (varsayılan false; açık SMC işlemleri her durumda takip edilip kapatılır), `CARRY_CAPITAL_USDT`.
 
 **Doğrulama** (canlı motorun kendisi saatlik simüle saatle; taraf başına %0.05 komisyon + %0.02 kayma, gerçek fonlama; 8 farklı dengeleme saati):

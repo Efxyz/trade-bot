@@ -212,7 +212,35 @@ def test_dashboard_carry_endpoints(monkeypatch, tmp_path):
     assert r.status_code == 200
     j = r.get_json()
     assert len(j["positions"]) == 6 and j["n_rebalances"] == 1 and len(j["fills"]) == 6
-    assert c.get("/carry").status_code == 200
+    assert c.get("/carry").status_code == 302
+    assert "factor_contrib" in j and "sleeve_signals" in j and j["last_step"]
+    home = c.get("/").get_data(as_text=True)
+    assert "Quant Terminal v3" in home and "/api/carry" in home
+    legacy = c.get("/legacy")
+    assert legacy.status_code == 200 and b"adminFetch" in legacy.data
+
+
+def test_market_endpoint(monkeypatch):
+    import dashboard
+    from core.binance_client import BinanceFuturesClient
+    fake = {"BTCUSDT": {"lastPrice": 62000.0, "priceChangePercent": -1.5, "quoteVolume": 1e9},
+            "DOGEUSDT": {"lastPrice": 0.1, "priceChangePercent": 2.0, "quoteVolume": 1e8},
+            "PEPEUSDT": {"lastPrice": 1e-5, "priceChangePercent": 9.0, "quoteVolume": 1e7}}
+    monkeypatch.setattr(BinanceFuturesClient, "get_24hr_tickers", lambda self: fake)
+    j = dashboard.app.test_client().get("/api/v3/market").get_json()
+    assert [x["symbol"] for x in j] == ["BTCUSDT", "DOGEUSDT"]  # evren dışı coin yok
+
+
+def test_factor_contrib_sums_to_target():
+    data = FakeData(SYMS)
+    eng = CarryEngine(data, MemoryCarryStore(), params(sleeves=("trend", "xsmom", "funding"), tranches=7))
+    for _ in range(24 * 3):
+        eng.step()
+        data.t += HOUR_MS
+    fc = eng.factor_contrib()
+    tgt = eng._combined_target()
+    for s, w in tgt.items():
+        assert sum(fc[s].values()) == pytest.approx(w, rel=1e-4, abs=1e-6)
 
 
 # ---------------- çok faktörlü karışım ----------------

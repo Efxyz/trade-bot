@@ -73,7 +73,7 @@ def default_state(capital: float) -> Dict:
         "last_snapshot_hour": None,
         "fees_paid": 0.0, "funding_paid": 0.0, "realized_pnl": 0.0,
         "n_fills": 0, "n_rebalances": 0,
-        "last_targets": {}, "last_signal": {}, "tranche_weights": [],
+        "last_targets": {}, "last_signal": {}, "tranche_weights": [], "tranche_contribs": [],
     }
 
 
@@ -319,6 +319,7 @@ class CarryEngine:
                                        vol_lookback_h=self.p.vol_lookback_h, target_vol_ann=self.p.target_vol,
                                        gross_cap=self.p.gross_cap, universe_size=n_univ, scale=1.0)
             self._last_sleeves = {"funding": w}
+            self._last_contrib = {"funding": dict(w)}
             return w, fsums
         vols = {s: realized_vol_ann(c, self.p.vol_lookback_h) for s, c in closes.items()}
         vols = {s: v for s, v in vols.items() if v}
@@ -329,8 +330,14 @@ class CarryEngine:
             parts["xsmom"] = xsmom_weights(closes, vols, self.p.k, self.p.xsmom_lookback_h, 24, self.p.target_vol, n_univ)
         if "funding" in sleeves:
             parts["funding"] = funding_weights(fsums, vols, self.p.k, self.p.target_vol, n_univ)
-        w = combine_sleeves(parts, closes, self.p.portfolio_target_vol, self.p.vol_lookback_h, self.p.gross_cap)
+        contrib: Dict[str, Dict[str, float]] = {}
+        w = combine_sleeves(parts, closes, self.p.portfolio_target_vol, self.p.vol_lookback_h, self.p.gross_cap,
+                            details=contrib)
         self._last_sleeves = parts
+        self._last_contrib = contrib
+        # Panel için ham kol sinyalleri (+1 LONG / -1 SHORT)
+        self.state["sleeve_signals"] = {k: {s: (1 if v > 0 else -1) for s, v in d.items() if v}
+                                        for k, d in parts.items()}
         return w, fsums
 
     def _combined_target(self) -> Dict[str, float]:
@@ -345,6 +352,20 @@ class CarryEngine:
         sc = self.state["scale"]
         return {s: v / n * sc for s, v in tot.items() if abs(v) > 1e-12}
 
+    def factor_contrib(self) -> Dict[str, Dict[str, float]]:
+        """Sembol -> kol -> hedef ağırlık katkısı (dilim ortalaması × risk ölçeği)."""
+        hist = self.state.get("tranche_contribs") or []
+        if not hist:
+            return {}
+        out: Dict[str, Dict[str, float]] = {}
+        for d in hist:
+            for k, ws in d.items():
+                for s, v in ws.items():
+                    out.setdefault(s, {}).setdefault(k, 0.0)
+                    out[s][k] += v
+        n, sc = len(hist), self.state["scale"]
+        return {s: {k: v / n * sc for k, v in ks.items()} for s, ks in out.items()}
+
     def rebalance(self, now_ms: int, prices: Dict[str, float], reason: str) -> Dict:
         fsums = None
         if reason != "dusus_kesici":
@@ -355,6 +376,9 @@ class CarryEngine:
             hist = self.state.setdefault("tranche_weights", [])
             hist.append(w_new)
             del hist[:-max(1, self.p.tranches)]
+            ch = self.state.setdefault("tranche_contribs", [])
+            ch.append({k: {s: round(v, 6) for s, v in d.items()} for k, d in getattr(self, "_last_contrib", {}).items()})
+            del ch[:-max(1, self.p.tranches)]
         w = self._combined_target()
         if not w:
             return {}
@@ -406,6 +430,8 @@ class CarryEngine:
             if missing:
                 self._log(f"⚠️ [Carry] Fiyat yok: {missing}; adım atlandı.")
                 return {"skipped": True}
+            self.state.setdefault("started_ms", now_ms)
+            self.state["last_step_ms"] = now_ms
             self.accrue_funding(now_ms, prices)
             eq = self.equity(prices)
             self.state["peak_equity"] = max(self.state["peak_equity"], eq)
@@ -462,6 +488,16 @@ class CarryEngine:
             "last_rebalance": _fmt(st["last_rebalance_ms"]) if st.get("last_rebalance_ms") else None,
             "next_rebalance": _fmt(nxt), "tranches": self.p.tranches,
             "targets": st.get("last_targets", {}), "positions": pos, "last_signal": st.get("last_signal", {}),
+            "factor_contrib": {s: {k: round(v, 5) for k, v in d.items()} for s, d in self.factor_contrib().items()},
+            "sleeve_signals": st.get("sleeve_signals", {}), "sleeves": list(self.p.sleeves),
+            "universe": list(self.p.universe),
+            "started": _fmt(st["started_ms"]) if st.get("started_ms") else None,
+            "last_step": _fmt(st["last_step_ms"]) if st.get("last_step_ms") else None,
+            "server_time": _fmt(self.data.now_ms()),
+            "unrealized_pnl": sum(x["upnl"] for x in pos),
+            "params": {"k": self.p.k, "target_vol": self.p.portfolio_target_vol, "gross_cap": self.p.gross_cap,
+                       "dd_cut": self.p.dd_cut, "dd_restore": self.p.dd_restore, "fee_rate": self.p.fee_rate,
+                       "slippage_rate": self.p.slippage_rate, "tranches": self.p.tranches},
         }
 
 
