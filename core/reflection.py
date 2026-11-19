@@ -13,7 +13,12 @@ import json
 import urllib.request
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
-from core.database import save_trade_reflection_db, get_recent_reflections_db, get_gemini_api_key
+from core.database import (
+    save_trade_reflection_db,
+    get_recent_reflections_db,
+    get_pinned_patron_lessons_db,
+    get_gemini_api_key,
+)
 
 class ReflectorEngine:
     """İşlem sonuçlarını kurumsal derslere dönüştüren hafıza motoru."""
@@ -229,14 +234,22 @@ class ReflectorEngine:
                     combined.append(r)
                     seen_ids.add(r["id"])
 
-            if not combined:
+            pinned_rules = get_pinned_patron_lessons_db(limit=6)
+            if not combined and not pinned_rules:
                 return "Hafıza Defteri: Henüz kayıtlı geçmiş işlem dersi yok (Sistem ilk döngülerinde)."
 
-            lines = ["🧠 HAFIZA DEFTERİNDEN ÇIKARILAN DERSLER (Tauric Reflection Log):"]
-            for r in combined:
-                pnl = r.get("pnl_pct", 0.0)
-                sign = "+" if pnl >= 0 else ""
-                lines.append(f"• [{r.get('symbol')} {r.get('direction')} | {r.get('status')} | {sign}{pnl}%]: {r.get('lesson')}")
+            lines = []
+            if pinned_rules:
+                lines.append("📌 SABİT PATRON & EĞİTİM KURALLARI (Her Kararda Bağlayıcı):")
+                for pr in pinned_rules:
+                    lines.append(f"• [{pr.get('symbol', 'GENERAL')} | {pr.get('status')}]: {pr.get('lesson')}")
+
+            if combined:
+                lines.append("🧠 HAFIZA DEFTERİNDEN ÇIKARILAN SON DERSLER (Tauric Reflection Log):")
+                for r in combined:
+                    pnl = r.get("pnl_pct", 0.0)
+                    sign = "+" if pnl >= 0 else ""
+                    lines.append(f"• [{r.get('symbol')} {r.get('direction')} | {r.get('status')} | {sign}{pnl}%]: {r.get('lesson')}")
 
             return "\n".join(lines)
         except Exception as e:
