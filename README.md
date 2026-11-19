@@ -194,6 +194,22 @@ python -m backtest.carry_backtest --fee 0.001     # komisyon stresi
 
 ---
 
+## 🗄️ Kayıtlar, Yedek ve Bakım
+Bütün kayıtlar Railway volume'undaki (`/app/data`) SQLite veritabanında tutulur: v3 dolumları (`carry_fills`), dengelemeler (`carry_rebalances`), saatlik kasa (`carry_equity`), motor durumu (`carry_state`) ve eski SMC işlemleri (`signals`).
+
+- **Dışa aktarma:** paneldeki **⬇ Kayıtları indir** düğmesi tüm işlem geçmişini CSV olarak zip'ler (`GET /api/export/records.zip`). Varsayılan biçim Türkçe Excel'e göredir (noktalı virgül ayraç, virgüllü ondalık). `?fmt=std` standart CSV verir.
+- **Gece bakımı (00:20 UTC):**
+  1. 30 günden eski tanı kayıtları (tarama, AI komite, gölge sinyal, haber) ve grafik resimleri silinir. İşlem geçmişi silinmez.
+  2. Boşalan alan 20 MB'ı geçerse veritabanı sıkıştırılır.
+  3. Yedek alınır ve Telegram'a gönderilir.
+- **Yedek:** veritabanının tutarlı bir kopyası ve CSV'ler tek zip'te. Hacimli tanı kayıtları ve gizli anahtarlar (API key, token, PIN) yedeğe girmez. Volume'da son 3 yedek saklanır. Panelden indirmek ve elle yedeklemek/temizlemek yönetici PIN'i ister.
+- **Panel:** "Depolama" kartı disk doluluğunu ve tablo boyutlarını, "Yedekleme" kartı son yedeği ve Telegram durumunu gösterir (`GET /api/system/storage`).
+- **Ayarlar:** `DATA_RETENTION_DAYS` (30), `STORAGE_LIMIT_MB` (500), `ENABLE_AUTO_MAINTENANCE` (true), `BACKUP_TELEGRAM` (true).
+
+Railway'in kendi volume yedekleri de açılabilir (Volume → Backups). Böylece yedek Telegram'dan bağımsız olarak da alınmış olur.
+
+---
+
 ## 🔬 Backtest (Strateji Doğrulama)
 Backtest motoru canlı botun **kendi** sinyal, risk ve takip kodunu simüle saatle çalıştırır. Çıkışlar 1 dakikalık mumların tick'leriyle (fitil temasları dahil, muhafazakâr sıralama) gerçek `CounterfactualTrackerAgent` tarafından yönetilir; komisyon, kayma ve fonlama dahildir.
 ```bash

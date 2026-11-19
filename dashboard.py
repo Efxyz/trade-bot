@@ -147,6 +147,88 @@ def api_v3_market():
         return jsonify({"error": str(e)}), 500
 
 
+def _maintenance_notifier():
+    if _orchestrator is not None and getattr(_orchestrator, "notifier", None) is not None:
+        return _orchestrator.notifier
+    from agents.notifier_agent import NotifierAgent
+    return NotifierAgent()
+
+
+@app.route("/api/system/storage")
+def api_system_storage():
+    """Disk kullanımı, tablo boyutları, bakım ve yedek durumu (salt-okunur)."""
+    try:
+        import config as cfg
+        from core import maintenance as mt
+        rep = dict(mt.storage_report())
+        st = mt.load_state()
+        latest = mt.latest_backup()
+        rep["maintenance"] = {
+            "auto": cfg.ENABLE_AUTO_MAINTENANCE, "running": mt.is_running(),
+            "schedule_utc": f"{cfg.MAINTENANCE_HOUR_UTC:02d}:{cfg.MAINTENANCE_MINUTE_UTC:02d}",
+            "next_run": mt.next_run(), "due_now": mt.due_now(), "last_run": st.get("last_run"),
+            "last_cleanup": st.get("last_cleanup"), "last_backup": st.get("last_backup"),
+            "last_errors": st.get("last_errors", {}),
+        }
+        rep["backup"] = {"telegram_configured": mt.telegram_configured(), "telegram_enabled": cfg.BACKUP_TELEGRAM,
+                         "keep": cfg.BACKUP_KEEP, "latest": latest.name if latest else None}
+        return jsonify(rep)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/export/records.zip")
+def api_export_records():
+    """Tüm işlem kayıtları CSV olarak (zip). ?fmt=std -> standart CSV; varsayılan Türkçe Excel biçimi."""
+    from flask import Response
+    from core import maintenance as mt
+    fmt = "std" if request.args.get("fmt") == "std" else "tr"
+    key = f"export_{fmt}"
+    cached = mt._CACHE.get(key)
+    if cached and _time.time() - cached[0] < 30:
+        data = cached[1]
+    else:
+        positions = None
+        try:
+            from agents.carry_agent import get_live_engine
+            positions = get_live_engine().snapshot()["positions"]
+        except Exception:
+            pass
+        data = mt.build_export_zip(fmt, positions)
+        mt._CACHE[key] = (_time.time(), data)
+    name = f"tradebot_kayitlar_{mt._utc_now():%Y%m%d_%H%M}{'_std' if fmt == 'std' else ''}.zip"
+    return Response(data, mimetype="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@app.route("/api/system/cleanup", methods=["POST"])
+@require_admin_pin
+def api_system_cleanup():
+    from core import maintenance as mt
+    if mt.run_in_background("cleanup"):
+        return jsonify({"success": True, "message": "Temizlik başlatıldı."}), 202
+    return jsonify({"success": False, "message": "Başka bir bakım işlemi sürüyor."}), 409
+
+
+@app.route("/api/system/backup", methods=["POST"])
+@require_admin_pin
+def api_system_backup():
+    from core import maintenance as mt
+    if mt.run_in_background("backup", _maintenance_notifier()):
+        return jsonify({"success": True, "message": "Yedek hazırlanıyor."}), 202
+    return jsonify({"success": False, "message": "Başka bir bakım işlemi sürüyor."}), 409
+
+
+@app.route("/api/system/backup/latest")
+@require_admin_pin
+def api_system_backup_latest():
+    from core import maintenance as mt
+    p = mt.latest_backup()
+    if not p:
+        return jsonify({"success": False, "message": "Henüz yedek yok."}), 404
+    return send_from_directory(str(p.parent), p.name, as_attachment=True)
+
+
 @app.route("/api/carry")
 def api_carry():
     """v3 Çok Faktörlü Motor durumu (salt-okunur)."""

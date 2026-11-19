@@ -29,6 +29,7 @@ a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--dim)}
 .dot.ok{background:var(--pos);box-shadow:0 0 0 3px rgba(46,204,113,.18)}.dot.warn{background:var(--warn)}.dot.bad{background:var(--neg)}
 .top .spacer{flex:1}
+@media(max-width:640px){.top{position:static}}
 .clock{display:flex;gap:14px;font-size:11.5px;color:var(--muted)}
 .clock b{color:var(--fg);font-weight:500}
 .btn{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:7px;border:1px solid var(--line2);background:var(--panel2);color:var(--fg);font-size:12px;font-weight:500;cursor:pointer}
@@ -101,6 +102,19 @@ tfoot td{font-weight:600;border-bottom:0;background:var(--panel2)}
 .div{position:relative;height:12px;background:transparent;min-width:140px}
 .div::before{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--line2)}
 .div i{position:absolute;top:1px;height:10px;border-radius:2px}
+/* Kayıtlar ve depolama */
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{filter:brightness(1.1)}
+.btn[disabled]{opacity:.5;cursor:default}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.stack{display:flex;height:10px;border-radius:999px;overflow:hidden;background:var(--panel2);border:1px solid var(--line);margin:8px 0}
+.stack i{display:block;height:100%}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
+.badge.ok{color:var(--pos);background:rgba(46,204,113,.12)}.badge.warn{color:var(--warn);background:rgba(227,162,59,.14)}
+.badge.bad{color:var(--neg);background:rgba(255,93,93,.12)}.badge.muted{color:var(--muted);background:var(--panel2)}
+.mini th,.mini td{padding:6px 10px;font-size:12px}
+.mini th{cursor:default;position:static}
+.msg{font-size:12px;margin-top:10px;min-height:16px}
 footer{max-width:1680px;margin:0 auto;padding:0 20px 30px;color:var(--dim);font-size:11.5px;line-height:1.6}
 </style>
 </head>
@@ -117,6 +131,7 @@ footer{max-width:1680px;margin:0 auto;padding:0 20px 30px;color:var(--dim);font-
       <span>TSİ <b class="num" id="clkTr">--:--:--</b></span>
       <span>Sonraki dengeleme <b class="num" id="countdown">--:--:--</b></span>
     </div>
+    <a class="btn" href="/api/export/records.zip" download title="Tüm işlem kayıtları (Excel uyumlu CSV, zip)">⬇ Kayıtları indir</a>
     <a class="btn" href="/legacy" title="Eski SMC tarama paneli (yeni işlem açmıyor)">Eski SMC paneli ↗</a>
   </div>
 </header>
@@ -178,6 +193,17 @@ footer{max-width:1680px;margin:0 auto;padding:0 20px 30px;color:var(--dim);font-
         <div class="seg" id="histSeg"><button data-t="fills" class="on">Dolumlar</button><button data-t="reb">Dengelemeler</button></div>
       </div>
       <div class="tbl-wrap scroll" id="hist"></div>
+    </div>
+  </section>
+
+  <section class="grid g-two">
+    <div class="card">
+      <div class="card-h"><div><h2>Depolama</h2><div class="sub">Railway volume · /app/data</div></div><span id="stBadge"></span></div>
+      <div class="card-b" id="storage"><span class="muted">Yükleniyor…</span></div>
+    </div>
+    <div class="card">
+      <div class="card-h"><div><h2>Yedekleme ve dışa aktarma</h2><div class="sub">Gece bakımı: temizlik → yedek → Telegram</div></div><span id="bkBadge"></span></div>
+      <div class="card-b" id="backup"><span class="muted">Yükleniyor…</span></div>
     </div>
   </section>
 </main>
@@ -419,6 +445,143 @@ async function loadMarket() {
   } catch (e) {}
 }
 
+/* ---------- Kayıtlar, depolama ve yedek ---------- */
+const TBL = {
+  scanner_logs: "Tarama kayıtları", committee_debates: "AI komite tartışmaları", shadow_rejections: "Elenen sinyaller (gölge)",
+  coin_news_investigations: "Haber araştırmaları", news_items: "Haber başlıkları", signals: "SMC işlemleri",
+  carry_fills: "v3 dolumlar", carry_equity: "v3 saatlik kasa", carry_rebalances: "v3 dengelemeler", carry_state: "v3 motor durumu",
+  trade_reflections: "İşlem dersleri", autonomous_learning_reports: "Otonom öğrenme raporları", self_tuning_logs: "Kalibrasyon kayıtları",
+  daily_pnl_archive: "Günlük özetler", system_state: "Sistem durumu", daily_report_sent_log: "Rapor kayıtları",
+  fast_signals: "FAST işlemleri (eski)", fast_scanner_logs: "FAST tarama (eski)", super_fast_signals: "SÜPER FAST işlemleri (eski)",
+  super_fast_scanner_logs: "SÜPER FAST tarama (eski)",
+};
+const KIND = {log: ['badge warn', 'temizlenir'], v3: ['badge ok', 'v3'], core: ['badge muted', 'kalıcı']};
+const PARTC = ["var(--accent)", "var(--xsmom)", "var(--warn)", "var(--funding)", "var(--dim)"];
+const TG = {
+  gonderildi: ["badge ok", "Telegram'a gönderildi"], telegram_ayarli_degil: ["badge warn", "Telegram ayarlı değil"],
+  hata: ["badge bad", "Telegram gönderimi başarısız"], cok_buyuk: ["badge warn", "Telegram için çok büyük"], "kapalı": ["badge muted", "Telegram kapalı"],
+};
+const mbf = v => {
+  v = v || 0;
+  if (v > 0 && v < 1) return Math.max(1, Math.round(v * 1024)).toLocaleString("tr-TR") + " KB";
+  return v.toLocaleString("tr-TR", {maximumFractionDigits: 1}) + " MB";
+};
+const num = v => (v == null ? "—" : Number(v).toLocaleString("tr-TR"));
+let pollTimer = null;
+
+function getPin() {
+  let p = null;
+  try { p = sessionStorage.getItem("admin_pin"); } catch (e) {}
+  if (!p) {
+    p = prompt("Yönetici PIN kodu:");
+    if (!p) return null;
+    try { sessionStorage.setItem("admin_pin", p); } catch (e) {}
+  }
+  return p;
+}
+async function adminFetch(url, opts = {}) {
+  const pin = getPin(); if (!pin) return null;
+  const r = await fetch(url, {...opts, headers: {...(opts.headers || {}), "X-Admin-Pin": pin}});
+  if (r.status === 401) { try { sessionStorage.removeItem("admin_pin"); } catch (e) {} }
+  if (!r.ok) {
+    let m = "İşlem başarısız (" + r.status + ")";
+    try { m = (await r.clone().json()).message || m; } catch (e) {}
+    setMsg(m, "neg"); return null;
+  }
+  return r;
+}
+let lastMsg = ["", ""];
+function setMsg(t, c = "") { lastMsg = [t, c]; const el = $("#maintMsg"); if (el) { el.textContent = t; el.className = "msg " + c; } }
+
+function renderStorage(s) {
+  const pct = s.used_pct || 0;
+  const col = pct >= 90 ? "var(--neg)" : pct >= 70 ? "var(--warn)" : "var(--pos)";
+  $("#stBadge").innerHTML = `<span class="badge ${pct >= 90 ? "bad" : pct >= 70 ? "warn" : "ok"}">%${pct.toFixed(0)} dolu</span>`;
+  const tot = s.parts.reduce((a, p) => a + p.mb, 0) || 1;
+  const lc = (s.maintenance || {}).last_cleanup;
+  const tables = (s.tables || []).filter(t => (t.rows || 0) > 0).slice(0, 7);
+  $("#storage").innerHTML = `
+    <div class="meter"><div class="row"><span>Kullanılan</span><span class="num">${mbf(s.used_mb)} / ${mbf(s.limit_mb)}</span></div>
+      <div class="bar"><i style="width:${Math.min(100, pct)}%;background:${col}"></i></div></div>
+    <div class="stack">${s.parts.map((p, i) => `<i style="width:${p.mb / tot * 100}%;background:${PARTC[i]}"></i>`).join("")}</div>
+    <div class="legend">${s.parts.map((p, i) => `<span><i class="sw" style="background:${PARTC[i]}"></i>${p.name} <b class="num" style="color:var(--fg)">${mbf(p.mb)}</b>${p.files != null ? ` <span class="dim">(${num(p.files)} dosya)</span>` : ""}</span>`).join("")}</div>
+    ${s.reclaimable_mb > 1 ? `<div class="note" style="margin-top:10px">Silinmiş kayıtlardan geri kazanılabilir alan: <b class="num">${mbf(s.reclaimable_mb)}</b> (gece bakımında sıkıştırılır)</div>` : ""}
+    <div class="tbl-wrap" style="margin-top:12px"><table class="mini"><thead><tr><th>Tablo</th><th class="l">Tür</th><th>Kayıt</th><th>Boyut</th></tr></thead><tbody>${
+      tables.map(t => `<tr><td class="sym">${TBL[t.table] || t.table}</td><td class="l"><span class="${KIND[t.kind][0]}">${KIND[t.kind][1]}</span></td><td>${num(t.rows)}</td><td>${t.mb == null ? "—" : mbf(t.mb)}</td></tr>`).join("")
+    }</tbody></table></div>
+    <div class="note">Otomatik temizlik: <b>${s.retention_days} günden eski</b> tarama, komite, haber kayıtları ve grafik resimleri her gece silinir. İşlem geçmişi (SMC ve v3) asla silinmez.
+      ${lc ? `<br>Son temizlik ${lc.time.slice(5, 16)} UTC · ${num(lc.deleted_total)} kayıt, ${num(lc.charts_removed)} grafik silindi · ${mbf(Math.max(0, lc.freed_mb))} boşaldı${lc.vacuumed ? " · veritabanı sıkıştırıldı" : ""}` : "<br>Henüz temizlik yapılmadı."}</div>`;
+}
+
+function renderBackup(s) {
+  const m = s.maintenance || {}, b = s.backup || {}, lb = m.last_backup;
+  const tgOk = b.telegram_configured;
+  const st = lb ? (TG[lb.telegram] || ["badge muted", lb.telegram]) : null;
+  $("#bkBadge").innerHTML = m.running ? '<span class="badge warn">Çalışıyor…</span>' : (st ? `<span class="${st[0]}">${st[1]}</span>` : '<span class="badge muted">Henüz yedek yok</span>');
+  const errs = Object.entries(m.last_errors || {});
+  $("#backup").innerHTML = `
+    <div class="kv">
+      <span class="muted">Son yedek</span><span class="num">${lb ? `${lb.time.slice(0, 16)} UTC · ${mbf(lb.mb)}` : "—"}</span>
+      <span class="muted">Telegram</span><span>${tgOk ? '<span class="badge ok">Bağlı</span>' : '<span class="badge warn">Ayarlı değil</span>'}</span>
+      <span class="muted">Sonraki gece bakımı</span><span class="num">${m.due_now ? "Birazdan (bugünkü bakım bekliyor)" : `${(m.next_run || "—").slice(0, 16)} UTC · her gün ${m.schedule_utc} UTC`}</span>
+      <span class="muted">Sunucuda saklanan</span><span class="num">son ${b.keep} yedek</span>
+      <span class="muted">Son çalışma</span><span class="num">${(m.last_run || "—").slice(0, 16)}</span>
+    </div>
+    ${errs.length ? `<div class="note neg">Son hata: ${errs.map(([k, v]) => `${k}: ${v}`).join(" · ")}</div>` : ""}
+    <div class="actions">
+      <a class="btn primary" href="/api/export/records.zip" download>⬇ Kayıtları indir (Excel)</a>
+      <a class="btn" href="/api/export/records.zip?fmt=std" download title="Virgül ayraçlı, noktalı ondalık (Python/Google Sheets)">Standart CSV</a>
+      <button class="btn" id="btnBackup" ${m.running ? "disabled" : ""}>🗄️ Şimdi yedekle</button>
+      <button class="btn" id="btnLatest" ${b.latest ? "" : "disabled"}>⬇ Son yedeği indir</button>
+      <button class="btn" id="btnCleanup" ${m.running ? "disabled" : ""}>🧹 Şimdi temizle</button>
+    </div>
+    <div class="msg" id="maintMsg"></div>
+    <div class="note">Excel dosyası Türkçe biçimdedir (noktalı virgül ayraç, virgüllü ondalık). Yedek zip'inde işlem geçmişi ve v3 kayıtları
+      (veritabanı + CSV) bulunur; tarama günlükleri ve API anahtarları yedeğe <b>girmez</b>. Yedekleme ve temizlik düğmeleri yönetici PIN'i ister.</div>`;
+  if (lastMsg[0]) setMsg(lastMsg[0], lastMsg[1]);
+  $("#btnBackup").onclick = () => runAction("backup");
+  $("#btnCleanup").onclick = () => runAction("cleanup");
+  $("#btnLatest").onclick = downloadLatest;
+}
+
+async function loadStorage() {
+  try {
+    const s = await (await fetch("/api/system/storage")).json();
+    if (s.error) { $("#storage").innerHTML = `<span class="neg">Hata: ${s.error}</span>`; return null; }
+    renderStorage(s); renderBackup(s);
+    return s;
+  } catch (e) { return null; }
+}
+async function runAction(kind) {
+  const q = kind === "cleanup"
+    ? "30 günden eski tarama/komite/haber kayıtları ve grafik resimleri silinecek. İşlem geçmişi korunur. Devam edilsin mi?"
+    : "Şimdi yedek alınıp Telegram'a gönderilsin mi?";
+  if (!confirm(q)) return;
+  const r = await adminFetch(kind === "cleanup" ? "/api/system/cleanup" : "/api/system/backup", {method: "POST"});
+  if (!r) return;
+  setMsg(kind === "cleanup" ? "Temizlik başladı…" : "Yedek hazırlanıyor…", "muted");
+  clearInterval(pollTimer);
+  let n = 0;
+  pollTimer = setInterval(async () => {
+    const s = await loadStorage();
+    if ((s && !(s.maintenance || {}).running) || ++n > 60) {
+      clearInterval(pollTimer);
+      setMsg(kind === "cleanup" ? "Temizlik tamamlandı." : "Yedek tamamlandı.", "pos");
+    }
+  }, 3000);
+}
+async function downloadLatest() {
+  const r = await adminFetch("/api/system/backup/latest");
+  if (!r) return;
+  const blob = await r.blob();
+  const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(r.headers.get("Content-Disposition") || "");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = m ? decodeURIComponent(m[1]) : "tradebot_yedek.zip";
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  setMsg("Son yedek indirildi.", "pos");
+}
+
 /* ---------- Ana yükleme ---------- */
 async function load() {
   try {
@@ -430,8 +593,8 @@ async function load() {
     document.title = `${usd(d.equity)} (${pct(d.pnl_pct)}) · Quant Terminal v3`;
   } catch (e) { $("#statusTxt").textContent = "Bağlantı hatası"; $("#statusDot").className = "dot bad"; }
 }
-load(); loadMarket(); tickClock();
-setInterval(load, 15000); setInterval(loadMarket, 30000);
+load(); loadMarket(); loadStorage(); tickClock();
+setInterval(load, 15000); setInterval(loadMarket, 30000); setInterval(loadStorage, 60000);
 </script>
 </body>
 </html>

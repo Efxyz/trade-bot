@@ -154,6 +154,37 @@ class NotifierAgent:
             )
             self._send_telegram_photo(trade_info["chart_exit_png"], caption)
 
+    def _redact(self, err) -> str:
+        """Hata metinlerinde bot token'ını gizler (requests hataları URL'yi, dolayısıyla token'ı içerebilir)."""
+        msg = str(err)
+        return msg.replace(self.bot_token, "***") if self.bot_token else msg
+
+    def send_document(self, file_path: str, caption: str = "") -> bool:
+        """Telegram'a dosya gönderir (bot API sınırı 50 MB). 429'da bekleyip tekrar dener."""
+        if not self.has_telegram or not file_path or not os.path.exists(file_path):
+            return False
+        url = f"https://api.telegram.org/bot{self.bot_token}/sendDocument"
+        for attempt in range(3):
+            try:
+                with open(file_path, "rb") as f:
+                    resp = requests.post(url, data={"chat_id": self.chat_id, "caption": caption[:1000]},
+                                         files={"document": (os.path.basename(file_path), f)}, timeout=120)
+                if resp.status_code == 200:
+                    return True
+                if resp.status_code == 429:
+                    try:
+                        wait_s = int((resp.json() or {}).get("parameters", {}).get("retry_after", 5))
+                    except Exception:
+                        wait_s = 5
+                    time.sleep(min(30, max(2, wait_s)))
+                    continue
+                print(f"⚠️ [Notifier] Telegram dosya gönderimi başarısız ({resp.status_code}): {self._redact(resp.text[:150])}")
+                return False
+            except Exception as e:
+                print(f"[Notifier] Telegram dosya hatası ({attempt+1}/3): {self._redact(e)}")
+                time.sleep(2)
+        return False
+
     def send_text_message(self, text: str) -> bool:
         """Düz metin mesajı gönderir (429 rate-limit backoff + Markdown reddedilirse düz metin fallback)."""
         if not self.has_telegram:
@@ -185,7 +216,7 @@ class NotifierAgent:
                 print(f"⚠️ [Notifier] Telegram API hata ({resp.status_code}): {resp.text[:150]}")
                 time.sleep(2)
             except Exception as e:
-                print(f"[Notifier] Telegram mesaj hatası ({attempt+1}/3): {e}")
+                print(f"[Notifier] Telegram mesaj hatası ({attempt+1}/3): {self._redact(e)}")
                 time.sleep(2)
         return False
 
@@ -249,4 +280,4 @@ class NotifierAgent:
                 files = {"photo": f}
                 requests.post(url, data=payload, files=files, timeout=15)
         except Exception as e:
-            print(f"[Notifier] Telegram gönderme hatası: {e}")
+            print(f"[Notifier] Telegram gönderme hatası: {self._redact(e)}")
