@@ -255,7 +255,10 @@ CARRY_CAPITAL_USDT = float(os.getenv("CARRY_CAPITAL_USDT", "1000"))
 CARRY_SLEEVES = ["trend", "xsmom", "funding"]   # v3.1 çok faktörlü karışım (tek faktör: ["funding"])
 CARRY_TSMOM_LOOKBACK_H = 24 * 28         # Trend kolu: 28 günlük getiri işareti
 CARRY_XSMOM_LOOKBACK_H = 24 * 30         # Kesitsel momentum kolu: 30 günlük getiri (son 1 gün hariç)
-CARRY_PORTFOLIO_TARGET_VOL = 0.10        # Kollar toplamı için hedef yıllık volatilite (kol başına 0.10/√3)
+# Risk seviyesi = portföyün hedef yıllık oynaklığı. Railway Variables'tan CARRY_PORTFOLIO_TARGET_VOL ile değiştirilebilir.
+# Backtest (kesici risk seviyesine eşit): %10 -> yıllık ~%13 / en kötü düşüş ~%8-12; %15 -> ~%19-21 / ~%11-17;
+# %20 -> ~%25-30 / ~%15-22; %30 -> ~%37-45 / ~%20-33. Risk değişince motor mevcut dilimleri yeni seviyeye ölçekler.
+CARRY_PORTFOLIO_TARGET_VOL = float(os.getenv("CARRY_PORTFOLIO_TARGET_VOL", "0.20"))
 CARRY_K = 5                              # Kesitsel kollarda bacak başına coin sayısı (5 long + 5 short)
 CARRY_FUNDING_LOOKBACK_H = 24 * 7        # Sıralama: son 7 günün fonlama toplamı
 CARRY_VOL_LOOKBACK_H = 24 * 30           # Ters-volatilite ağırlığı için 30 günlük saatlik volatilite
@@ -267,8 +270,9 @@ CARRY_REBALANCE_HOUR_UTC = 0
 CARRY_MIN_TRADE_USDT = 10.0              # Bundan küçük boyut ayarlamaları atlanır (yön değişimi/kapanış hariç)
 CARRY_FEE_RATE = 0.0005                  # Taker %0.05 (muhafazakâr; limit emirle %0.02 olur)
 CARRY_SLIPPAGE_RATE = 0.0002             # %0.02 kayma
-CARRY_DD_CUT = -0.10                     # Tepeden -%10 düşüşte risk yarıya
-CARRY_DD_RESTORE = -0.05                 # -%5'in üstüne dönünce tam risk
+# Düşüş kesicisi risk seviyesiyle orantılı: sabit -%10 yüksek riskte normal dalgalanmada tetiklenip getiriyi yarıya indiriyordu.
+CARRY_DD_CUT = float(os.getenv("CARRY_DD_CUT", str(-CARRY_PORTFOLIO_TARGET_VOL)))   # örn. %20 riskte -%20'de risk yarıya
+CARRY_DD_RESTORE = CARRY_DD_CUT / 2                                                # kesicinin yarısına dönünce tam risk
 CARRY_LOOP_SECONDS = 60
 CARRY_STRATEGY_VERSION = "v3.1-multifactor"
 

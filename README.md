@@ -170,9 +170,18 @@ Geniş çaplı araştırmada SMC sinyal motorunun 11.894 kurulumda yön bilgisi 
 | Kesitsel momentum | Son 30 günün (son 1 gün hariç) en iyi 5 coini LONG, en kötü 5 coini SHORT |
 | Fonlama faktörü | Son 7 günün fonlama toplamı en düşük 5 coin LONG, en yüksek 5 coin SHORT |
 
-- Evren: 20 likit USDT-M perp (`CARRY_UNIVERSE`). Coin başına ters-volatilite ağırlığı; her kol kovaryans tabanlı tahmini volatilitesine göre eşit riske ölçeklenir (toplam hedef ~%10 yıllık vol, brüt tavan 3x).
+- Evren: 20 likit USDT-M perp (`CARRY_UNIVERSE`). Coin başına ters-volatilite ağırlığı; her kol kovaryans tabanlı tahmini volatilitesine göre eşit riske ölçeklenir (brüt kaldıraç tavanı 3x).
+- **Risk seviyesi** (`CARRY_PORTFOLIO_TARGET_VOL`, varsayılan **0.20** = yıllık %20 hedef oynaklık). Railway Variables'tan değiştirilebilir. Risk değişince motor mevcut 7 günlük dilimleri yeni seviyeye ölçekler, böylece değişiklik bir sonraki dengelemede tam olarak uygulanır.
+
+| Risk | Yıllık getiri (backtest) | En kötü düşüş | En kötü ay | Ort. kaldıraç |
+|---|---|---|---|---|
+| 0.10 | ~%12–14 | ~%8–12 | −%5 | ~0,4–0,7x |
+| 0.15 | ~%19–21 | ~%11–17 | −%7 | ~0,6–1,0x |
+| **0.20** | **~%25–30** | **~%15–22** | **−%10** | **~0,9–1,3x** |
+| 0.30 | ~%37–45 | ~%20–33 | −%15 | ~1,2–1,9x |
+
 - Portföy 7 dilime bölünür: her gün 00:00 UTC'de bir dilim yenilenir (hedef = son 7 günlük sinyalin ortalaması). Böylece sonuç, dengelemenin yapıldığı güne bağlı kalmaz.
-- Portföy kesicisi: tepeden -%10 düşüşte risk yarıya iner, -%5'in üstüne dönünce normale döner.
+- Portföy kesicisi risk seviyesiyle orantılıdır (`CARRY_DD_CUT`, varsayılan = −risk seviyesi): %20 riskte zirveden −%20 düşüşte risk yarıya iner, −%10'un üstüne dönünce normale döner. Sabit −%10'luk kesici yüksek riskte normal dalgalanmada tetiklenip getiriyi yarıya indiriyordu.
 - Panel: ana sayfa **`/`** (v3 terminali: özsermaye eğrisi, risk durumu, faktör katkılı pozisyonlar, sinyal matrisi, işlem geçmişi). Eski SMC paneli **`/legacy`** adresinde. API: `GET /api/carry`, `GET /api/v3/market`. Durum `carry_*` tablolarında saklanır; yeniden başlatmada kaldığı yerden devam eder.
 - Anahtarlar: `ENABLE_CARRY_ENGINE` (varsayılan true), `ENABLE_SMC_ENGINE` (varsayılan false; açık SMC işlemleri her durumda takip edilip kapatılır), `CARRY_CAPITAL_USDT`.
 

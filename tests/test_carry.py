@@ -296,3 +296,89 @@ def test_smc_engine_disabled_by_default():
     import config
     assert config.ENABLE_SMC_ENGINE is False
     assert config.ENABLE_CARRY_ENGINE is True
+
+
+# ---------------- risk seviyesi değişimi ----------------
+class _RiskNotif:
+    has_telegram = True
+
+    def __init__(self):
+        self.msgs = []
+
+    def send_text_message(self, t):
+        self.msgs.append(t)
+        return True
+
+
+def _built_engine(target, store=None, data=None, notifier=None, days=3):
+    data = data or FakeData(SYMS)
+    store = store or MemoryCarryStore()
+    eng = CarryEngine(data, store, params(sleeves=("trend", "xsmom", "funding"), tranches=7,
+                                          portfolio_target_vol=target, dd_cut=-target, dd_restore=-target / 2),
+                      notifier=notifier)
+    for _ in range(24 * days):
+        eng.step()
+        data.t += HOUR_MS
+    return eng, store, data
+
+
+def test_risk_increase_rescales_tranches_and_doubles_exposure_at_next_rebalance():
+    eng10, store, data = _built_engine(0.10)
+    eng10.step()                                     # gece yarısı dengelemesi eski riskle yapılsın
+    data.t += HOUR_MS                                # ...ve risk değişimi gün ortasında gelsin
+    assert eng10.state["target_vol_used"] == 0.10
+    g10 = sum(abs(v) for v in eng10._combined_target().values())
+    fc10 = eng10.factor_contrib()
+    n = _RiskNotif()
+    eng20 = CarryEngine(data, store, params(sleeves=("trend", "xsmom", "funding"), tranches=7,
+                                            portfolio_target_vol=0.20, dd_cut=-0.20, dd_restore=-0.10), notifier=n)
+    reb_before = eng20.state["n_rebalances"]
+    eng20.step()                                     # aynı gün: dilimler ölçeklenir, işlem yapılmaz
+    assert eng20.state["target_vol_used"] == 0.20 and eng20.state["n_rebalances"] == reb_before
+    assert eng20.state["risk_changes"][-1]["factor"] == pytest.approx(2.0)
+    assert sum(abs(v) for v in eng20._combined_target().values()) == pytest.approx(2 * g10, rel=1e-9)
+    s0 = next(iter(fc10))
+    assert sum(eng20.factor_contrib()[s0].values()) == pytest.approx(2 * sum(fc10[s0].values()), rel=1e-6)
+    assert any("Risk seviyesi güncellendi" in m and "%10 → %20" in m for m in n.msgs)
+    # Bir sonraki dengelemede pozisyonlar ~2 katına çıkar
+    p0 = {s: abs(p["qty"]) for s, p in eng20.state["positions"].items()}
+    g0, _ = eng20.exposures(data.prices(SYMS))
+    for _ in range(24):
+        data.t += HOUR_MS
+        eng20.step()
+    g1, _ = eng20.exposures(data.prices(SYMS))
+    assert eng20.state["n_rebalances"] == reb_before + 1
+    assert 1.8 < g1 / g0 < 2.2
+    eng20.step()                                     # ikinci kez ölçeklemez
+    assert len(eng20.state["risk_changes"]) == 1
+
+
+def test_legacy_state_without_marker_is_treated_as_10pct():
+    eng10, store, data = _built_engine(0.10)
+    st = store.load()
+    st.pop("target_vol_used")                        # ilk canlı sürümdeki durum
+    store.save(st)
+    eng = CarryEngine(data, store, params(sleeves=("trend", "xsmom", "funding"), tranches=7, portfolio_target_vol=0.20))
+    ch = eng.apply_risk_level(data.t)
+    assert ch["from"] == 0.10 and ch["to"] == 0.20 and ch["factor"] == pytest.approx(2.0)
+
+
+def test_fresh_state_records_risk_without_rescale():
+    eng = CarryEngine(FakeData(SYMS), MemoryCarryStore(), params(portfolio_target_vol=0.20))
+    assert eng.apply_risk_level(T0) is None and eng.state["target_vol_used"] == 0.20
+
+
+def test_gross_cap_enforced_after_rescale():
+    eng, store, data = _built_engine(0.10)
+    eng.state["tranche_weights"] = [{s: v * 50 for s, v in w.items()} for w in eng.state["tranche_weights"]]
+    eng.p = replace(eng.p, gross_cap=1.5)
+    assert sum(abs(v) for v in eng._combined_target().values()) == pytest.approx(1.5)
+
+
+def test_risk_texts():
+    from agents import v3_telegram as tg
+    assert tg.expectation(0.20)[0] == "~%25–30" and tg.expectation(0.17)[0] == "~%19–21"
+    m = tg.risk_change_message({"from": 0.10, "to": 0.20, "at": "x", "factor": 2.0},
+                               params(portfolio_target_vol=0.20, dd_cut=-0.20), {"next_rebalance": "2026-11-20 00:00:00"})
+    assert "%10 → %20" in m and "~2.0 katına çıkacak" in m and "20.11 03:00 TSİ" in m and "−20%" in m
+    assert m.count("*") % 2 == 0 and "_" not in m

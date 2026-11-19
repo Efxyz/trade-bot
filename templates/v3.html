@@ -209,8 +209,8 @@ footer{max-width:1680px;margin:0 auto;padding:0 20px 30px;color:var(--dim);font-
 </main>
 <footer>
   <b>v3 Çok Faktörlü Motor</b> · Üç eşit riskli kol: trend (28 günlük getiri işareti), kesitsel momentum (30 günün en güçlü 5 / en zayıf 5 coini) ve fonlama faktörü (7 günlük fonlaması en düşük 5 LONG / en yüksek 5 SHORT).
-  Portföy 7 dilime bölünür, her gün 00:00 UTC'de bir dilim yenilenir. Tepeden -%10 düşüşte risk otomatik yarıya iner.
-  Backtest (komisyon, kayma ve gerçek fonlama dahil): 2023–26 Sharpe ~1,1, 2020–23 örneklem dışı Sharpe ~1,4; yıllık ~%12–14, en kötü düşüş ~%8–12. Geçmiş performans gelecekteki sonucu garanti etmez; bu panel sanal (paper) işlemleri gösterir.
+  Portföy 7 dilime bölünür, her gün 00:00 UTC'de bir dilim yenilenir. Zirveden düşüş, risk seviyesine eşit kesiciyi aşarsa risk otomatik yarıya iner.
+  Backtest (komisyon, kayma ve gerçek fonlama dahil): 2023–26 Sharpe ~1,1, 2020–23 örneklem dışı Sharpe ~1,4; <span id="footExp">seçili risk seviyesinin beklentisi yükleniyor</span>. Geçmiş performans gelecekteki sonucu garanti etmez; bu panel sanal (paper) işlemleri gösterir.
 </footer>
 
 <script>
@@ -336,6 +336,13 @@ document.querySelectorAll("#rangeSeg button").forEach(b => b.onclick = () => {
 window.addEventListener("resize", () => drawEquity());
 
 /* ---------- Risk kartı ---------- */
+const EXPECT = {0.10: ["~%12–14", "~%8–12", "−%5"], 0.15: ["~%19–21", "~%11–17", "−%7"],
+                0.20: ["~%25–30", "~%15–22", "−%10"], 0.30: ["~%37–45", "~%20–33", "−%15"]};
+const expect = tv => {
+  tv = Number(tv) || 0.10;
+  const k = Object.keys(EXPECT).map(Number).reduce((a, b) => Math.abs(b - tv) < Math.abs(a - tv) ? b : a);
+  return EXPECT[k];   // sayı anahtarı "0.2" biçimine dönüşür; Object.keys ile aynı
+};
 function renderRisk(d) {
   const dd = -d.drawdown_pct, lim = -d.params.dd_cut * 100;
   const lev = d.equity ? d.gross_exposure / d.equity : 0;
@@ -355,12 +362,13 @@ function renderRisk(d) {
     <div class="sleeves">${sl}</div>
     <div class="legend">${(d.sleeves || []).map(k => `<span><i class="sw" style="background:${COLORS[k]}"></i>${NAMES[k]} <b class="num" style="color:var(--fg)">${((gs[k] || 0) / tot * 100).toFixed(0)}%</b></span>`).join("")}</div>
     <div class="kv">
-      <span class="muted">Hedef volatilite</span><span class="num">%${(d.params.target_vol * 100).toFixed(0)} yıllık</span>
+      <span class="muted">Risk seviyesi</span><span class="num">%${(d.params.target_vol * 100).toFixed(0)} hedef oynaklık · kesici ${pct(d.params.dd_cut * 100, 0)}</span>
       <span class="muted">Dilim / yenileme</span><span class="num">${d.params.tranches} dilim · günlük 00:00 UTC</span>
       <span class="muted">Son dengeleme</span><span class="num">${(d.last_rebalance || "—").slice(0, 16)}</span>
       <span class="muted">Maliyet varsayımı</span><span class="num">%${(d.params.fee_rate * 100).toFixed(2)} + %${(d.params.slippage_rate * 100).toFixed(2)} kayma</span>
     </div>
-    <div class="note">Backtest beklentisi: yıllık ~%12–14, ayların ~%60'ı kârlı, en kötü ay ~−%5. Kısa vadede (günler/haftalar) sonuçlar bu aralığın çok dışına çıkabilir; değerlendirme için en az 8–12 hafta gerekir.</div>`;
+    <div class="note">Backtest beklentisi (risk %${(d.params.target_vol * 100).toFixed(0)}): yıllık ${expect(d.params.target_vol)[0]}, en kötü düşüş ${expect(d.params.target_vol)[1]}, en kötü ay ${expect(d.params.target_vol)[2]}; ayların ~%60'ı kârlı. Canlıda biraz daha düşük beklenmeli. Kısa vadede (günler/haftalar) sonuçlar bu aralığın çok dışına çıkabilir; değerlendirme için en az 8–12 hafta gerekir.</div>`;
+  const fe = $("#footExp"); if (fe) fe.textContent = `risk %${(d.params.target_vol * 100).toFixed(0)}: yıllık ${expect(d.params.target_vol)[0]}, en kötü düşüş ${expect(d.params.target_vol)[1]}`;
 }
 
 /* ---------- Pozisyonlar ---------- */

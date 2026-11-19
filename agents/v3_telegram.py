@@ -167,6 +167,9 @@ def startup_message(snap: Optional[Dict]) -> str:
              "🤖 Motor: çok faktörlü (trend + momentum + fonlama) · sanal işlem"]
     if snap:
         lines.append(f"💼 Kasa: `{usd(snap['equity'])}` ({pct(snap['pnl_pct'])}) · {len(snap['positions'])} pozisyon")
+        pr = snap.get("params") or {}
+        if pr.get("target_vol"):
+            lines.append(f"🎚️ Risk seviyesi %{pr['target_vol'] * 100:.0f} · kesici {pct(pr.get('dd_cut', 0) * 100, 0)}")
     lines += [f"🕒 Dengeleme {_tr_hm(config.CARRY_REBALANCE_HOUR_UTC)} · yedek "
               f"{_tr_hm(config.MAINTENANCE_HOUR_UTC, config.MAINTENANCE_MINUTE_UTC)} · gün sonu raporu 23:50 (TSİ)",
               "💬 /durum /pozisyonlar /rapor /yedek /yardim"]
@@ -185,6 +188,9 @@ def status_message(snap: Dict, today: Optional[Dict] = None) -> str:
              f"{icon(snap['pnl'])} Toplam: *{usd(snap['pnl'], True)}* ({pct(snap['pnl_pct'])})"]
     if today:
         lines.append(f"{icon(today['pnl'])} Bugün: *{usd(today['pnl'], True)}* ({pct(today['pnl_pct'])})")
+    pr = snap.get("params") or {}
+    if pr.get("target_vol"):
+        lines.append(f"🎚️ Risk seviyesi %{pr['target_vol'] * 100:.0f} · kesici {pct(pr.get('dd_cut', 0) * 100, 0)}")
     lines += [f"📉 Zirveden: {pct(snap['drawdown_pct'])} · risk ölçeği {snap['scale']:.1f}x",
               f"📌 {len(pos)} pozisyon ({n_long} LONG / {n_short} SHORT) · brüt {usd(snap['gross_exposure'])} ({lev:.2f}x)",
               f"💸 Toplam komisyon {usd(snap['fees_paid'])} · fonlama {funding_text(snap['funding_paid'])}",
@@ -246,6 +252,31 @@ def daily_report_message(engine=None, date_tr: Optional[str] = None, final: bool
     url = panel_url()
     if url:
         lines += [LINE, f"🌐 {url}"]
+    return "\n".join(lines)
+
+
+EXPECT = {  # backtest (kesici risk seviyesine eşit): yıllık getiri, en kötü düşüş, en kötü ay
+    0.10: ("~%12–14", "~%8–12", "−%5"),
+    0.15: ("~%19–21", "~%11–17", "−%7"),
+    0.20: ("~%25–30", "~%15–22", "−%10"),
+    0.30: ("~%37–45", "~%20–33", "−%15"),
+}
+
+
+def expectation(target_vol: float):
+    key = min(EXPECT, key=lambda k: abs(k - float(target_vol or 0)))
+    return EXPECT[key]
+
+
+def risk_change_message(change: Dict, params, light: Dict) -> str:
+    ann, dd, month = expectation(change["to"])
+    up = change["to"] > change["from"]
+    lines = [f"🎚️ *Risk seviyesi güncellendi* · %{change['from'] * 100:.0f} → %{change['to'] * 100:.0f}", LINE,
+             f"{'📈' if up else '📉'} Pozisyonlar bir sonraki dengelemede ({utc_to_tr(light.get('next_rebalance'))} TSİ) "
+             f"~{change['factor']:.1f} katına {'çıkacak' if up else 'inecek'}.",
+             f"🛡️ Düşüş kesicisi: {pct(params.dd_cut * 100, 0)} (zirveden bu kadar düşerse risk yarıya iner)",
+             f"🧪 Backtest beklentisi: yıllık {ann} · en kötü düşüş {dd} · en kötü ay {month}",
+             "Canlıda sonuçların bir miktar daha düşük olması beklenmeli."]
     return "\n".join(lines)
 
 
