@@ -3,8 +3,16 @@ Trading Bot Configuration - Binance Futures (USDT.P)
 VUR-KAÇ MİKRO SCALPING MODU (Hızlı Küçük Karlar Alıp Çıkma)
 """
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
+
+# Windows'ta çıktı bir boruya/dosyaya yönlendirildiğinde (cp1254) emoji içeren print'ler çökmesin
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(errors="replace")
+    except Exception:
+        pass
 
 load_dotenv()
 
@@ -201,6 +209,18 @@ DAILY_TRAILING_PROFIT_MIN_USDT = 25.0
 ENABLE_MAKER_POST_ONLY = False         # Sanal simülasyonda muhafazakâr Taker (%0.10) korunur; canlı emirde GTX (%0.04) açılır
 MAKER_FEE_PCT = 0.02                   # %0.02 Binance Futures Maker komisyonu
 MAKER_ROUNDTRIP_FEE_PCT = 0.04         # Giriş + TP Maker toplam %0.04 komisyon
+
+# ========================================================
+# STRATEJİ ANAHTARLARI (Backtest ile doğrulanarak belirlenir: python -m backtest.run --variants ...)
+# ========================================================
+ENABLE_PAIR_TRADING = False              # Stat-arb pair: bacak başına ayrı stop hedge'i bozuyor; canlıda net ~0 (yalnızca komisyon)
+ENABLE_MC_GATE = True                    # Monte Carlo veto kapısı
+ENABLE_QUALITY_GATE = True               # Turnuva kalite barajı (MC + komite + R:R + not)
+QUALITY_GATE_THRESHOLD = 68.0
+LADDER_STEP1_PARTIAL_PCT = 0.35         # Basamak 1'de realize edilen pozisyon oranı (0 = kısmi satış yok)
+ENABLE_MOMENTUM_STAGNATION_EXIT = True   # İlk 2 mumda yön teyidi yoksa küçük zararla çıkış
+SCORING_DEDUP = False                    # True: iki yöne birden puan veren faktörler (hacim, RSI 48-52) nötrlenir
+USE_REGIME_MIN_RR = False                # True: rejim politikasındaki min R:R (TRENDING 1.65) gerçekten uygulanır
 
 # Strateji sürüm etiketi: her yeni işleme yazılır; istatistikler sürüm bazında ayrıştırılabilir
 STRATEGY_VERSION = "v2.0-overhaul"

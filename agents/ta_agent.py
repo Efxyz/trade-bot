@@ -36,7 +36,9 @@ from config import (
     REGIME_CI_CHOP,
     REGIME_KER_TREND,
     REGIME_KER_CHOP,
-    REGIME_POLICY
+    REGIME_POLICY,
+    SCORING_DEDUP,
+    USE_REGIME_MIN_RR
 )
 from core.advanced_indicators import (
     calculate_linear_regression_channel,
@@ -582,7 +584,8 @@ class TechnicalAnalysisAgent:
         sl_dist = max(min_sl_dist, min(max_sl_dist, curr_atr * atr_mult))
         sl_pct = round((sl_dist / current_price) * 100, 2)
 
-        eff_min_rr = max(MIN_RR_RATIO, policy.get("min_rr", MIN_RR_RATIO))
+        # USE_REGIME_MIN_RR: rejim politikası min R:R'ı doğrudan uygular (eskiden max() yüzünden 1.65 hiç kullanılmıyordu)
+        eff_min_rr = policy.get("min_rr", MIN_RR_RATIO) if USE_REGIME_MIN_RR else max(MIN_RR_RATIO, policy.get("min_rr", MIN_RR_RATIO))
         min_tp_dist = current_price * (tf_target_profit / 100.0)
         tp_dist = max(sl_dist * eff_min_rr, min_tp_dist)
         tp_pct = round((tp_dist / current_price) * 100, 2)
@@ -675,7 +678,7 @@ class TechnicalAnalysisAgent:
         # Hacim patlama bonusu (Tamamlanmış mumlara göre gürültüsüz ölçüm)
         prior_vols = [c["volume"] for c in eval_candles[-11:-1]]
         avg_v = sum(prior_vols) / len(prior_vols) if prior_vols else 1.0
-        if len(eval_candles) >= 2 and eval_candles[-1]["volume"] >= (avg_v * 0.90):
+        if not SCORING_DEDUP and len(eval_candles) >= 2 and eval_candles[-1]["volume"] >= (avg_v * 0.90):
             long_score += 8
             short_score += 8
             long_factors.append("Sağlıklı Hacim İvmesi")
@@ -761,7 +764,7 @@ class TechnicalAnalysisAgent:
         elif rsi_div.get("bullish_divergence") == "HIDDEN_BULLISH":
             long_score += 12
             long_factors.append("⚡ Gizli Boğa Diverjansı (Trend Devamı)")
-        elif 48 <= curr_rsi <= 68:
+        elif (52 < curr_rsi <= 68) if SCORING_DEDUP else (48 <= curr_rsi <= 68):
             long_score += 10
             long_factors.append(f"RSI İdeal İvme ({curr_rsi:.1f})")
 
@@ -771,7 +774,7 @@ class TechnicalAnalysisAgent:
         elif rsi_div.get("bearish_divergence") == "HIDDEN_BEARISH":
             short_score += 12
             short_factors.append("⚡ Gizli Ayı Diverjansı (Ayı Devamı)")
-        elif 32 <= curr_rsi <= 52:
+        elif (32 <= curr_rsi < 48) if SCORING_DEDUP else (32 <= curr_rsi <= 52):
             short_score += 10
             short_factors.append(f"RSI İdeal Baskı ({curr_rsi:.1f})")
 

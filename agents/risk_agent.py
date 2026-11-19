@@ -290,7 +290,12 @@ class RiskOfficerAgent:
                 }
 
         # 3. RİSK / ÖDÜL DENETİMİ (En az MIN_RR_RATIO = 1.4)
-        if rr < MIN_RR_RATIO:
+        # Rejim politikası etkinse kurulumun rejimine ait min R:R kullanılır (TRENDING 1.65 / CHOPPY 2.10)
+        from config import USE_REGIME_MIN_RR, REGIME_POLICY
+        min_rr_required = MIN_RR_RATIO
+        if USE_REGIME_MIN_RR and ta_setup.get("regime") in REGIME_POLICY:
+            min_rr_required = REGIME_POLICY[ta_setup["regime"]].get("min_rr", MIN_RR_RATIO)
+        if rr < min_rr_required - 1e-9:
             return False, {
                 "decision": "REJECT",
                 "reason": (

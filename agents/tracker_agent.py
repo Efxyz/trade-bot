@@ -45,7 +45,8 @@ from config import (
     MIN_RR_RATIO,
     MAX_ALLOCATED_MARGIN_PER_TRADE,
     ENABLE_LOSING_DCA,
-    ESTIMATED_SLIPPAGE_PCT
+    ESTIMATED_SLIPPAGE_PCT,
+    ENABLE_MOMENTUM_STAGNATION_EXIT
 )
 
 class CounterfactualTrackerAgent:
@@ -275,15 +276,17 @@ class CounterfactualTrackerAgent:
                                 "status": "ACTIVE_BE" if current_ladder_step == 1 else "ACTIVE_LADDER"
                             }
                             # Basamak 1: %35 Kısmi Kârı Cebe Al + Kalan %65'e -%0.08 Nefes Paylı Sıfır Risk Stopu
-                            if step_num == 1 and partial_tp_taken == 0:
+                            import config as _cfg
+                            step1_part = float(getattr(_cfg, "LADDER_STEP1_PARTIAL_PCT", 0.35) or 0.0)
+                            if step_num == 1 and partial_tp_taken == 0 and step1_part > 0:
                                 # Gerçekçi dolum: tetik seviyesinde limit emir varsayımı, fiyat tetik altına döndüyse anlık fiyat
                                 step1_exec_pct = min(trigger_pct, raw_profit_pct)
                                 step1_net_pct = (step1_exec_pct * leverage) - (BINANCE_ROUNDTRIP_FEE_PCT * leverage)
-                                step1_usd = round((allocated_margin * 0.35) * (step1_net_pct / 100.0), 2)
+                                step1_usd = round((allocated_margin * step1_part) * (step1_net_pct / 100.0), 2)
                                 current_realized_usd = round(current_realized_usd + step1_usd, 2)
-                                allocated_margin = round(allocated_margin * 0.65, 2)
+                                allocated_margin = round(allocated_margin * (1.0 - step1_part), 2)
                                 partial_tp_taken = 2
-                                ladder_name = f"[{sig_tf}] 🛡️ Basamak 1 (+${step1_usd} Cebe | %65 BE+ Kilit)"
+                                ladder_name = f"[{sig_tf}] 🛡️ Basamak 1 (+${step1_usd} Cebe | %{int(round((1 - step1_part) * 100))} BE+ Kilit)"
                                 db_updates.update({
                                     "partial_tp_taken": partial_tp_taken,
                                     "realized_pnl_usd": current_realized_usd,
@@ -474,7 +477,7 @@ class CounterfactualTrackerAgent:
             # 5b. 2-MUM MOMENTUM İPTALİ (Hummingbot İlkesi: İlk 2 kapanmış mumda yön teyidi gelmezse ölü sermayeyi kurtar)
             # Not: Market-Neutral Pair Trade bacakları (is_pair_trade == 1) spread dengesi gereği tek bacaklı iptalden muaf tutulur.
             two_candle_min = 30 if sig_tf == "15m" else (60 if sig_tf == "30m" else 120)
-            if not is_closed and is_pair_trade == 0 and current_ladder_step == 0 and partial_tp_taken == 0 and minutes_open >= two_candle_min:
+            if ENABLE_MOMENTUM_STAGNATION_EXIT and not is_closed and is_pair_trade == 0 and current_ladder_step == 0 and partial_tp_taken == 0 and minutes_open >= two_candle_min:
                 raw_c_2b = ((current_price - entry_price) / entry_price) if is_long else ((entry_price - current_price) / entry_price)
                 if peak_profit_pct < 0.25 and (-0.0040 <= raw_c_2b <= -0.0010):
                     is_closed = True

@@ -411,7 +411,8 @@ class TradingBotOrchestrator:
             detailed_msg = btc_regime.get("detailed_reason") or summary_msg
             print(f"🛑 [BTC Ölü Piyasa Freni] {summary_msg}")
             add_scanner_log("BTC KALKANI", "PROTECTED", detailed_msg, "Sermaye Koruma Modu (0 Risk)")
-            if "CRASH" not in str(btc_regime.get("status", "")).upper():
+            from config import ENABLE_PAIR_TRADING
+            if ENABLE_PAIR_TRADING and "CRASH" not in str(btc_regime.get("status", "")).upper():
                 self._try_open_stat_arb_pair(slots_left, allowed_timeframes)
             return
 
@@ -659,7 +660,8 @@ class TradingBotOrchestrator:
                 )
                 win_pct = quant_sim.get("win_probability_pct", 0.0)
 
-                if not quant_sim.get("is_approved", False):
+                from config import ENABLE_MC_GATE
+                if ENABLE_MC_GATE and not quant_sim.get("is_approved", False):
                     self._record_shadow_rejection(symbol, ta_setup, "MONTE_CARLO", f"Win %{win_pct:.1f}")
                     add_scanner_log(
                         symbol,
@@ -740,8 +742,10 @@ class TradingBotOrchestrator:
         # 🏆 İKİNCİ AŞAMA: TÜM TARAMA BİTTİKTEN SONRA TURNUVA SIRALAMASI & İKİNCİ TEYİT TARAMASI
         # =========================================================================
         if not shortlist_candidates:
-            print("💤 Bu döngüde kurallara tam uyan yönlü A+ kurulum bulunamadı (Piyasa-Nötr İkili Arbitraj kontrol ediliyor)...")
-            self._try_open_stat_arb_pair(slots_left, allowed_timeframes)
+            from config import ENABLE_PAIR_TRADING
+            print("💤 Bu döngüde kurallara tam uyan yönlü A+ kurulum bulunamadı.")
+            if ENABLE_PAIR_TRADING:
+                self._try_open_stat_arb_pair(slots_left, allowed_timeframes)
         else:
             # 1. Adayları Kalite Skoruna Göre En İyiden En Düşüğe Sırala (Tournament Leaderboard)
             shortlist_candidates.sort(key=lambda x: x["quality_score"], reverse=True)
@@ -763,7 +767,8 @@ class TradingBotOrchestrator:
                     print(f"🛡️ [Kasa & Seçicilik Kalkanı] Bu döngü için en iyi şampiyon açıldı (1 işlem/döngü sınırı). Turnuva tamamlandı.")
                     break
 
-                if float(cand.get("quality_score") or 0.0) < 68.0:
+                from config import ENABLE_QUALITY_GATE, QUALITY_GATE_THRESHOLD
+                if ENABLE_QUALITY_GATE and float(cand.get("quality_score") or 0.0) < QUALITY_GATE_THRESHOLD:
                     add_scanner_log(
                         cand["symbol"],
                         "REJECTED",

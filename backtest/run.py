@@ -40,6 +40,34 @@ VARIANTS = {
     "no_early_invalidation": ({}, {"EARLY_INVALIDATION_ENABLED": False}),
     "only_15m": ({"allowed_timeframes": ["15m"]}, {}),
     "no_4h_compass": ({"use_4h_compass": False}, {}),
+    "scoring_dedup": ({}, {"SCORING_DEDUP": True}),
+    "regime_rr": ({}, {"USE_REGIME_MIN_RR": True}),
+    "no_step1_partial": ({}, {"LADDER_STEP1_PARTIAL_PCT": 0.0}),
+    # Geniş merdiven: kâr ~1R'de başabaşa kilitlenir, kısmi satış ve erken çıkışlar yok, kazananlar koşar
+    "wide_ladder": ({}, {
+        "ATR_LADDER_ENABLED": False,
+        "LADDER_STEP1_PARTIAL_PCT": 0.0,
+        "ENABLE_MOMENTUM_STAGNATION_EXIT": False,
+        "EARLY_INVALIDATION_ENABLED": False,
+        "LADDER_STEPS": [
+            {"step": 1, "trigger_raw_pct": 1.00, "lock_raw_pct": 0.15, "name": "BE+ (1R)"},
+            {"step": 2, "trigger_raw_pct": 1.50, "lock_raw_pct": 0.60, "name": "Kilit 1.5R"},
+            {"step": 3, "trigger_raw_pct": 2.00, "lock_raw_pct": 1.10, "name": "Kilit 2R"},
+            {"step": 4, "trigger_raw_pct": 2.60, "lock_raw_pct": 1.60, "name": "Kilit 2.6R"},
+        ],
+    }),
+    "wide_ladder_no_mc": ({"use_mc_gate": False, "use_quality_gate": False}, {
+        "ATR_LADDER_ENABLED": False,
+        "LADDER_STEP1_PARTIAL_PCT": 0.0,
+        "ENABLE_MOMENTUM_STAGNATION_EXIT": False,
+        "EARLY_INVALIDATION_ENABLED": False,
+        "LADDER_STEPS": [
+            {"step": 1, "trigger_raw_pct": 1.00, "lock_raw_pct": 0.15, "name": "BE+ (1R)"},
+            {"step": 2, "trigger_raw_pct": 1.50, "lock_raw_pct": 0.60, "name": "Kilit 1.5R"},
+            {"step": 3, "trigger_raw_pct": 2.00, "lock_raw_pct": 1.10, "name": "Kilit 2R"},
+            {"step": 4, "trigger_raw_pct": 2.60, "lock_raw_pct": 1.60, "name": "Kilit 2.6R"},
+        ],
+    }),
 }
 
 
