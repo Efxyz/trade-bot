@@ -10,12 +10,73 @@ aynı hataların tekrarlanmaması için karar sürecine enjekte edilir.
 """
 import os
 import json
+import urllib.request
 from datetime import datetime
-from typing import Dict, List, Optional
-from core.database import save_trade_reflection_db, get_recent_reflections_db
+from typing import Dict, List, Optional, Tuple
+from core.database import save_trade_reflection_db, get_recent_reflections_db, get_gemini_api_key
 
 class ReflectorEngine:
     """İşlem sonuçlarını kurumsal derslere dönüştüren hafıza motoru."""
+
+    @staticmethod
+    def _generate_llm_reflection(trade_data: Dict, outcome_type: str) -> Optional[Tuple[str, str]]:
+        """Gemini API aktifse kapanan işlem için şablonsuz gerçek AI otopsi ve ders üretir."""
+        api_key = get_gemini_api_key()
+        if not api_key:
+            return None
+
+        payload_info = {
+            "symbol": trade_data.get("symbol"),
+            "direction": trade_data.get("direction"),
+            "status": trade_data.get("status"),
+            "outcome_type": outcome_type,
+            "net_pnl_pct": trade_data.get("pnl_pct"),
+            "gross_pnl_pct": trade_data.get("gross_pnl_pct"),
+            "fee_pct": trade_data.get("fee_pct"),
+            "leverage": trade_data.get("leverage"),
+            "minutes_open": round(float(trade_data.get("minutes_open") or 0), 1),
+            "ladder_step": trade_data.get("ladder_step"),
+            "ladder_name": trade_data.get("ladder_name"),
+            "entry_price": trade_data.get("entry_price"),
+            "exit_price": trade_data.get("exit_price"),
+        }
+        prompt = (
+            "Sen kurumsal bir kripto vadeli işlemler hedge fonunun Baş Risk & Refleksiyon Analistisin.\n"
+            "Aşağıdaki kapanan işleme özel GERÇEK, kalıpsız ve sonraki komite toplantılarında doğrudan referans verilebilecek somut bir işlem sonrası otopsi (post-mortem) ve aksiyon dersi yaz.\n"
+            "Veri: " + json.dumps(payload_info, ensure_ascii=False) + "\n"
+            "SADECE geçerli Türkçe JSON döndür: "
+            '{"thesis_evaluation": "Tez ve piyasa davranışının 1-2 cümlelik somut değerlendirmesi", '
+            '"lesson": "Sonraki işlemler için somut sayısal referanslı 1-2 cümlelik net kural/ders"}'
+        )
+        req_body = json.dumps({
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 0.35, "response_mime_type": "application/json"}
+        }).encode("utf-8")
+
+        for model_name in ("gemini-2.5-flash", "gemini-2.0-flash"):
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+            try:
+                req = urllib.request.Request(url, data=req_body, headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(req, timeout=12) as resp:
+                    res_data = json.loads(resp.read().decode("utf-8"))
+                cands = res_data.get("candidates") or []
+                if not cands:
+                    continue
+                raw_txt = "".join(
+                    p.get("text", "") for p in ((cands[0].get("content") or {}).get("parts") or []) if isinstance(p, dict)
+                ).strip()
+                if raw_txt.startswith("```"):
+                    raw_txt = raw_txt.strip("`")
+                    if raw_txt.lower().startswith("json"):
+                        raw_txt = raw_txt[4:].strip()
+                parsed = json.loads(raw_txt)
+                th = str(parsed.get("thesis_evaluation") or "").strip()
+                ls = str(parsed.get("lesson") or "").strip()
+                if th and ls:
+                    return th, ls
+            except Exception:
+                continue
+        return None
 
     @staticmethod
     def reflect_on_trade(trade_data: Dict) -> Dict:
@@ -99,6 +160,10 @@ class ReflectorEngine:
             thesis_evaluation = "Manuel veya harici kapanış gerçekleştirildi."
             lesson = f"{symbol} {direction} işleminden Net %{pnl_pct} ile çıkıldı. Ders: Sistem kurallarına sadık kal."
             outcome_type = "MANUAL"
+
+        llm_pair = ReflectorEngine._generate_llm_reflection(trade_data, outcome_type)
+        if llm_pair:
+            thesis_evaluation, lesson = llm_pair
 
         reflection_dict = {
             "symbol": symbol,
