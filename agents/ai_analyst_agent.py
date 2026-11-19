@@ -390,15 +390,37 @@ class AIAnalystAgent:
             "source": "Ajanlar Yatırım Komitesi (Tauric Multi-Agent Framework)"
         }
 
+    @staticmethod
+    def _build_gemini_endpoints(api_key: str, model_name: str) -> List[str]:
+        """Anahtar tipine göre (AQ.* -> Vertex Express, AIza* -> AI Studio) uygun REST uç noktalarını sırayla döner."""
+        vtx = f"https://aiplatform.googleapis.com/v1/publishers/google/models/{model_name}:generateContent?key={api_key}"
+        gl = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+        return [vtx, gl] if api_key.startswith("AQ.") else [gl, vtx]
+
+    @staticmethod
+    def _extract_http_error(err: Exception) -> str:
+        if isinstance(err, urllib.error.HTTPError):
+            try:
+                body = err.read().decode("utf-8", errors="ignore")
+                parsed = json.loads(body)
+                if isinstance(parsed, list) and parsed:
+                    parsed = parsed[0]
+                msg = (parsed.get("error") or {}).get("message") if isinstance(parsed, dict) else ""
+                return f"HTTP {err.code}: {msg or body[:160]}"
+            except Exception:
+                return f"HTTP {err.code}: {err.reason}"
+        return str(err)
+
     def _call_gemini_api(self, parts: List[Dict], temperature: float = 0.45, timeout: int = 24) -> Optional[Dict]:
         """Google Gemini API'yi (gemini-2.5-flash -> gemini-2.0-flash fallback) çağırır ve JSON döner."""
         api_key = self._get_active_gemini_key()
         if not api_key:
             return None
 
+        self._last_gemini_error = ""
         headers = {"Content-Type": "application/json"}
         payload = {
-            "contents": [{"parts": parts}],
+            "contents": [{"role": "user", "parts": parts}],
             "generationConfig": {
                 "temperature": temperature,
                 "response_mime_type": "application/json"
@@ -407,31 +429,32 @@ class AIAnalystAgent:
         encoded = json.dumps(payload).encode("utf-8")
 
         for model_name in ("gemini-2.5-flash", "gemini-2.0-flash"):
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-            try:
-                req = urllib.request.Request(url, data=encoded, headers=headers, method="POST")
-                with urllib.request.urlopen(req, timeout=timeout) as response:
-                    res_data = json.loads(response.read().decode("utf-8"))
-                candidates = res_data.get("candidates") or []
-                if not candidates:
+            for url in self._build_gemini_endpoints(api_key, model_name):
+                try:
+                    req = urllib.request.Request(url, data=encoded, headers=headers, method="POST")
+                    with urllib.request.urlopen(req, timeout=timeout) as response:
+                        res_data = json.loads(response.read().decode("utf-8"))
+                    candidates = res_data.get("candidates") or []
+                    if not candidates:
+                        continue
+                    part_list = (candidates[0].get("content") or {}).get("parts") or []
+                    raw_text = "".join(p.get("text", "") for p in part_list if isinstance(p, dict)).strip()
+                    if not raw_text:
+                        continue
+                    if raw_text.startswith("```"):
+                        raw_text = raw_text.strip("`")
+                        if raw_text.lower().startswith("json"):
+                            raw_text = raw_text[4:].strip()
+                    parsed = json.loads(raw_text)
+                    if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
+                        parsed = parsed[0]
+                    if isinstance(parsed, dict):
+                        parsed["_gemini_model"] = model_name
+                        return parsed
+                except Exception as err:
+                    self._last_gemini_error = self._extract_http_error(err)
+                    print(f"⚠️ [Gemini API - {model_name}] Çağrı hatası: {self._last_gemini_error}")
                     continue
-                part_list = (candidates[0].get("content") or {}).get("parts") or []
-                raw_text = "".join(p.get("text", "") for p in part_list if isinstance(p, dict)).strip()
-                if not raw_text:
-                    continue
-                if raw_text.startswith("```"):
-                    raw_text = raw_text.strip("`")
-                    if raw_text.lower().startswith("json"):
-                        raw_text = raw_text[4:].strip()
-                parsed = json.loads(raw_text)
-                if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
-                    parsed = parsed[0]
-                if isinstance(parsed, dict):
-                    parsed["_gemini_model"] = model_name
-                    return parsed
-            except Exception as err:
-                print(f"⚠️ [Gemini API - {model_name}] Çağrı hatası: {err}")
-                continue
         return None
 
     def _call_gemini_committee(
@@ -729,6 +752,7 @@ class AIAnalystAgent:
         if not api_key:
             return None
 
+        self._last_gemini_error = ""
         headers = {"Content-Type": "application/json"}
         payload = {
             "systemInstruction": {"parts": [{"text": system_instruction}]},
@@ -738,21 +762,22 @@ class AIAnalystAgent:
         encoded = json.dumps(payload).encode("utf-8")
 
         for model_name in ("gemini-2.5-flash", "gemini-2.0-flash"):
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-            try:
-                req = urllib.request.Request(url, data=encoded, headers=headers, method="POST")
-                with urllib.request.urlopen(req, timeout=timeout) as response:
-                    res_data = json.loads(response.read().decode("utf-8"))
-                candidates = res_data.get("candidates") or []
-                if not candidates:
+            for url in self._build_gemini_endpoints(api_key, model_name):
+                try:
+                    req = urllib.request.Request(url, data=encoded, headers=headers, method="POST")
+                    with urllib.request.urlopen(req, timeout=timeout) as response:
+                        res_data = json.loads(response.read().decode("utf-8"))
+                    candidates = res_data.get("candidates") or []
+                    if not candidates:
+                        continue
+                    parts = (candidates[0].get("content") or {}).get("parts") or []
+                    reply_text = "".join(p.get("text", "") for p in parts if isinstance(p, dict)).strip()
+                    if reply_text:
+                        return reply_text, model_name
+                except Exception as err:
+                    self._last_gemini_error = self._extract_http_error(err)
+                    print(f"⚠️ [Gemini Chat - {model_name}] Çağrı hatası: {self._last_gemini_error}")
                     continue
-                parts = (candidates[0].get("content") or {}).get("parts") or []
-                reply_text = "".join(p.get("text", "") for p in parts if isinstance(p, dict)).strip()
-                if reply_text:
-                    return reply_text, model_name
-            except Exception as err:
-                print(f"⚠️ [Gemini Chat - {model_name}] Çağrı hatası: {err}")
-                continue
         return None
 
     def chat_with_strategist(
@@ -954,10 +979,11 @@ class AIAnalystAgent:
 
         chat_res = self._call_gemini_chat(system_instruction, contents, temperature=0.45, timeout=26)
         if not chat_res:
+            err_detail = getattr(self, "_last_gemini_error", "")
             return {
                 "status": "error",
                 "ai_key_missing": False,
-                "message": "Gemini API yanıt vermedi. API anahtarınızı veya internet/kota durumunu kontrol edin."
+                "message": f"Gemini API yanıt vermedi ({err_detail})." if err_detail else "Gemini API yanıt vermedi. API anahtarınızı veya internet/kota durumunu kontrol edin."
             }
 
         reply_text, model_used = chat_res
