@@ -2254,7 +2254,7 @@ HTML_OFFICE_TEMPLATE = """
         async function configureGeminiApiKey() {
             const pin = await getAdminPin();
             if (!pin) return;
-            const keyVal = prompt('Google AI Studio (aistudio.google.com) üzerinden aldığınız Gemini API anahtarını girin (AIza...):');
+            const keyVal = prompt('Google AI Studio (AIza...) veya Vertex AI Express (AQ...) API anahtarınızı girin:');
             if (keyVal === null) return;
             try {
                 const res = await fetch('/api/ai/config', {
