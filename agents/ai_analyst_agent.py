@@ -37,14 +37,16 @@ class AIAnalystAgent:
         btc_regime: Optional[Dict] = None,
         ticker: Optional[Dict] = None,
         funding_data: Optional[Dict] = None,
-        quant_sim: Optional[Dict] = None
+        quant_sim: Optional[Dict] = None,
+        portfolio_context: Optional[Dict] = None
     ) -> Dict:
         """
         Geriye dönük uyumluluk ve komite tartışması ana çağrısı.
         Tauric Research 5 Kademeli Derecelendirme (Rating) Ölçeği içerir.
         """
         debate_result = self.run_committee_debate(
-            ta_setup, risk_report, news_analysis, btc_regime, ticker, funding_data, quant_sim=quant_sim
+            ta_setup, risk_report, news_analysis, btc_regime, ticker, funding_data,
+            quant_sim=quant_sim, portfolio_context=portfolio_context
         )
 
         direction = ta_setup["direction"]
@@ -80,11 +82,12 @@ class AIAnalystAgent:
         btc_regime: Optional[Dict] = None,
         ticker: Optional[Dict] = None,
         funding_data: Optional[Dict] = None,
-        quant_sim: Optional[Dict] = None
+        quant_sim: Optional[Dict] = None,
+        portfolio_context: Optional[Dict] = None
     ) -> Dict:
         """
         Ajanlar arası karşılıklı tartışma oturumunu yönetir.
-        Geçmiş işlem hafızasını (Reflections) tartışmaya dahil eder.
+        Geçmiş işlem hafızasını (Reflections) ve canlı portföy uygunluğunu tartışmaya dahil eder.
         """
         symbol = ta_setup["symbol"]
         direction = ta_setup["direction"]
@@ -99,7 +102,7 @@ class AIAnalystAgent:
             try:
                 llm_debate = self._call_gemini_committee(
                     ta_setup, risk_report, news_analysis, btc_regime, ticker, funding_data,
-                    past_context, quant_sim=quant_sim
+                    past_context, quant_sim=quant_sim, portfolio_context=portfolio_context
                 )
                 if llm_debate:
                     llm_debate["past_memory_used"] = past_context
@@ -466,7 +469,8 @@ class AIAnalystAgent:
         ticker: Optional[Dict],
         funding_data: Optional[Dict],
         past_context: str = "",
-        quant_sim: Optional[Dict] = None
+        quant_sim: Optional[Dict] = None,
+        portfolio_context: Optional[Dict] = None
     ) -> Optional[Dict]:
         """Gerçek Gemini LLM kullanarak ham teknik/kuant verileriyle 4 ajanlı adversarial münazara üretir."""
         symbol = ta_setup["symbol"]
@@ -511,6 +515,7 @@ class AIAnalystAgent:
             f"Ham Telemetri JSON: {json.dumps(telemetry_summary, ensure_ascii=False)}\n"
             f"Haber Özeti: {news_analysis.get('summary') if isinstance(news_analysis, dict) else 'Nötr'}\n"
             f"BTC Rejimi: {btc_regime.get('summary') if isinstance(btc_regime, dict) else 'Nötr'}\n"
+            f"Canlı Portföy & Açık Pozisyonlar: {json.dumps(portfolio_context or {}, ensure_ascii=False)}\n"
             f"{past_context}\n\n"
             f"Türkçe olarak 4 üyenin somut sayısal verilerle çatışan tartışmasını ve bağlayıcı kararını SADECE geçerli JSON formatında döndür:\n"
             f'{{"symbol": "{symbol}", "direction": "{direction}", "timestamp": "{datetime.now().strftime("%H:%M:%S")}", '
@@ -528,7 +533,7 @@ class AIAnalystAgent:
         res = self._call_gemini_api([{"text": prompt}], temperature=0.45, timeout=20)
         if not res:
             return None
-        model_used = res.pop("_gemini_model", "gemini-2.5-flash")
+        model_used = res.pop("_gemini_model", "gemini-3-flash-preview")
         res.setdefault("symbol", symbol)
         res.setdefault("direction", direction)
         res.setdefault("timestamp", datetime.now().strftime("%H:%M:%S"))
@@ -994,4 +999,241 @@ class AIAnalystAgent:
             "symbol": clean_sym,
             "timeframe": clean_tf,
             "source": f"Gerçek Yapay Zeka ({model_used})"
+        }
+
+    def evaluate_position_suitability(
+        self,
+        ta_setup: Dict,
+        risk_report: Dict,
+        btc_regime: Optional[Dict] = None,
+        live_price: float = 0.0,
+        active_positions: Optional[List[Dict]] = None,
+        account_equity: float = 0.0,
+        today_pnl: float = 0.0,
+        daily_quotas: Optional[Dict] = None
+    ) -> Dict:
+        """
+        Turnuva şampiyonu pozisyonu açılmadan hemen önce portföy uygunluğunu (açık pozisyonlar,
+        yön yoğunlaşması, marjin kullanımı, BTC rejimi ve geçmiş dersler) gerçek Gemini AI ile denetler.
+        """
+        symbol = str(ta_setup.get("symbol") or "").upper()
+        direction = str(ta_setup.get("direction") or "LONG").upper()
+        tf = str(ta_setup.get("timeframe") or "15m").lower()
+        margin = float(risk_report.get("allocated_margin_usdt") or 0.0)
+        leverage = int(ta_setup.get("leverage") or risk_report.get("leverage") or 10)
+        equity = float(account_equity or 0.0)
+        active = list(active_positions or [])
+
+        same_sym_open = any(str(p.get("symbol") or "").upper() == symbol for p in active)
+        same_dir_cnt = sum(1 for p in active if str(p.get("direction") or "").upper() == direction)
+        used_margin = sum(float(p.get("allocated_margin_usdt") or 0.0) for p in active)
+        projected_margin_pct = ((used_margin + margin) / equity * 100.0) if equity > 0 else 0.0
+
+        # Sert deterministik güvenlik sigortaları (API olsun ya da olmasın)
+        if same_sym_open:
+            return {
+                "suitable": False,
+                "verdict": "REJECT",
+                "suitability_score": 0,
+                "recommended_margin_multiplier": 0.0,
+                "reason": f"{symbol} paritesinde zaten açık pozisyon var; mükerrer maruziyet engellendi.",
+                "source": "Deterministic Guard"
+            }
+        if equity > 0 and projected_margin_pct > 75.0:
+            return {
+                "suitable": False,
+                "verdict": "REJECT",
+                "suitability_score": 15,
+                "recommended_margin_multiplier": 0.0,
+                "reason": f"Toplam marjin yükü %{projected_margin_pct:.1f} ile %75 sınırını aşıyor.",
+                "source": "Deterministic Guard"
+            }
+
+        open_summary = [
+            {
+                "id": p.get("id"),
+                "symbol": p.get("symbol"),
+                "direction": p.get("direction"),
+                "tf": p.get("timeframe"),
+                "margin_usdt": p.get("allocated_margin_usdt"),
+                "entry": p.get("actual_entry_price") or p.get("entry_min"),
+            }
+            for p in active
+        ]
+
+        if self._get_active_gemini_key():
+            past_notes = ReflectorEngine.get_past_context_for_committee(symbol, limit=3)
+            payload = {
+                "aday_pozisyon": {
+                    "symbol": symbol,
+                    "direction": direction,
+                    "timeframe": tf,
+                    "live_price": live_price or ta_setup.get("current_price"),
+                    "sl": ta_setup.get("stop_loss"),
+                    "tp1": ta_setup.get("take_profit_1"),
+                    "tp2": ta_setup.get("take_profit_2"),
+                    "live_rr": ta_setup.get("risk_reward"),
+                    "margin_usdt": margin,
+                    "leverage": leverage,
+                    "smc_score": ta_setup.get("confluence_score"),
+                },
+                "portfoy_durumu": {
+                    "equity_usdt": round(equity, 2),
+                    "used_margin_usdt": round(used_margin, 2),
+                    "projected_margin_pct": round(projected_margin_pct, 1),
+                    "same_direction_open_count": same_dir_cnt,
+                    "today_net_pnl_usdt": round(float(today_pnl or 0.0), 2),
+                    "daily_quotas": daily_quotas or {},
+                    "acik_pozisyonlar": open_summary,
+                },
+                "btc_rejimi": btc_regime.get("summary") if isinstance(btc_regime, dict) else "Nötr",
+            }
+            prompt = (
+                "Sen kurumsal kripto vadeli işlemler fonunun Pozisyon Uygunluk ve Risk Karar Motorusun.\n"
+                "Görev: Aşağıdaki aday pozisyonun, mevcut açık pozisyonlar, portföy yön dengesi, marjin yükü, BTC rejimi ve geçmiş derslerle UYUMLULUĞUNU denetle ve bağlayıcı karar ver.\n"
+                f"Veri: {json.dumps(payload, ensure_ascii=False)}\n"
+                f"{past_notes}\n\n"
+                "SADECE geçerli tek bir JSON döndür:\n"
+                '{"suitable": true veya false, "verdict": "APPROVE" veya "REDUCE_SIZE" veya "REJECT", '
+                '"suitability_score": 0-100 arası tam sayı, "recommended_margin_multiplier": 0.50 ile 1.00 arası sayı, '
+                '"reason": "Türkçe 1-2 cümlelik somut portföy uygunluk gerekçesi"}'
+            )
+            res = self._call_gemini_api([{"text": prompt}], temperature=0.25, timeout=16)
+            if isinstance(res, dict):
+                model_used = res.pop("_gemini_model", "gemini-3-flash-preview")
+                verdict = str(res.get("verdict") or "APPROVE").upper()
+                if verdict not in ("APPROVE", "REDUCE_SIZE", "REJECT"):
+                    verdict = "APPROVE" if res.get("suitable", True) else "REJECT"
+                suitable = bool(res.get("suitable", verdict != "REJECT")) and verdict != "REJECT"
+                score = int(max(0, min(100, float(res.get("suitability_score") or (75 if suitable else 30)))))
+                mult = float(res.get("recommended_margin_multiplier") or (0.65 if verdict == "REDUCE_SIZE" else 1.0))
+                mult = round(max(0.4, min(1.0, mult)), 2)
+                return {
+                    "suitable": suitable,
+                    "verdict": verdict,
+                    "suitability_score": score,
+                    "recommended_margin_multiplier": mult if verdict == "REDUCE_SIZE" else (1.0 if suitable else 0.0),
+                    "reason": str(res.get("reason") or "AI portföy uygunluk denetimi tamamlandı."),
+                    "source": f"Gerçek Yapay Zeka ({model_used})"
+                }
+
+        # Deterministik yedek uygunluk kararı (API anahtarı yok veya zaman aşımı)
+        if same_dir_cnt >= 2:
+            return {
+                "suitable": True,
+                "verdict": "REDUCE_SIZE",
+                "suitability_score": 68,
+                "recommended_margin_multiplier": 0.7,
+                "reason": f"Portföyde halihazırda {same_dir_cnt} adet {direction} pozisyon var; korelasyon riski için marjin %70 ölçeklendi.",
+                "source": "Yerel Portföy Uygunluk Motoru"
+            }
+        return {
+            "suitable": True,
+            "verdict": "APPROVE",
+            "suitability_score": 85,
+            "recommended_margin_multiplier": 1.0,
+            "reason": f"Portföy marjin yükü (%{projected_margin_pct:.1f}) ve yön dengesi yeni {symbol} {direction} pozisyonu için uygun.",
+            "source": "Yerel Portföy Uygunluk Motoru"
+        }
+
+    def review_open_positions_suitability(self, client, active_positions: Optional[List[Dict]] = None) -> Dict:
+        """
+        Açık pozisyonların anlık piyasa, BTC rejimi ve portföy içi korelasyon/risk uygunluğunu
+        gerçek Gemini AI ile denetler; her pozisyon için somut karar (TUT / SL_ÇEK / KISMİ_KAPAT / ÇIK) üretir.
+        """
+        from core.database import get_active_and_pending_signals, get_performance_stats
+        active = list(active_positions if active_positions is not None else (get_active_and_pending_signals() or []))
+        if not active:
+            return {
+                "status": "ok",
+                "overall_suitability": 100,
+                "summary": "Şu anda açık pozisyon bulunmuyor; portföy tamamen nakitte ve yeni A+ fırsatlar için hazır.",
+                "decisions": [],
+                "source": "Portföy Durumu"
+            }
+
+        stats = get_performance_stats() or {}
+        btc_regime = {}
+        try:
+            if client is not None:
+                btc_regime = client.get_btc_regime() or {}
+        except Exception:
+            pass
+
+        enriched = []
+        for p in active:
+            sym = str(p.get("symbol") or "").upper()
+            direction = str(p.get("direction") or "LONG").upper()
+            entry = float(p.get("actual_entry_price") or p.get("entry_min") or 0.0)
+            sl = float(p.get("stop_loss") or 0.0)
+            tp1 = float(p.get("take_profit_1") or 0.0)
+            lev = float(p.get("leverage") or 10.0)
+            live_px = entry
+            try:
+                if client is not None:
+                    tk = client.get_symbol_ticker(sym) or {}
+                    live_px = float(tk.get("lastPrice") or tk.get("price") or entry)
+            except Exception:
+                pass
+            raw_pnl_pct = 0.0
+            if entry > 0 and live_px > 0:
+                raw_pnl_pct = ((live_px - entry) / entry * 100.0) if direction == "LONG" else ((entry - live_px) / entry * 100.0)
+            roe_pct = round(raw_pnl_pct * lev, 2)
+            enriched.append({
+                "id": p.get("id"),
+                "symbol": sym,
+                "direction": direction,
+                "timeframe": p.get("timeframe"),
+                "leverage": lev,
+                "entry": entry,
+                "live_price": live_px,
+                "sl": sl,
+                "tp1": tp1,
+                "roe_pct": roe_pct,
+                "margin_usdt": p.get("allocated_margin_usdt"),
+                "partial_tp_taken": bool(p.get("partial_tp_taken")),
+            })
+
+        if self._get_active_gemini_key():
+            prompt = (
+                "Sen kurumsal kripto vadeli işlemler Baş Stratejistisin.\n"
+                "Aşağıdaki AÇIK POZİSYONLARI tek tek teknik/risk uygunluğu ve portföy içi yön korelasyonu açısından değerlendir.\n"
+                f"Kasa: ${stats.get('portfolio_balance')} | Bugün Net: ${stats.get('today_dollar_gain')} | BTC Rejimi: {btc_regime.get('summary', 'Nötr')}\n"
+                f"Açık Pozisyonlar: {json.dumps(enriched, ensure_ascii=False)}\n\n"
+                "SADECE geçerli tek bir JSON döndür:\n"
+                '{"overall_suitability": 0-100 arası tam sayı, "summary": "Portföy genel uygunluk özeti (1-2 cümle)", '
+                '"decisions": [{"id": 123, "symbol": "BTCUSDT", "direction": "LONG", '
+                '"decision": "TUT" veya "KÂR_KİLİTLE_SL_ÇEK" veya "KISMİ_KAPAT" veya "ACİL_ÇIK_UYUMSUZ", '
+                '"suitability_score": 0-100, "reason": "Fiyat ve ROE verili 1-2 cümlelik net gerekçe"}]}'
+            )
+            res = self._call_gemini_api([{"text": prompt}], temperature=0.3, timeout=22)
+            if isinstance(res, dict) and isinstance(res.get("decisions"), list):
+                model_used = res.pop("_gemini_model", "gemini-3-flash-preview")
+                return {
+                    "status": "ok",
+                    "overall_suitability": int(max(0, min(100, float(res.get("overall_suitability") or 75)))),
+                    "summary": str(res.get("summary") or "Açık pozisyon uygunluk denetimi tamamlandı."),
+                    "decisions": res.get("decisions") or [],
+                    "source": f"Gerçek Yapay Zeka ({model_used})"
+                }
+
+        # Yedek deterministik değerlendirme
+        decisions = []
+        for item in enriched:
+            roe = item["roe_pct"]
+            dec = "KÂR_KİLİTLE_SL_ÇEK" if roe >= 4.0 else ("TUT" if roe > -6.0 else "ACİL_ÇIK_UYUMSUZ")
+            decisions.append({
+                "id": item["id"],
+                "symbol": item["symbol"],
+                "direction": item["direction"],
+                "decision": dec,
+                "suitability_score": 82 if roe >= 0 else 62,
+                "reason": f"Anlık ROE %{roe:+.2f} (Giriş: {item['entry']} -> Canlı: {item['live_price']}, SL: {item['sl']})."
+            })
+        return {
+            "status": "ok",
+            "overall_suitability": 78,
+            "summary": f"{len(enriched)} açık pozisyon yerel risk kurallarına göre tarandı.",
+            "decisions": decisions,
+            "source": "Yerel Portföy Uygunluk Motoru"
         }
