@@ -1788,6 +1788,7 @@ HTML_OFFICE_TEMPLATE = """
                             <button onclick="sendQuickAiPrompt('Şu anki açık pozisyonlarımı ve kasa/kota durumumu incele; hangisini tutalım, hangisini kapatalım?')" style="background: rgba(16,185,129,0.12); color: #34d399; border: 1px solid rgba(16,185,129,0.3); font-size: 9.5px; font-weight: 700; padding: 2px 7px; border-radius: 4px; cursor: pointer;">⚖️ İşlemlerime Karar Ver</button>
                             <button onclick="sendQuickAiPrompt('Piyasa rejimini, BTC durumunu ve öğrenilen hafıza derslerini değerlendir; sıradaki en mantıklı stratejimiz ne olmalı?')" style="background: rgba(168,85,247,0.14); color: #d8b4fe; border: 1px solid rgba(168,85,247,0.35); font-size: 9.5px; font-weight: 700; padding: 2px 7px; border-radius: 4px; cursor: pointer;">🧠 Strateji Tartış</button>
                             <button onclick="runOpenPositionsSuitabilityReview()" style="background: rgba(245,158,11,0.14); color: #fbbf24; border: 1px solid rgba(245,158,11,0.35); font-size: 9.5px; font-weight: 700; padding: 2px 7px; border-radius: 4px; cursor: pointer;">🛡️ Açık Pozisyon Uygunluğu</button>
+                            <button onclick="trainAiFromHistory()" style="background: rgba(236,72,153,0.14); color: #f472b6; border: 1px solid rgba(236,72,153,0.35); font-size: 9.5px; font-weight: 700; padding: 2px 7px; border-radius: 4px; cursor: pointer;">🎓 Geçmişten Eğit</button>
                         </div>
 
                         <div style="display: flex; gap: 5px; align-items: center; flex-wrap: wrap;">
@@ -2338,6 +2339,49 @@ HTML_OFFICE_TEMPLATE = """
                 }
             } catch (err) {
                 alert('⚠️ Bağlantı hatası: ' + err.message);
+            }
+        }
+
+        async function trainAiFromHistory() {
+            const pin = await getAdminPin();
+            if (!pin) return;
+            const box = document.getElementById('aiChatBox');
+            aiChatHistory.push({ role: 'user', text: '🎓 Kapanmış tüm geçmiş işlemlerimi analiz et ve kalıcı kurallar çıkararak kendini eğit.' });
+            renderAiChatHistory();
+            if (box) {
+                const typingDiv = document.createElement('div');
+                typingDiv.id = 'aiTypingIndicator';
+                typingDiv.style.cssText = 'color:#f472b6; font-size:10.5px; padding:4px 8px;';
+                typingDiv.innerText = '🎓 Geçmiş işlemler analiz edilip kalıcı AI kuralları çıkarılıyor...';
+                box.appendChild(typingDiv);
+                box.scrollTop = box.scrollHeight;
+            }
+            try {
+                const res = await fetch('/api/ai/train-history', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Admin-Pin': pin },
+                    body: JSON.stringify({ limit: 50 })
+                });
+                const data = await res.json();
+                const typingEl = document.getElementById('aiTypingIndicator');
+                if (typingEl) typingEl.remove();
+                if (res.status === 401) {
+                    sessionStorage.removeItem('tradebot_admin_pin');
+                    aiChatHistory.push({ role: 'model', text: '⚠️ Yetkisiz PIN.', source: 'Hata', isError: true });
+                } else if (data && data.status === 'ok') {
+                    const rulesTxt = (data.rules_learned || []).map((r, i) => `${i + 1}. ${r}`).join('\n');
+                    const txt = `**Eğitim Tamamlandı** (${data.trades_analyzed || 0} işlem incelendi)\n${data.summary || ''}` + (rulesTxt ? `\n\n📌 **Hafızaya İşlenen Kalıcı Kurallar:**\n${rulesTxt}` : '');
+                    aiChatHistory.push({ role: 'model', text: txt, source: data.source || 'AI Eğitim Motoru', isError: false });
+                    fetchTerminal();
+                } else {
+                    aiChatHistory.push({ role: 'model', text: '⚠️ ' + (data.message || 'Eğitim başarısız.'), source: 'Hata', isError: true });
+                }
+                renderAiChatHistory();
+            } catch (err) {
+                const typingEl = document.getElementById('aiTypingIndicator');
+                if (typingEl) typingEl.remove();
+                aiChatHistory.push({ role: 'model', text: '⚠️ Bağlantı hatası: ' + err.message, source: 'Hata', isError: true });
+                renderAiChatHistory();
             }
         }
 
@@ -7228,6 +7272,19 @@ def api_ai_review_positions():
     try:
         from agents.ai_analyst_agent import AIAnalystAgent
         res = AIAnalystAgent().review_open_positions_suitability(client=client)
+        return jsonify(res), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/ai/train-history", methods=["POST"])
+@require_admin_pin
+def api_ai_train_history():
+    try:
+        from agents.ai_analyst_agent import AIAnalystAgent
+        data = request.get_json(silent=True) or {}
+        limit = int(data.get("limit") or 50)
+        res = AIAnalystAgent().train_from_trade_history(limit=max(10, min(200, limit)))
         return jsonify(res), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
