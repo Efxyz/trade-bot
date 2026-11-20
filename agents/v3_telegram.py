@@ -249,10 +249,40 @@ def daily_report_message(engine=None, date_tr: Optional[str] = None, final: bool
                      f"en kötü {short(worst['symbol'])} {usd(worst['upnl'], True)} (açık K/Z)")
     if snap["scale"] < 1:
         lines.append(f"⚠️ Düşüş kesicisi devrede: risk {snap['scale']:.1f}x")
+    try:
+        from agents.carry_shadow import load_result
+        tl = tracking_line(load_result(eng.store), now_ms)
+        if tl:
+            lines.append(tl)
+    except Exception:
+        pass
     url = panel_url()
     if url:
         lines += [LINE, f"🌐 {url}"]
     return "\n".join(lines)
+
+
+TRACK_ICON = {"uyumlu": "✅", "izle": "🟡", "sapma": "🔴"}
+TRACK_TEXT = {"uyumlu": "Uyumlu", "izle": "İzleniyor", "sapma": "Sapma var"}
+
+
+def tracking_line(res: Optional[Dict], now_ms: int) -> Optional[str]:
+    """Canlı ↔ backtest takibinin tek satırlık özeti (son 26 saatte karşılaştırma yoksa gösterilmez)."""
+    if not res or res.get("status") != "ok" or not res.get("run_ms"):
+        return None
+    if now_ms - int(res["run_ms"]) > 26 * HOUR_MS:
+        return None
+    v = res.get("verdict")
+    if v not in TRACK_TEXT:
+        return "🧪 Backtest takibi: veri birikiyor"
+    live, sh = res.get("live") or {}, res.get("shadow") or {}
+    diff = float(res.get("diff_pp") or 0.0)
+    line = (f"🧪 Backtest takibi: {TRACK_ICON[v]} {TRACK_TEXT[v]} · canlı {pct(live.get('ret_pct'))}"
+            f" / backtest {pct(sh.get('ret_pct'))} (fark {'+' if diff > 0.005 else '−' if diff < -0.005 else ''}"
+            f"{abs(diff):.2f} puan)")
+    if v != "uyumlu":
+        line += " · ayrıntı panelde"
+    return line
 
 
 EXPECT = {  # backtest (kesici risk seviyesine eşit): yıllık getiri, en kötü düşüş, en kötü ay

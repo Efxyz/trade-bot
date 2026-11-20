@@ -1133,6 +1133,13 @@ class TradingBotOrchestrator:
         except Exception as m_err:
             print(f"⚠️ [Bakım] Zamanlayıcı başlatılamadı: {m_err}")
 
+        # Canlı ↔ backtest takibi (gölge backtest: yalnızca okur, işlem yapmaz)
+        try:
+            from agents.carry_shadow import start_scheduler as start_shadow_scheduler
+            start_shadow_scheduler()
+        except Exception as s_err:
+            print(f"⚠️ [Takip] Zamanlayıcı başlatılamadı: {s_err}")
+
         # Telegram Komut Dinleyicisini Başlat
         if ENABLE_TELEGRAM_COMMANDS:
             self.cmd_agent.start_in_background()

@@ -275,6 +275,10 @@ CARRY_DD_CUT = float(os.getenv("CARRY_DD_CUT", str(-CARRY_PORTFOLIO_TARGET_VOL))
 CARRY_DD_RESTORE = CARRY_DD_CUT / 2                                                # kesicinin yarısına dönünce tam risk
 CARRY_LOOP_SECONDS = 60
 CARRY_STRATEGY_VERSION = "v3.1-multifactor"
+# Canlı ↔ backtest takibi (agents/carry_shadow.py): canlı motorun başladığı andan bugüne aynı kod ve ayarlarla backtest
+# koşar ve canlı paper hesapla karşılaştırır. Yalnızca okur ve kendi bellek içi motorunu çalıştırır; işlem yapmaz.
+ENABLE_SHADOW_TRACKING = os.getenv("ENABLE_SHADOW_TRACKING", "true").lower() == "true"
+SHADOW_RUN_EVERY_H = float(os.getenv("SHADOW_RUN_EVERY_H", "6"))   # Karşılaştırma sıklığı (ayrıca her dengelemeden sonra)
 
 # ========================================================
 # BAKIM: depolama, eski kayıt temizliği ve gece yedeği (core/maintenance.py)

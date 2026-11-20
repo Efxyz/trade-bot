@@ -115,6 +115,19 @@ tfoot td{font-weight:600;border-bottom:0;background:var(--panel2)}
 .mini th,.mini td{padding:6px 10px;font-size:12px}
 .mini th{cursor:default;position:static}
 .msg{font-size:12px;margin-top:10px;min-height:16px}
+/* Canlı ↔ backtest takibi */
+.g-three{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr) minmax(0,1fr);gap:18px}
+@media(max-width:1100px){.g-three{grid-template-columns:1fr}}
+.shk{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.shk .kpi{background:var(--panel2);padding:10px 12px}
+.shk .kpi .v{font-size:17px}
+.h3{font-size:11px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.4px;margin:0 0 8px}
+.wrn{color:var(--warn)}
+.lg{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted)}
+.ln{display:inline-block;width:18px;height:0;border-top:2px solid var(--pos)}
+.ln.dash{border-top:2px dashed var(--accent)}
+.reasons{margin:12px 0 0;padding-left:18px;font-size:12px}
+.reasons li{margin:3px 0}
 footer{max-width:1680px;margin:0 auto;padding:0 20px 30px;color:var(--dim);font-size:11.5px;line-height:1.6}
 </style>
 </head>
@@ -144,8 +157,11 @@ footer{max-width:1680px;margin:0 auto;padding:0 20px 30px;color:var(--dim);font-
     <div class="card">
       <div class="card-h">
         <div><h2>Özsermaye</h2><div class="sub" id="eqSub">Saatlik kayıt</div></div>
-        <div class="seg" id="rangeSeg">
-          <button data-h="24">1G</button><button data-h="168">1H</button><button data-h="720">1A</button><button data-h="0" class="on">Tümü</button>
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:flex-end">
+          <span id="eqLegend" style="display:none;gap:12px"><span class="lg"><i class="ln"></i>Canlı</span><span class="lg" title="Aynı günler için aynı kodla koşulan backtest"><i class="ln dash"></i>Backtest</span></span>
+          <div class="seg" id="rangeSeg">
+            <button data-h="24">1G</button><button data-h="168">1H</button><button data-h="720">1A</button><button data-h="0" class="on">Tümü</button>
+          </div>
         </div>
       </div>
       <div class="card-b"><div id="eqWrap"><canvas id="eq"></canvas><div id="tip"></div></div></div>
@@ -154,6 +170,14 @@ footer{max-width:1680px;margin:0 auto;padding:0 20px 30px;color:var(--dim);font-
       <div class="card-h"><h2>Risk ve motor durumu</h2><span class="sub" id="riskSub"></span></div>
       <div class="card-b" id="risk"></div>
     </div>
+  </section>
+
+  <section class="card" style="margin-bottom:14px">
+    <div class="card-h">
+      <div><h2>Canlı ↔ Backtest takibi</h2><div class="sub">Aynı günler için aynı kod ve ayarlarla koşulan backtest · kârı değil, doğru çalışmayı ölçer</div></div>
+      <span id="shBadge"></span>
+    </div>
+    <div class="card-b" id="shadow"><span class="muted">Yükleniyor…</span></div>
   </section>
 
   <section class="card" style="margin-bottom:14px">
@@ -221,6 +245,8 @@ const sgn = v => (v > 0 ? "+" : v < 0 ? "−" : "");
 const usd = (v, d = 2) => (v < 0 ? "−$" : "$") + Math.abs(v).toLocaleString("en-US", {minimumFractionDigits: d, maximumFractionDigits: d});
 const susd = (v, d = 2) => sgn(v) + "$" + Math.abs(v).toLocaleString("en-US", {minimumFractionDigits: d, maximumFractionDigits: d});
 const pct = (v, d = 2) => sgn(v) + Math.abs(v).toFixed(d) + "%";
+const pp = (v, d = 2) => (Math.abs(v) < 0.5 * 10 ** -d ? "" : sgn(v)) + Math.abs(v).toFixed(d) + " puan";
+const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 const cls = v => v > 0 ? "pos" : v < 0 ? "neg" : "";
 const px = v => v >= 1000 ? v.toLocaleString("en-US", {maximumFractionDigits: 1}) : v >= 100 ? v.toFixed(2) : v >= 1 ? v.toFixed(4) : v.toPrecision(4);
 const parseUtc = t => t ? new Date(t.replace(" ", "T") + "Z") : null;
@@ -294,7 +320,13 @@ function drawEquity() {
   const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
   const css = getComputedStyle(document.documentElement);
   const L = 64, R = 12, T = 10, B = 26;
-  const vs = pts.map(p => p.v); let mn = Math.min(...vs, d.capital), mx = Math.max(...vs, d.capital);
+  // Gölge backtest (aynı saatler): [t, canlı, backtest]
+  const shMap = {};
+  ((S.sh && S.sh.curve) || []).forEach(c => { if (c && c[2] != null) shMap[c[0]] = c[2]; });
+  const shv = pts.map(p => shMap[p.t] ?? null);
+  const hasSh = shv.some(v => v != null);
+  const vs = pts.map(p => p.v).concat(shv.filter(v => v != null));
+  let mn = Math.min(...vs, d.capital), mx = Math.max(...vs, d.capital);
   const pad = (mx - mn) * 0.12 || 1; mn -= pad; mx += pad;
   const x = i => L + i * (W - L - R) / (pts.length - 1), y = v => T + (mx - v) * (H - T - B) / (mx - mn);
   g.font = "11px JetBrains Mono, monospace"; g.fillStyle = css.getPropertyValue("--dim"); g.strokeStyle = css.getPropertyValue("--line");
@@ -318,11 +350,20 @@ function drawEquity() {
   g.lineTo(x(pts.length - 1), H - B); g.lineTo(x(0), H - B); g.closePath(); g.fillStyle = grad; g.fill();
   g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(x(i), y(p.v)) : g.moveTo(x(i), y(p.v)));
   g.strokeStyle = col; g.lineWidth = 2; g.stroke();
+  if (hasSh) {
+    g.save(); g.setLineDash([5, 4]); g.strokeStyle = css.getPropertyValue("--accent").trim(); g.lineWidth = 1.6;
+    g.beginPath(); let on = false;
+    shv.forEach((v, i) => { if (v == null) { on = false; return; } if (on) g.lineTo(x(i), y(v)); else { g.moveTo(x(i), y(v)); on = true; } });
+    g.stroke(); g.restore();
+  }
+  const lg = $("#eqLegend");
+  if (lg) { lg.style.display = hasSh ? "inline-flex" : "none"; const ln = lg.querySelector(".ln"); if (ln) ln.style.borderTopColor = col; }
   cv.onmousemove = ev => {
     const r = cv.getBoundingClientRect(), i = Math.round((ev.clientX - r.left - L) / (W - L - R) * (pts.length - 1));
     if (i < 0 || i >= pts.length) { $("#tip").style.display = "none"; return; }
-    const p = pts[i], tip = $("#tip");
-    tip.innerHTML = `<span class="muted">${p.t.slice(0, 16)} UTC</span><br><b class="num">${usd(p.v)}</b> <span class="num ${cls(p.v - d.capital)}">${pct((p.v / d.capital - 1) * 100)}</span>`;
+    const p = pts[i], tip = $("#tip"), sv = shv[i];
+    tip.innerHTML = `<span class="muted">${p.t.slice(0, 16)} UTC</span><br><b class="num">${usd(p.v)}</b> <span class="num ${cls(p.v - d.capital)}">${pct((p.v / d.capital - 1) * 100)}</span>` +
+      (sv != null ? `<br><span class="muted">Backtest</span> <b class="num">${usd(sv)}</b> <span class="num muted">fark ${pp((p.v - sv) / d.capital * 100)}</span>` : "");
     tip.style.display = "block";
     tip.style.left = Math.min(W - 150, Math.max(0, x(i) + 10)) + "px"; tip.style.top = Math.max(0, y(p.v) - 40) + "px";
   };
@@ -487,14 +528,14 @@ function getPin() {
   }
   return p;
 }
-async function adminFetch(url, opts = {}) {
+async function adminFetch(url, opts = {}, onMsg = setMsg) {
   const pin = getPin(); if (!pin) return null;
   const r = await fetch(url, {...opts, headers: {...(opts.headers || {}), "X-Admin-Pin": pin}});
   if (r.status === 401) { try { sessionStorage.removeItem("admin_pin"); } catch (e) {} }
   if (!r.ok) {
     let m = "İşlem başarısız (" + r.status + ")";
     try { m = (await r.clone().json()).message || m; } catch (e) {}
-    setMsg(m, "neg"); return null;
+    onMsg(m, "neg"); return null;
   }
   return r;
 }
@@ -590,6 +631,115 @@ async function downloadLatest() {
   setMsg("Son yedek indirildi.", "pos");
 }
 
+/* ---------- Canlı ↔ backtest takibi ---------- */
+const VERD = {uyumlu: ["badge ok", "Uyumlu"], izle: ["badge warn", "İzleniyor"], sapma: ["badge bad", "Sapma var"],
+              veri_az: ["badge muted", "Veri birikiyor"]};
+let shPoll = null, shLast = ["", ""];
+function shMsg(t, c = "") { shLast = [t, c]; const el = $("#shMsg"); if (el) { el.textContent = t; el.className = "msg " + c; } }
+
+function renderShadow(r) {
+  const el = $("#shadow"), badge = $("#shBadge");
+  if (!r || r.error) {
+    badge.innerHTML = '<span class="badge bad">Hata</span>';
+    el.innerHTML = `<span class="neg">Hata: ${esc(r ? r.error : "yanıt yok")}</span>`; return;
+  }
+  if (r.enabled === false) {
+    badge.innerHTML = '<span class="badge muted">Kapalı</span>';
+    el.innerHTML = '<span class="muted">Takip kapalı (ENABLE_SHADOW_TRACKING=false).</span>'; return;
+  }
+  const runBtn = `<button class="btn" id="btnShadow" ${r.running ? "disabled" : ""}>🧪 Şimdi karşılaştır</button>`;
+  const info = `<div class="note">Canlı paper hesap, aynı günler için aynı kod ve ayarlarla koşulan backtestle karşılaştırılır. Piyasa iki tarafta da aynı olduğu için
+    kalan fark yalnızca uygulamadan gelir: fiyatın alındığı saniyeler, kaçan ya da geç kalan dengelemeler, yeniden başlatmalar veya hesap hataları.
+    ±0,3 puana kadar fark normaldir; ±1 puanı aşarsa sarı, ±2 puanı aşarsa kırmızı uyarı verir. Karşılaştırma ${r.every_h || 6} saatte bir ve her
+    dengelemeden sonra kendiliğinden yenilenir; düğme yönetici PIN'i ister.</div>`;
+  const errNote = r.last_error ? `<div class="note neg">Son deneme başarısız (${esc((r.last_error.time || "").slice(5, 16))} UTC): ${esc(r.last_error.error)}${r.run_at ? " · önceki sonuç gösteriliyor" : ""}</div>` : "";
+  if (!r.run_at) {
+    badge.innerHTML = r.running ? '<span class="badge warn">Çalışıyor…</span>' : '<span class="badge muted">Henüz yok</span>';
+    el.innerHTML = `<span class="muted">${r.running ? "İlk karşılaştırma hazırlanıyor…" : "İlk karşılaştırma motor başladıktan birkaç dakika sonra kendiliğinden yapılır."}</span>
+      ${errNote}<div class="actions">${runBtn}</div><div class="msg" id="shMsg"></div>${info}`;
+    bindShadowBtn(); return;
+  }
+  const v = VERD[r.verdict] || ["badge muted", esc(r.verdict)];
+  badge.innerHTML = r.running ? '<span class="badge warn">Güncelleniyor…</span>' : `<span class="${v[0]}">${v[1]}</span>`;
+  const Lv = r.live, Bt = r.shadow;
+  let body = "";
+  if (Lv && Bt) {
+    const P = r.positions || {}, D = r.daily || {};
+    const ad = Math.abs(r.diff_pp || 0);
+    const row = (k, a, b, f) => `<tr><td class="sym">${k}</td><td>${a}</td><td>${b}</td><td class="dim">${f}</td></tr>`;
+    const dn = (a, b) => (a > b ? "+" : a < b ? "−" : "") + Math.abs(a - b);
+    body = `<div class="g-three">
+      <div>
+        <div class="h3">Getiri · ${esc(r.start.slice(5, 16))} → ${esc(r.t_end.slice(5, 16))} UTC</div>
+        <div class="shk">
+          ${kpi("Canlı", pct(Lv.ret_pct), usd(Lv.equity), cls(Lv.ret_pct))}
+          ${kpi("Backtest", pct(Bt.ret_pct), usd(Bt.equity), cls(Bt.ret_pct))}
+          ${kpi("Fark", pp(r.diff_pp), "en büyük " + pp(r.max_gap_pp), ad > 2 ? "neg" : ad > 1 ? "wrn" : "")}
+          ${kpi("Günlük uyum", D.corr == null ? "—" : D.corr.toFixed(2), D.corr == null || r.days < 7 ? "7 gün dolunca değerlendirilir" : `korelasyon · ${D.n} gün`)}
+        </div>
+      </div>
+      <div>
+        <div class="h3">Kalem kalem</div>
+        <table class="mini"><thead><tr><th>Kalem</th><th>Canlı</th><th>Backtest</th><th>Fark</th></tr></thead><tbody>
+          ${row("Kasa", usd(Lv.equity), usd(Bt.equity), susd(Lv.equity - Bt.equity))}
+          ${row("Komisyon + kayma", usd(Lv.fees, 3), usd(Bt.fees, 3), susd(Lv.fees - Bt.fees, 3))}
+          ${row("Fonlama (net gelir)", susd(-Lv.funding, 3), susd(-Bt.funding, 3), susd(Bt.funding - Lv.funding, 3))}
+          ${row("Dengeleme", Lv.n_rebalances, Bt.n_rebalances, dn(Lv.n_rebalances, Bt.n_rebalances))}
+          ${row("Dolum", Lv.n_fills, Bt.n_fills, dn(Lv.n_fills, Bt.n_fills))}
+        </tbody></table>
+      </div>
+      <div>
+        <div class="h3">Pozisyon uyumu · ${P.same_side}/${P.n} aynı yönde · ağırlık farkı %${(P.weight_gap_pct || 0).toFixed(1)}</div>
+        <table class="mini"><thead><tr><th>Coin</th><th>Canlı</th><th>Backtest</th></tr></thead><tbody>
+          ${(P.rows || []).slice(0, 6).map(x => `<tr><td class="sym">${short(x.symbol)}</td><td class="${cls(x.live_w)}">${pct(x.live_w, 1)}</td><td class="${cls(x.shadow_w)}">${pct(x.shadow_w, 1)}</td></tr>`).join("")
+            || '<tr><td colspan="3" class="muted" style="text-align:center">Pozisyon yok</td></tr>'}
+        </tbody></table>
+        <div class="dim" style="font-size:11px;margin-top:6px">Özsermaye % · en büyük farklar üstte</div>
+      </div>
+    </div>`;
+  }
+  const rs = (r.reasons || []).map(x => `<li class="${r.verdict === "sapma" ? "neg" : "wrn"}">${esc(x)}</li>`).join("");
+  const ns = (r.notes || []).map(x => `<li class="muted">${esc(x)}</li>`).join("");
+  el.innerHTML = `${body}
+    ${rs || ns ? `<ul class="reasons">${rs}${ns}</ul>` : ""}
+    ${errNote}
+    <div class="kv" style="margin-top:12px">
+      <span class="muted">Son karşılaştırma</span><span class="num">${esc(r.run_at.slice(0, 16))} UTC · ${r.duration_s ?? "—"} sn</span>
+      <span class="muted">Canlı başlangıç</span><span class="num">${esc((r.live_start || "—").slice(0, 16))} UTC · ${r.hours || 0} saatlik kayıt</span>
+    </div>
+    <div class="actions">${runBtn}</div><div class="msg" id="shMsg"></div>${info}`;
+  bindShadowBtn();
+}
+
+function bindShadowBtn() {
+  if (shLast[0]) shMsg(shLast[0], shLast[1]);
+  const b = $("#btnShadow"); if (!b) return;
+  b.onclick = async () => {
+    const before = S.sh && S.sh.run_at;
+    const r = await adminFetch("/api/carry/shadow/run", {method: "POST"}, shMsg);
+    if (!r) return;
+    shMsg("Karşılaştırma başladı… (Binance verisi çekiliyor, 10–40 sn)", "muted");
+    clearInterval(shPoll);
+    let n = 0;
+    shPoll = setInterval(async () => {
+      const s = await loadShadow();
+      if ((s && !s.running) || ++n > 40) {
+        clearInterval(shPoll);
+        if (s && s.run_at && s.run_at !== before) shMsg("Karşılaştırma tamamlandı.", "pos");
+        else shMsg("Karşılaştırma yapılamadı" + (s && s.last_error ? ": " + s.last_error.error : "."), "neg");
+      }
+    }, 3000);
+  };
+}
+
+async function loadShadow() {
+  try {
+    const r = await (await fetch("/api/carry/shadow")).json();
+    S.sh = r; renderShadow(r); drawEquity();
+    return r;
+  } catch (e) { return null; }
+}
+
 /* ---------- Ana yükleme ---------- */
 async function load() {
   try {
@@ -601,8 +751,8 @@ async function load() {
     document.title = `${usd(d.equity)} (${pct(d.pnl_pct)}) · Quant Terminal v3`;
   } catch (e) { $("#statusTxt").textContent = "Bağlantı hatası"; $("#statusDot").className = "dot bad"; }
 }
-load(); loadMarket(); loadStorage(); tickClock();
-setInterval(load, 15000); setInterval(loadMarket, 30000); setInterval(loadStorage, 60000);
+load(); loadMarket(); loadStorage(); loadShadow(); tickClock();
+setInterval(load, 15000); setInterval(loadMarket, 30000); setInterval(loadStorage, 60000); setInterval(loadShadow, 60000);
 </script>
 </body>
 </html>

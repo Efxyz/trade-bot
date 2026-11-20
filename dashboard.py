@@ -246,6 +246,31 @@ def api_carry():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/carry/shadow")
+def api_carry_shadow():
+    """Canlı ↔ backtest takibi: son karşılaştırmanın sonucu (salt-okunur)."""
+    try:
+        import config as cfg
+        from agents import carry_shadow as cs
+        from agents.carry_agent import get_live_engine
+        res = cs.load_result(get_live_engine().store) or {"status": "yok"}
+        res["running"] = cs.is_running()
+        res["enabled"] = bool(cfg.ENABLE_SHADOW_TRACKING)
+        res["every_h"] = cfg.SHADOW_RUN_EVERY_H
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/carry/shadow/run", methods=["POST"])
+@require_admin_pin
+def api_carry_shadow_run():
+    from agents import carry_shadow as cs
+    if cs.run_in_background():
+        return jsonify({"success": True, "message": "Karşılaştırma başlatıldı."}), 202
+    return jsonify({"success": False, "message": "Karşılaştırma zaten sürüyor."}), 409
+
+
 @app.route("/charts/<path:filename>")
 def serve_chart(filename):
     return send_from_directory(CHARTS_DIR, filename)
