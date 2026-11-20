@@ -211,7 +211,7 @@ Railway Variables'ta `TELEGRAM_BOT_TOKEN` ve `TELEGRAM_CHAT_ID` tanımlıysa bot
 | Bot açılınca | Kasa, pozisyon sayısı, takvim, komutlar, panel bağlantısı |
 | 03:00 günlük dengeleme | Emir sayısı, işlem hacmi, maliyet; açılan, kapanan ve yön değiştiren coinler (emir yoksa gönderilmez) |
 | 03:20 gece bakımı | Yedek zip dosyası |
-| 23:50 gün sonu | Günlük ve toplam K/Z, dolumlar, komisyon, günlük fonlama, en iyi/kötü pozisyon |
+| 23:50 gün sonu | Günlük ve toplam K/Z, dolumlar, komisyon, günlük fonlama, en iyi/kötü pozisyon, canlı ↔ backtest takibi özeti |
 
 Komutlar ("/" menüsüne otomatik eklenir):
 - `/durum`: kasa, K/Z, risk durumu
@@ -222,6 +222,18 @@ Komutlar ("/" menüsüne otomatik eklenir):
 - `/yardim`: komut listesi
 
 Komutlar yalnızca `TELEGRAM_CHAT_ID` sohbetinden kabul edilir. `ENABLE_SMC_ENGINE=true` olursa eski SMC mesajları ve komutları geri gelir.
+
+---
+
+## 🧪 Canlı ↔ Backtest Takibi
+Paper değerlendirme döneminde (8–12 hafta) asıl soru "bot kâr ediyor mu?" değil, "bot canlıda backtestte tasarlandığı gibi çalışıyor mu?" sorusudur. Kısa dönemde kâr ölçülemez: backtestte 8–12 haftalık dönemlerin ~%30'u strateji doğru çalışırken bile zararla bitti. Bu yüzden bot kendini aynı günlerin backtestiyle karşılaştırır ([`agents/carry_shadow.py`](agents/carry_shadow.py)).
+
+- **Nasıl:** canlı motorun ilk kurulum anından bugüne kadar **aynı motor kodu ve aynı ayarlarla**, Binance'in geçmiş saatlik mum ve fonlama verisi üzerinde bir backtest koşulur. Risk seviyesi değişiklikleri canlıdaki saatlerinde uygulanır. Piyasa iki tarafta da aynı olduğu için kalan fark yalnızca uygulamadan gelir: fiyatın alındığı saniyeler, kaçan ya da geç kalan dengelemeler, yeniden başlatmalar, hesap hataları.
+- **Ölçütler:** getiri farkı (puan), en büyük saatlik sapma, günlük getiri korelasyonu (7 günden sonra), pozisyonların yön ve ağırlık uyumu, komisyon, fonlama, dengeleme ve dolum sayıları, kaçan veya geç kalan dengeleme günleri.
+- **Karar:** ±0,3 puana kadar fark normaldir. **Uyumlu** / **İzleniyor** (fark ±1 puanı aşarsa, pozisyonlar %15'ten fazla ayrışırsa ya da bir gün dengeleme kaçarsa) / **Sapma var** (±2 puan, %30 pozisyon farkı, 2+ kaçan gün ya da 7 günden sonra korelasyon < 0,90).
+- **Ne zaman:** 6 saatte bir (`SHADOW_RUN_EVERY_H`) ve her günlük dengelemeden 10 dk sonra. Paneldeki **🧪 Şimdi karşılaştır** düğmesi (PIN) elle tetikler. Binance hata verirse önceki sonuç korunur, 30 dk sonra yeniden denenir.
+- **Nerede:** panelde "Canlı ↔ Backtest takibi" kartı ve özsermaye grafiğindeki kesikli çizgi; Telegram gün sonu raporunda tek satır; `GET /api/carry/shadow`. Sonuç `carry_state` tablosunda (`key='shadow'`) saklanır.
+- **Güvenlik:** canlı motorun kayıtları yalnızca okunur. Gölge motor bellekte çalışır; emir, Telegram bildirimi ya da canlı tabloya yazma yoktur. `ENABLE_SHADOW_TRACKING=false` ile kapatılır.
 
 ---
 
