@@ -260,6 +260,8 @@ CARRY_XSMOM_LOOKBACK_H = 24 * 30         # Kesitsel momentum kolu: 30 günlük g
 # %20 -> ~%25-30 / ~%15-22; %30 -> ~%37-45 / ~%20-33. Risk değişince motor mevcut dilimleri yeni seviyeye ölçekler.
 CARRY_PORTFOLIO_TARGET_VOL = float(os.getenv("CARRY_PORTFOLIO_TARGET_VOL", "0.20"))
 CARRY_K = 5                              # Kesitsel kollarda bacak başına coin sayısı (5 long + 5 short)
+CARRY_MAX_UNIVERSE = int(os.getenv("CARRY_MAX_UNIVERSE", "0"))      # >0: her dengelemede en likit N coin seçilir (0 = sabit liste)
+CARRY_K_QUANTILE = float(os.getenv("CARRY_K_QUANTILE", "0"))        # >0: bacak başına coin = N x oran (örn. 0.25); 0 = sabit CARRY_K
 CARRY_FUNDING_LOOKBACK_H = 24 * 7        # Sıralama: son 7 günün fonlama toplamı
 CARRY_VOL_LOOKBACK_H = 24 * 30           # Ters-volatilite ağırlığı için 30 günlük saatlik volatilite
 CARRY_TARGET_VOL = 0.20                  # Varlık başına hedef vol = 0.20 / sqrt(evren) -> portföy ~%11 yıllık vol

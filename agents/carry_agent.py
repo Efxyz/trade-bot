@@ -57,6 +57,9 @@ class CarryParams:
     xsmom_lookback_h: int = config.CARRY_XSMOM_LOOKBACK_H
     portfolio_target_vol: float = config.CARRY_PORTFOLIO_TARGET_VOL
     tranches: int = config.CARRY_TRANCHES          # >1: her gün bir dilim; hedef = son N günlük sinyalin ortalaması
+    max_universe: int = config.CARRY_MAX_UNIVERSE   # >0: adaylardan son 30 günün en likit N coini (o günün verisiyle)
+    k_quantile: float = config.CARRY_K_QUANTILE     # >0: bacak başına coin sayısı = seçilen evren x oran
+    liquidity_lookback_h: int = 24 * 30
     min_trade_usdt: float = config.CARRY_MIN_TRADE_USDT
     fee_rate: float = config.CARRY_FEE_RATE
     slippage_rate: float = config.CARRY_SLIPPAGE_RATE
@@ -327,12 +330,37 @@ class CarryEngine:
         return f
 
     # ---- yeniden dengeleme ----
+    def select_universe(self) -> List[str]:
+        """
+        Sabit liste (max_universe=0) ya da adaylar arasından son 30 günün ortalama işlem hacmine göre en likit N coin.
+        Seçim yalnızca o ana kadarki veriyle yapılır (geleceği bilmeden), yeni listelenen coinler yeterli geçmiş olunca girer.
+        """
+        if self.p.max_universe <= 0:
+            return list(self.p.universe)
+        liq = getattr(self.data, "liquidity", None)
+        if liq is None:
+            return list(self.p.universe)
+        scored = []
+        for sym in self.p.universe:
+            q = liq(sym, self.p.liquidity_lookback_h)
+            if q and q > 0:
+                scored.append((q, sym))
+        scored.sort(reverse=True)
+        return [sym for _, sym in scored[: self.p.max_universe]]
+
+    def legs_k(self, n_selected: int) -> int:
+        if self.p.k_quantile > 0:
+            return max(1, int(round(n_selected * self.p.k_quantile)))
+        return self.p.k
+
     def compute_signal(self, now_ms: int):
         """Hedef ağırlıklar (özsermaye oranı) ve teşhis için fonlama toplamları."""
         closes, fsums = {}, {}
         start = now_ms - self.p.funding_lookback_h * HOUR_MS
         n_bars = max(self.p.vol_lookback_h, self.p.xsmom_lookback_h, self.p.tsmom_lookback_h) + 1
-        for s in self.p.universe:
+        universe = self.select_universe()
+        self.state["active_universe"] = universe
+        for s in universe:
             c = self.data.hourly_closes(s, n_bars)
             if len(c) < 24 * 10:
                 continue
@@ -340,11 +368,12 @@ class CarryEngine:
             fh = self.data.funding_history(s, start + 1, now_ms)
             if fh:
                 fsums[s] = sum(e["rate"] for e in fh if start < e["time"] <= now_ms)
-        n_univ = len(self.p.universe)
+        n_univ = len(universe) if self.p.max_universe > 0 else len(self.p.universe)
+        k = self.legs_k(len(universe))
         sleeves = tuple(self.p.sleeves)
         if sleeves == ("funding",):
             # Tek faktör (v3.0): araştırmadaki birebir kural
-            w = compute_target_weights({s: closes[s] for s in fsums}, fsums, k=self.p.k,
+            w = compute_target_weights({s: closes[s] for s in fsums}, fsums, k=k,
                                        vol_lookback_h=self.p.vol_lookback_h, target_vol_ann=self.p.target_vol,
                                        gross_cap=self.p.gross_cap, universe_size=n_univ, scale=1.0)
             self._last_sleeves = {"funding": w}
@@ -356,9 +385,9 @@ class CarryEngine:
         if "trend" in sleeves:
             parts["trend"] = tsmom_weights(closes, vols, self.p.tsmom_lookback_h, self.p.target_vol, n_univ)
         if "xsmom" in sleeves:
-            parts["xsmom"] = xsmom_weights(closes, vols, self.p.k, self.p.xsmom_lookback_h, 24, self.p.target_vol, n_univ)
+            parts["xsmom"] = xsmom_weights(closes, vols, k, self.p.xsmom_lookback_h, 24, self.p.target_vol, n_univ)
         if "funding" in sleeves:
-            parts["funding"] = funding_weights(fsums, vols, self.p.k, self.p.target_vol, n_univ)
+            parts["funding"] = funding_weights(fsums, vols, k, self.p.target_vol, n_univ)
         contrib: Dict[str, Dict[str, float]] = {}
         w = combine_sleeves(parts, closes, self.p.portfolio_target_vol, self.p.vol_lookback_h, self.p.gross_cap,
                             details=contrib)
@@ -450,6 +479,9 @@ class CarryEngine:
         w = self._combined_target()
         if not w:
             return {}
+        need = sorted(set(w) - set(prices))
+        if need:
+            prices = {**prices, **self.data.prices(need)}
         eq = self.equity(prices)
         qty = {s: p["qty"] for s, p in self.state["positions"].items()}
         orders = plan_orders(w, qty, prices, eq, self.p.min_trade_usdt)
@@ -489,8 +521,8 @@ class CarryEngine:
     def step(self) -> Dict:
         with self._lock:
             now_ms = self.data.now_ms()
-            syms = sorted(set(self.p.universe) | set(self.state["positions"]))
-            prices = self.data.prices(syms)
+            syms = sorted(self.state["positions"])
+            prices = self.data.prices(syms) if syms else {}
             missing = [s for s in self.state["positions"] if not prices.get(s)]
             if missing:
                 self._log(f"⚠️ [Carry] Fiyat yok: {missing}; adım atlandı.")
@@ -558,7 +590,7 @@ class CarryEngine:
             "targets": st.get("last_targets", {}), "positions": pos, "last_signal": st.get("last_signal", {}),
             "factor_contrib": {s: {k: round(v, 5) for k, v in d.items()} for s, d in self.factor_contrib().items()},
             "sleeve_signals": st.get("sleeve_signals", {}), "sleeves": list(self.p.sleeves),
-            "universe": list(self.p.universe),
+            "universe": list(st.get("active_universe") or self.p.universe),
             "started": _fmt(st["started_ms"]) if st.get("started_ms") else None,
             "last_step": _fmt(st["last_step_ms"]) if st.get("last_step_ms") else None,
             "server_time": _fmt(self.data.now_ms()),
@@ -582,10 +614,18 @@ class LiveCarryData:
         from core.timeutil import wall_utc
         return int(wall_utc().timestamp() * 1000)
 
-    def hourly_closes(self, symbol: str, n: int) -> List[float]:
-        kl = self.client.get_klines(symbol, "1h", limit=min(1500, n + 2))
+    def _closed_klines(self, symbol: str, n: int) -> List[Dict]:
+        kl = self.client.get_klines(symbol, "1h", limit=min(1500, max(n, 24 * 31) + 2))
         now = self.now_ms()
-        return [k["close"] for k in kl if k["timestamp"] + HOUR_MS <= now][-n:]
+        return [k for k in kl if k["timestamp"] + HOUR_MS <= now]
+
+    def hourly_closes(self, symbol: str, n: int) -> List[float]:
+        return [k["close"] for k in self._closed_klines(symbol, n)][-n:]
+
+    def liquidity(self, symbol: str, lookback_h: int) -> Optional[float]:
+        """Son `lookback_h` kapanmış saatin ortalama USDT işlem hacmi (yetersiz geçmişte None)."""
+        q = [k.get("quote_volume", 0.0) for k in self._closed_klines(symbol, lookback_h)][-lookback_h:]
+        return sum(q) / len(q) if len(q) >= 24 * 10 else None
 
     def funding_history(self, symbol: str, start_ms: int, end_ms: int) -> List[Dict]:
         return self.client.get_funding_history(symbol, start_ms, end_ms)

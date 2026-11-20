@@ -72,9 +72,13 @@ def download(symbols: List[str], years: float = 3.0, refresh: bool = False, end_
 
 
 class SimCarryData:
+    """Önbellekten saatlik veri. Geniş evrende bellek/hız için array + kümülatif hacim (O(1) likidite)."""
+
     def __init__(self, symbols: List[str]):
-        self.ts: Dict[str, List[int]] = {}
-        self.close: Dict[str, List[float]] = {}
+        from array import array
+        self.ts: Dict[str, "array"] = {}
+        self.close: Dict[str, "array"] = {}
+        self.cumqv: Dict[str, "array"] = {}
         self.fts: Dict[str, List[int]] = {}
         self.frate: Dict[str, List[float]] = {}
         for s in symbols:
@@ -85,8 +89,13 @@ class SimCarryData:
             if len(k) < 24 * 40:
                 continue
             k = sorted({r[0]: r for r in k}.values())
-            self.ts[s] = [r[0] for r in k]
-            self.close[s] = [r[4] for r in k]
+            self.ts[s] = array("q", (int(r[0]) for r in k))
+            self.close[s] = array("d", (float(r[4]) for r in k))
+            cum, acc = array("d", [0.0]), 0.0
+            for r in k:
+                acc += float(r[5]) if len(r) > 5 else 0.0
+                cum.append(acc)
+            self.cumqv[s] = cum
             f = sorted(json.loads(ff.read_text()))
             self.fts[s] = [r[0] for r in f]
             self.frate[s] = [r[1] for r in f]
@@ -109,7 +118,17 @@ class SimCarryData:
         # Veri boşluğu olan (listelenmemiş / askıya alınmış) coin: son mum 3 saatten eskiyse kullanılmaz
         if i == 0 or self.ts[symbol][i - 1] < self.t - 4 * HOUR_MS:
             return []
-        return self.close[symbol][max(0, i - n):i]
+        return list(self.close[symbol][max(0, i - n):i])
+
+    def liquidity(self, symbol: str, lookback_h: int):
+        """Son `lookback_h` kapanmış saatin ortalama USDT hacmi; en az 10 günlük geçmiş yoksa None."""
+        if symbol not in self.ts:
+            return None
+        i = self._last_closed(symbol)
+        if i < 24 * 10 or self.ts[symbol][i - 1] < self.t - 4 * HOUR_MS:
+            return None
+        j = max(0, i - lookback_h)
+        return (self.cumqv[symbol][i] - self.cumqv[symbol][j]) / (i - j)
 
     def funding_history(self, symbol: str, start_ms: int, end_ms: int) -> List[Dict]:
         if symbol not in self.fts:
@@ -185,6 +204,8 @@ def stats(store: MemoryCarryStore, capital: float, eng: CarryEngine) -> Dict:
         "fees_usd": round(st["fees_paid"], 2), "funding_paid_usd": round(st["funding_paid"], 2),
         "fills": st["n_fills"], "fills_per_week": round(st["n_fills"] / (years * 52.14), 1) if years else 0,
         "rebalances": st["n_rebalances"], "years": round(years, 2), "yearly": yearly,
+        "avg_leverage": round(sum(r["gross_exposure"] / r["equity"] for r in store.equity) / len(store.equity), 2),
+        "max_leverage": round(max(r["gross_exposure"] / r["equity"] for r in store.equity), 2),
     }
 
 
@@ -198,16 +219,28 @@ def main():
     ap.add_argument("--lookback-days", type=int, default=None)
     ap.add_argument("--out", default=None)
     ap.add_argument("--tranches", type=int, default=None, help="1 = haftalık tek dengeleme, 7 = günlük dilimli")
+    ap.add_argument("--target-vol", type=float, default=None, help="Portföy hedef yıllık volatilitesi (örn. 0.20)")
+    ap.add_argument("--gross-cap", type=float, default=None, help="Brüt kaldıraç tavanı (notional / özsermaye)")
+    ap.add_argument("--dd-cut", type=float, default=None, help="Kesici eşiği (örn. -0.20); restore = yarısı")
+    ap.add_argument("--universe-file", default=None, help="Aday coin listesi (JSON). Verilirse önbellek --cache-tag ile seçilir")
+    ap.add_argument("--cache-tag", default="carry", help="Önbellek klasörü (OOS'ta sonuna _oos eklenir)")
+    ap.add_argument("--max-universe", type=int, default=None, help="Her dengelemede en likit N coin (0 = sabit liste)")
+    ap.add_argument("--k-quantile", type=float, default=None, help="Bacak başına coin = N x oran (örn. 0.25)")
+    ap.add_argument("--slippage", type=float, default=None, help="Taraf başına kayma (örn. 0.0005)")
+    ap.add_argument("--no-download", action="store_true", help="Yalnızca önbellekteki veriyle çalış")
     ap.add_argument("--oos", action="store_true",
                     help="Örneklem dışı: stratejinin tasarlandığı 3 yıldan ÖNCEKİ 3 yıl (ayrı önbellek)")
     a = ap.parse_args()
     global CACHE
     base = CarryParams()
-    if a.oos:
-        CACHE = CACHE.parent / "carry_oos"
-        download(base.universe, years=a.years + 0.1, refresh=a.refresh, end_years_ago=3.0)
-    else:
-        download(base.universe, years=a.years, refresh=a.refresh)
+    if a.universe_file:
+        base = replace(base, universe=json.loads(Path(a.universe_file).read_text()))
+    CACHE = CACHE.parent / (a.cache_tag + ("_oos" if a.oos else ""))
+    if not a.no_download:
+        if a.oos:
+            download(base.universe, years=a.years + 0.1, refresh=a.refresh, end_years_ago=3.0)
+        else:
+            download(base.universe, years=a.years, refresh=a.refresh)
     data = SimCarryData(base.universe)
     first, last = data.span()
     start = max(first + (base.vol_lookback_h + 24) * HOUR_MS, last - int(a.years * 365 * 24) * HOUR_MS)
@@ -219,6 +252,18 @@ def main():
         p = replace(p, rebalance_hour=(d * 3) % 24) if ap_tr > 1 else replace(p, rebalance_weekday=d)
         if a.fee is not None:
             p = replace(p, fee_rate=a.fee)
+        if a.target_vol is not None:
+            p = replace(p, portfolio_target_vol=a.target_vol)
+        if a.gross_cap is not None:
+            p = replace(p, gross_cap=a.gross_cap)
+        if a.dd_cut is not None:
+            p = replace(p, dd_cut=a.dd_cut, dd_restore=a.dd_cut / 2)
+        if a.max_universe is not None:
+            p = replace(p, max_universe=a.max_universe)
+        if a.k_quantile is not None:
+            p = replace(p, k_quantile=a.k_quantile)
+        if a.slippage is not None:
+            p = replace(p, slippage_rate=a.slippage)
         if a.k is not None:
             p = replace(p, k=a.k)
         if a.lookback_days is not None:
@@ -233,6 +278,13 @@ def main():
     summary = {k: round(sum(v[k] for v in vals) / len(vals), 2) for k in ("sharpe", "cagr_%", "max_dd_%", "positive_months_%", "worst_month_%", "fills_per_week")}
     summary["min_sharpe"] = min(v["sharpe"] for v in vals)
     summary["worst_dd_%"] = min(v["max_dd_%"] for v in vals)
+    summary["avg_leverage"] = round(sum(v["avg_leverage"] for v in vals) / len(vals), 2)
+    summary["max_leverage"] = max(v["max_leverage"] for v in vals)
+    yrs = {}
+    for v in vals:
+        for y, d in v["yearly"].items():
+            yrs.setdefault(y, []).append(d["ret_%"])
+    summary["yearly_ret_%"] = {y: [min(r), round(sum(r) / len(r), 1), max(r)] for y, r in sorted(yrs.items())}
     print("ORTALAMA:", json.dumps(summary, ensure_ascii=False))
     if a.out:
         Path(a.out).write_text(json.dumps({"summary": summary, "runs": results}, indent=1, ensure_ascii=False), encoding="utf-8")

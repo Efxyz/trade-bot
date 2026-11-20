@@ -382,3 +382,73 @@ def test_risk_texts():
                                params(portfolio_target_vol=0.20, dd_cut=-0.20), {"next_rebalance": "2026-11-20 00:00:00"})
     assert "%10 → %20" in m and "~2.0 katına çıkacak" in m and "20.11 03:00 TSİ" in m and "−20%" in m
     assert m.count("*") % 2 == 0 and "_" not in m
+
+
+# ---------------- likiditeye göre dinamik evren ----------------
+class _LiqData(FakeData):
+    """FakeData + coin başına sabit likidite (C0 en düşük ... C11 en yüksek)."""
+
+    def __init__(self, syms, liq=None):
+        super().__init__(syms)
+        self.liq = liq or {s: float(i + 1) for i, s in enumerate(syms)}
+
+    def liquidity(self, s, lookback_h):
+        return self.liq.get(s)
+
+
+def test_select_universe_top_n_by_liquidity_and_k_quantile():
+    data = _LiqData(SYMS)
+    eng = CarryEngine(data, MemoryCarryStore(), params(max_universe=8, k_quantile=0.25))
+    sel = eng.select_universe()
+    assert sel == [f"C{i}USDT" for i in range(11, 3, -1)]          # en likit 8
+    assert eng.legs_k(8) == 2 and eng.legs_k(40) == 10
+    assert CarryEngine(data, MemoryCarryStore(), params()).select_universe() == SYMS   # 0 = sabit liste
+    data.liq["C11USDT"] = None                                       # geçmişi yetersiz coin seçilmez
+    assert "C11USDT" not in eng.select_universe()
+
+
+def test_dynamic_universe_trades_only_selected_coins():
+    data = _LiqData(SYMS)
+    eng = CarryEngine(data, MemoryCarryStore(), params(sleeves=("trend", "xsmom", "funding"), max_universe=6,
+                                                       k_quantile=0.25, tranches=7))
+    eng.step()
+    top6 = {f"C{i}USDT" for i in range(6, 12)}
+    assert eng.state["positions"] and set(eng.state["positions"]) <= top6
+    assert set(eng.state["active_universe"]) == top6
+    # Likidite sıralaması değişince ertesi günün dengelemesinde evren güncellenir; yeni coinler portföye girer
+    # (çıkan coinler 7 günlük dilim ortalamasıyla kademeli azalır)
+    data.liq = {s: float(12 - i) for i, s in enumerate(SYMS)}       # sıralama tersine döndü
+    for _ in range(24):
+        data.t += HOUR_MS
+        eng.step()
+    new6 = {f"C{i}USDT" for i in range(0, 6)}
+    assert set(eng.state["active_universe"]) == new6
+    assert set(eng.state["positions"]) & new6
+
+
+def test_sim_liquidity_uses_only_past_data(tmp_path, monkeypatch):
+    import json as _json
+    import backtest.carry_backtest as cb
+    monkeypatch.setattr(cb, "CACHE", tmp_path)
+    rows = [[T0 + i * HOUR_MS, 1, 1, 1, 100.0, float(i)] for i in range(24 * 50)]   # hacim = mum indeksi
+    (tmp_path / "AUSDT_1h.json").write_text(_json.dumps(rows))
+    (tmp_path / "AUSDT_funding.json").write_text("[]")
+    d = cb.SimCarryData(["AUSDT"])
+    d.t = T0 + 24 * 20 * HOUR_MS                       # 480 mum kapandı (0..479)
+    assert d.liquidity("AUSDT", 100) == pytest.approx(sum(range(380, 480)) / 100)
+    d.t = T0 + 24 * 5 * HOUR_MS                        # 10 günden kısa geçmiş -> seçilemez
+    assert d.liquidity("AUSDT", 100) is None
+    assert d.liquidity("YOKUSDT", 100) is None
+
+
+def test_live_liquidity_from_klines():
+    from agents.carry_agent import LiveCarryData
+
+    class C:
+        def get_klines(self, symbol, interval, limit):
+            return [{"timestamp": T0 + i * HOUR_MS, "close": 1.0, "quote_volume": 10.0 * (i % 2)} for i in range(800)]
+
+    d = LiveCarryData(client=C())
+    d.now_ms = lambda: T0 + 801 * HOUR_MS
+    assert d.liquidity("X", 720) == pytest.approx(5.0)
+    assert len(d.hourly_closes("X", 721)) == 721
